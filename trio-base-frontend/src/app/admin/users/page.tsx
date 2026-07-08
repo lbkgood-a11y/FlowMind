@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminApi, type RoleInfo, type UserInfoPayload } from "@/lib/admin";
+import { orgApi, type OrgUnitInfo, type UserOrgRelation } from "@/lib/org";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -47,6 +48,8 @@ export default function UsersAdminPage() {
   const { messages } = useI18n();
   const [users, setUsers] = useState<UserInfoPayload[]>([]);
   const [roles, setRoles] = useState<RoleInfo[]>([]);
+  const [orgUnits, setOrgUnits] = useState<OrgUnitInfo[]>([]);
+  const [orgRelations, setOrgRelations] = useState<UserOrgRelation[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -74,13 +77,17 @@ export default function UsersAdminPage() {
     setLoading(true);
     setError("");
     try {
-      const [userPage, roleList] = await Promise.all([
+      const [userPage, roleList, unitList, relationList] = await Promise.all([
         adminApi.listUsers(page, 20),
         adminApi.listRoles(),
+        orgApi.listOrgUnits(),
+        orgApi.listUserOrgRelations(),
       ]);
       setUsers(userPage.records);
       setTotal(userPage.total);
       setRoles(roleList);
+      setOrgUnits(unitList);
+      setOrgRelations(relationList);
     } catch (e) {
       setError(e instanceof Error ? e.message : messages.pages.users.loadFailed);
     } finally {
@@ -147,6 +154,8 @@ export default function UsersAdminPage() {
     ? users.filter((u) => u.username.includes(search) || (u.email && u.email.includes(search)))
     : users;
 
+  const orgUnitMap = new Map(orgUnits.map((unit) => [unit.id, unit]));
+
   function getInitials(name: string): string {
     return name.slice(0, 2).toUpperCase();
   }
@@ -160,6 +169,9 @@ export default function UsersAdminPage() {
           </Link>
           <Link href="/admin/menus">
             <Button variant="outline" size="sm">{messages.common.menus}</Button>
+          </Link>
+          <Link href="/admin/permissions">
+            <Button variant="outline" size="sm">{messages.common.permissions}</Button>
           </Link>
         </>
       )}
@@ -236,6 +248,7 @@ export default function UsersAdminPage() {
                       <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.user}</th>
                       <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.email}</th>
                       <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.roles}</th>
+                      <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.common.orgs}</th>
                       <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.status}</th>
                       <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.createdAt}</th>
                       <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.actions}</th>
@@ -280,6 +293,17 @@ export default function UsersAdminPage() {
                               ))}
                             </SelectContent>
                           </Select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            {orgRelations
+                              .filter((relation) => relation.userId === user.id)
+                              .map((relation) => orgUnitMap.get(relation.orgUnitId))
+                              .filter(Boolean)
+                              .map((unit) => (
+                                <Badge key={unit!.id} variant="outline">{unit!.unitName}</Badge>
+                              ))}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           {user.status === 1 ? (

@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
+  Building2,
   FileText,
+  KeySquare,
   LayoutDashboard,
-  Menu,
+  ListTree,
   Search,
   Shield,
   Users,
@@ -57,10 +59,22 @@ export function GlobalSearch() {
       icon: Shield,
     },
     {
+      title: messages.common.orgs,
+      description: messages.pages.orgs.subtitle,
+      href: "/admin/orgs",
+      icon: Building2,
+    },
+    {
       title: messages.common.menus,
-      description: messages.pages.permissions.subtitle,
+      description: messages.pages.menus.subtitle,
       href: "/admin/menus",
-      icon: Menu,
+      icon: ListTree,
+    },
+    {
+      title: messages.common.permissions,
+      description: messages.pages.permissions.subtitle,
+      href: "/admin/permissions",
+      icon: KeySquare,
     },
   ];
 

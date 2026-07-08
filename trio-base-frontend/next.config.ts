@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
       { source: "/api/v1/users/:path*", destination: "http://localhost:8081/api/v1/users/:path*" },
       { source: "/api/v1/roles/:path*", destination: "http://localhost:8081/api/v1/roles/:path*" },
       { source: "/api/v1/permissions/:path*", destination: "http://localhost:8081/api/v1/permissions/:path*" },
+      { source: "/api/v1/menus/:path*", destination: "http://localhost:8081/api/v1/menus/:path*" },
+      { source: "/api/v1/org/:path*", destination: "http://localhost:8082/api/v1/org/:path*" },
       { source: "/api/v1/forms/:path*", destination: "http://localhost:8085/api/v1/forms/:path*" },
       { source: "/api/v1/form-instances/:path*", destination: "http://localhost:8085/api/v1/form-instances/:path*" },
       // 其余走网关

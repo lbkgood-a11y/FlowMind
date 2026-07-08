@@ -9,6 +9,9 @@ import { ThemeProvider } from "@/components/layout/theme-provider";
 export const metadata: Metadata = {
   title: "TrioBase",
   description: "AI-native enterprise intelligent foundation",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

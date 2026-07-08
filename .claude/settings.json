@@ -106,7 +106,8 @@
       "Bash(nohup java -jar /Users/lv/workspace/flowmind/FlowMind/trio-base-platform/platform-gateway/target/platform-gateway-0.1.0-SNAPSHOT.jar)",
       "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\\\\n\" http://localhost:8080/actuator/health)",
       "Bash(curl -sv \"http://localhost:8081/api/v1/auth/validate?token=test123\")",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\)['data']; print\\(f'Forms: {len\\(d[\\\\\"records\\\\\"]\\)} records'\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\)['data']; print\\(f'Forms: {len\\(d[\\\\\"records\\\\\"]\\)} records'\\)\")",
+      "Bash(git commit -m '菜单权限管理 + 组织架构管理 + 国际化扩展 *)"
     ],
     "additionalDirectories": [
       "/Users/lv/.docker",

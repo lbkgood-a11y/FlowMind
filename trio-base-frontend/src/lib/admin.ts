@@ -26,6 +26,22 @@ export interface PermissionInfo {
   createdAt?: string;
 }
 
+export interface MenuInfo {
+  id: string;
+  parentId?: string;
+  menuKey: string;
+  menuName: string;
+  path: string;
+  icon?: string;
+  menuGroup: string;
+  sortOrder: number;
+  visible: number;
+  permissionId?: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface CreateRoleRequest {
   roleCode: string;
   roleName: string;
@@ -36,6 +52,19 @@ export interface CreateRoleRequest {
 export interface CreatePermissionRequest {
   resource: string;
   action: string;
+  description?: string;
+}
+
+export interface CreateMenuRequest {
+  parentId?: string;
+  menuKey: string;
+  menuName: string;
+  path: string;
+  icon?: string;
+  menuGroup: string;
+  sortOrder?: number;
+  visible?: boolean;
+  permissionId?: string;
   description?: string;
 }
 
@@ -93,6 +122,21 @@ export const adminApi = {
 
   deletePermission: async (id: string) => {
     const response = await api.delete<ApiResponse<string>>(`/api/v1/permissions/${id}`);
+    return response.data;
+  },
+
+  listMenus: async () => {
+    const response = await api.get<ApiResponse<MenuInfo[]>>("/api/v1/menus");
+    return response.data;
+  },
+
+  createMenu: async (payload: CreateMenuRequest) => {
+    const response = await api.post<ApiResponse<MenuInfo>>("/api/v1/menus", payload);
+    return response.data;
+  },
+
+  deleteMenu: async (id: string) => {
+    const response = await api.delete<ApiResponse<string>>(`/api/v1/menus/${id}`);
     return response.data;
   },
 };

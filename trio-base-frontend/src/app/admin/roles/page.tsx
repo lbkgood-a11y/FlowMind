@@ -95,9 +95,14 @@ export default function RolesAdminPage() {
   return (
     <AppPage
       topbarActions={(
-        <Link href="/admin/users">
-          <Button variant="outline" size="sm">{messages.common.users}</Button>
-        </Link>
+        <>
+          <Link href="/admin/users">
+            <Button variant="outline" size="sm">{messages.common.users}</Button>
+          </Link>
+          <Link href="/admin/permissions">
+            <Button variant="outline" size="sm">{messages.common.permissions}</Button>
+          </Link>
+        </>
       )}
     >
       <PageHeader

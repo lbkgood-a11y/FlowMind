@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronRight, LayoutDashboard, FileText, Users, Shield, Menu } from "lucide-react";
+import { ChevronRight, LayoutDashboard } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -38,6 +38,7 @@ import { TeamSwitcher } from "./team-switcher";
 import { NavUser } from "./nav-user";
 import type { SidebarData, NavItem, NavLink, NavCollapsible } from "./types";
 import { useI18n } from "@/lib/i18n";
+import { APP_MENU_REGISTRY } from "@/lib/menu-registry";
 
 export function AppSidebar() {
   const { messages } = useI18n();
@@ -58,13 +59,21 @@ export function AppSidebar() {
     navGroups: [
       {
         title: messages.sidebar.group,
-        items: [
-          { title: messages.common.dashboard, url: "/", icon: LayoutDashboard },
-          { title: messages.common.forms, url: "/forms", icon: FileText },
-          { title: messages.common.users, url: "/admin/users", icon: Users },
-          { title: messages.common.roles, url: "/admin/roles", icon: Shield },
-          { title: messages.common.menus, url: "/admin/menus", icon: Menu },
-        ],
+        items: APP_MENU_REGISTRY.filter((item) =>
+          ["dashboard", "forms", "users", "roles", "orgs", "menus", "permissions"].includes(item.key),
+        ).map((item) => ({
+          title: {
+            dashboard: messages.common.dashboard,
+            forms: messages.common.forms,
+            users: messages.common.users,
+            roles: messages.common.roles,
+            orgs: messages.common.orgs,
+            menus: messages.common.menus,
+            permissions: messages.common.permissions,
+          }[item.key] || item.key,
+          url: item.path,
+          icon: item.icon,
+        })),
       },
     ],
   };

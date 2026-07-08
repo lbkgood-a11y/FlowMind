@@ -69,6 +69,7 @@ if $REBUILD || [ ! -f "${ROOT_DIR}/trio-base-services/service-auth/target/servic
     cd "${ROOT_DIR}" && mvn clean install -DskipTests -pl trio-base-common -am -q 2>&1 | grep -v "^$"
     info "  打包 services..."
     cd "${ROOT_DIR}" && mvn clean package -DskipTests -am -q -pl trio-base-services/service-auth 2>&1 | grep -v "^$"
+    cd "${ROOT_DIR}" && mvn clean package -DskipTests -am -q -pl trio-base-services/service-org 2>&1 | grep -v "^$"
     cd "${ROOT_DIR}" && mvn clean package -DskipTests -am -q -pl trio-base-services/service-lowcode 2>&1 | grep -v "^$"
     cd "${ROOT_DIR}" && mvn clean package -DskipTests -am -q -pl trio-base-platform/platform-gateway 2>&1 | grep -v "^$"
     info "  ✅ 编译打包完成"
@@ -93,6 +94,7 @@ step "4/5  启动后端 Java 服务"
 
 # 杀掉残留进程
 pkill -f "service-auth" 2>/dev/null || true
+pkill -f "service-org" 2>/dev/null || true
 pkill -f "service-lowcode" 2>/dev/null || true
 pkill -f "platform-gateway" 2>/dev/null || true
 sleep 2
@@ -111,6 +113,13 @@ for i in {1..30}; do
   fi
   sleep 2
 done
+
+info "  🚀 启动 Org 服务 (8082)..."
+nohup java -jar "${ROOT_DIR}/trio-base-services/service-org/target/service-org-0.1.0-SNAPSHOT.jar" \
+    > "${LOG_DIR}/service-org.log" 2>&1 &
+ORG_PID=$!
+echo "    PID: ${ORG_PID}"
+sleep 5
 
 info "  🚀 启动 Lowcode 服务 (8085)..."
 nohup java -jar "${ROOT_DIR}/trio-base-services/service-lowcode/target/service-lowcode-0.1.0-SNAPSHOT.jar" \
@@ -147,12 +156,13 @@ echo "  🔗  访问地址:"
 echo "      前端:      http://localhost:3000"
 echo "      API 网关:  http://localhost:8080"
 echo "      Auth:      http://localhost:8081"
+echo "      Org:       http://localhost:8082"
 echo "      Nacos:     http://localhost:8848/nacos"
 echo "      Neo4j:     http://localhost:7474"
 echo ""
 echo "  🔑  登录凭据:  admin / admin123"
 echo ""
 echo "  📋  日志文件:  ${LOG_DIR}/"
-echo "  🛑  停止命令:  pkill -f 'service-auth|service-lowcode|platform-gateway'"
+echo "  🛑  停止命令:  pkill -f 'service-auth|service-org|service-lowcode|platform-gateway'"
 echo "               docker compose -f ${DOCKER_COMPOSE_FILE} stop"
 echo ""
