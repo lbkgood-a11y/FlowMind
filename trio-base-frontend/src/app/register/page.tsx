@@ -3,17 +3,18 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Bot, Database, GitBranch, ShieldCheck } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 import { useAppStore } from "@/stores/app-store";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
-const PWD_RULES = [
-  { re: /.{8,}/, label: "至少 8 位" },
-  { re: /[a-z]/, label: "包含小写字母" },
-  { re: /[A-Z]/, label: "包含大写字母" },
-  { re: /\d/, label: "包含数字" },
-];
+const PWD_RULES = [/.{8,}/, /[a-z]/, /[A-Z]/, /\d/];
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { messages } = useI18n();
   const setMode = useAppStore((s) => s.setMode);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -22,7 +23,7 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const pwdOk = PWD_RULES.every((r) => r.re.test(password));
+  const pwdOk = PWD_RULES.every((rule) => rule.test(password));
   const confirmOk = password === confirm && confirm.length > 0;
 
   async function handleRegister(e: React.FormEvent) {
@@ -30,11 +31,11 @@ export default function RegisterPage() {
     setError("");
 
     if (!pwdOk) {
-      setError("密码不满足强度要求");
+      setError(messages.auth.passwordRuleFailed);
       return;
     }
     if (!confirmOk) {
-      setError("两次密码不一致");
+      setError(messages.auth.passwordMismatch);
       return;
     }
 
@@ -49,7 +50,7 @@ export default function RegisterPage() {
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.message || "注册失败");
+        setError(data.message || messages.auth.registerFailed);
         return;
       }
 
@@ -68,113 +69,153 @@ export default function RegisterPage() {
       setMode("gui");
       router.push("/");
     } catch {
-      setError("网络错误，请稍后重试");
+      setError(messages.auth.networkError);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="w-full max-w-sm rounded-lg border bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-center text-2xl font-bold text-slate-900">
-          注册 TrioBase
-        </h1>
+    <div className="grid min-h-svh bg-background lg:grid-cols-2">
+      <section className="relative hidden overflow-hidden border-r bg-sidebar text-sidebar-foreground lg:flex">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:48px_48px] opacity-40" />
+        <div className="relative flex min-h-svh w-full flex-col justify-between p-10">
+          <Link href="/" className="flex items-center gap-3 font-semibold">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+              <Bot className="size-5" />
+            </span>
+            <span>TrioBase</span>
+          </Link>
+
+          <div className="max-w-xl space-y-6">
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-muted-foreground">
+                {messages.auth.eyebrow}
+              </p>
+              <h1 className="text-4xl font-semibold leading-tight">
+                {messages.auth.registerHeroTitle}
+              </h1>
+              <p className="text-base leading-7 text-muted-foreground">
+                {messages.auth.registerHeroDescription}
+              </p>
+            </div>
+
+            <div className="grid gap-3 text-sm sm:grid-cols-3">
+              <div className="rounded-lg border bg-background/50 p-3">
+                <GitBranch className="mb-3 size-4 text-muted-foreground" />
+                <p className="font-medium">{messages.auth.featureUnifiedFlow}</p>
+              </div>
+              <div className="rounded-lg border bg-background/50 p-3">
+                <Database className="mb-3 size-4 text-muted-foreground" />
+                <p className="font-medium">{messages.auth.featureUnifiedData}</p>
+              </div>
+              <div className="rounded-lg border bg-background/50 p-3">
+                <ShieldCheck className="mb-3 size-4 text-muted-foreground" />
+                <p className="font-medium">{messages.auth.featureUnifiedSecurity}</p>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            {messages.auth.registerNote}
+          </p>
+        </div>
+      </section>
+
+      <main className="flex min-h-svh items-center justify-center px-4 py-10 sm:px-6">
+        <div className="w-full max-w-[22rem] space-y-6 sm:max-w-sm">
+          <div className="space-y-2 text-center">
+            <div className="mx-auto flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground lg:hidden">
+              <Bot className="size-5" />
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight">{messages.auth.registerTitle}</h1>
+            <p className="text-sm text-muted-foreground">
+              {messages.auth.registerSubtitle}
+            </p>
+          </div>
 
         <form onSubmit={handleRegister} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              用户名
-            </label>
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="username">{messages.common.username}</Label>
+            <Input
+              id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="请输入用户名"
               required
             />
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              邮箱 <span className="text-slate-400">(选填)</span>
-            </label>
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="email">
+              {messages.common.email} <span className="text-muted-foreground">({messages.auth.optional})</span>
+            </Label>
+            <Input
+              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="name@company.com"
             />
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              密码
-            </label>
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="password">{messages.common.password}</Label>
+            <Input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="请输入密码"
               required
             />
-            <ul className="mt-2 space-y-0.5">
-              {PWD_RULES.map((rule) => {
-                const ok = rule.re.test(password);
+            <ul className="space-y-0.5">
+              {messages.auth.passwordRules.map((label, index) => {
+                const ok = PWD_RULES[index].test(password);
                 return (
                   <li
-                    key={rule.label}
-                    className={`text-xs ${ok ? "text-green-600" : "text-slate-400"}`}
+                    key={label}
+                    className={`text-xs ${ok ? "text-success-fg" : "text-muted-foreground"}`}
                   >
-                    {ok ? "✓" : "○"} {rule.label}
+                    {ok ? "✓" : "○"} {label}
                   </li>
                 );
               })}
             </ul>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              确认密码
-            </label>
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="confirm">{messages.common.confirmPassword}</Label>
+            <Input
+              id="confirm"
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className={`w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-1 ${
-                confirm.length > 0 && !confirmOk
-                  ? "border-red-400 focus:border-red-500 focus:ring-red-500"
-                  : "focus:border-blue-500 focus:ring-blue-500"
-              }`}
               placeholder="再次输入密码"
               required
+              aria-invalid={confirm.length > 0 && !confirmOk ? true : undefined}
             />
             {confirm.length > 0 && !confirmOk && (
-              <p className="mt-1 text-xs text-red-500">两次密码不一致</p>
+              <p className="text-xs text-destructive">{messages.auth.passwordMismatch}</p>
             )}
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-          >
-            {loading ? "注册中..." : "注 册"}
-          </button>
+          <Button type="submit" disabled={loading} className="w-full">
+            {loading ? messages.auth.registerBusy : messages.auth.submitRegister}
+          </Button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-slate-500">
-          已有账号？
-          <Link href="/login" className="ml-1 text-blue-600 hover:underline">
-            去登录
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          {messages.auth.hasAccount}
+          <Link href="/login" className="ml-1 font-medium text-primary hover:underline">
+            {messages.auth.goLogin}
           </Link>
         </p>
       </div>
+      </main>
     </div>
   );
 }

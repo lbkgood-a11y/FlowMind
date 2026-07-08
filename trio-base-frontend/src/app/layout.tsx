@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { cn } from "@/lib/utils";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
+import { ClientShell } from "@/components/layout/ClientShell";
+import { ThemeProvider } from "@/components/layout/theme-provider";
 
 export const metadata: Metadata = {
   title: "TrioBase",
@@ -12,9 +17,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" className={cn("font-sans")} suppressHydrationWarning>
       <body className="min-h-screen antialiased">
-        {children}
+        <ThemeProvider>
+          <TooltipProvider>
+            <Toaster />
+            <ClientShell>{children}</ClientShell>
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

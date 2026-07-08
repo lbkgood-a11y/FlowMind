@@ -21,7 +21,7 @@ export function Table({ children, className = "" }: TableProps) {
 
 export function THead({ children }: { children: React.ReactNode }) {
   return (
-    <thead className="bg-surface text-xs text-fg-tertiary">
+    <thead className="bg-muted/50 text-xs text-muted-foreground">
       {children}
     </thead>
   );
@@ -52,7 +52,7 @@ export function Tr({
 }) {
   return (
     <tr
-      className={`border-t border-border transition-colors even:bg-surface hover:bg-hover ${className}`}
+      className={`border-t border-border transition-colors even:bg-muted/20 hover:bg-accent/40 ${className}`}
     >
       {children}
     </tr>

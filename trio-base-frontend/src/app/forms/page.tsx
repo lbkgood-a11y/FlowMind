@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { lowcodeApi, type FormDefinition } from "@/lib/lowcode";
-import { Shell } from "@/components/Shell";
+
+import { Button } from "@/components/ui/button";
 import {
   Card,
   PageHeader,
@@ -15,9 +16,12 @@ import {
   Td,
   StatusBadge,
 } from "@/components/ui";
+import { AppPage } from "@/components/layout/app-page";
+import { useI18n } from "@/lib/i18n";
 
 export default function FormsPage() {
   const router = useRouter();
+  const { messages } = useI18n();
   const [forms, setForms] = useState<FormDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -59,64 +63,57 @@ export default function FormsPage() {
   }
 
   return (
-    <Shell>
+    <AppPage
+      topbarActions={(
+        <Link href="/">
+          <Button variant="outline" size="sm">返回首页</Button>
+        </Link>
+      )}
+    >
       <PageHeader
-        breadcrumb="Form Studio"
-        title="表单配置台"
-        subtitle="管理统一表单定义，为后续流程和数据沉淀提供结构化入口。"
+        breadcrumb={messages.pages.forms.breadcrumb}
+        title={messages.pages.forms.title}
+        subtitle={messages.pages.forms.subtitle}
         actions={
-          <>
-            <Link
-              href="/"
-              className="rounded border border-border px-4 py-2 text-sm text-fg-secondary hover:bg-surface"
-            >
-              返回首页
-            </Link>
-            <Link
-              href="/forms/new"
-              className="rounded bg-fg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              新建表单
-            </Link>
-          </>
+          <Link href="/forms/new">
+            <Button variant="default" size="sm">{messages.common.newForm}</Button>
+          </Link>
         }
       />
 
       {error && (
-        <div className="rounded border border-danger-fg/30 bg-danger-bg px-4 py-3 text-sm text-danger-fg">
-          {error}
-        </div>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
       )}
 
-      <Card title="表单列表">
+      <Card title={messages.pages.forms.tableTitle}>
         {loading ? (
-          <div className="py-10 text-sm text-fg-tertiary">加载中...</div>
+          <div className="py-10 text-sm text-muted-foreground">{messages.common.loading}</div>
         ) : forms.length === 0 ? (
-          <div className="py-10 text-sm text-fg-tertiary">
-            还没有表单，先创建一个试试。
+          <div className="py-10 text-sm text-muted-foreground">
+            {messages.pages.forms.empty}
           </div>
         ) : (
           <Table>
             <THead>
               <tr>
-                <Th>名称</Th>
-                <Th>表单 Key</Th>
-                <Th>状态</Th>
-                <Th>版本</Th>
-                <Th>创建人</Th>
-                <Th>操作</Th>
+                <Th>{messages.pages.forms.columns.name}</Th>
+                <Th>{messages.pages.forms.columns.key}</Th>
+                <Th>{messages.pages.forms.columns.status}</Th>
+                <Th>{messages.pages.forms.columns.version}</Th>
+                <Th>{messages.pages.forms.columns.creator}</Th>
+                <Th>{messages.pages.forms.columns.actions}</Th>
               </tr>
             </THead>
             <tbody>
-              {forms.map((form) => (
-                <Tr key={form.id}>
-                  <Td>
-                    <div className="font-medium text-fg-primary">{form.name}</div>
-                    <div className="mt-0.5 text-xs text-fg-tertiary">
-                      {form.description || "暂无描述"}
-                    </div>
-                  </Td>
-                  <Td className="font-mono text-xs text-fg-secondary">
+                {forms.map((form) => (
+                  <Tr key={form.id}>
+                    <Td>
+                    <div className="font-medium text-foreground">{form.name}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                        {form.description || messages.pages.forms.descriptionFallback}
+                      </div>
+                    </Td>
+                  <Td className="font-mono text-xs text-muted-foreground">
                     {form.formKey}
                   </Td>
                   <Td>
@@ -125,24 +122,22 @@ export default function FormsPage() {
                       label={form.status}
                     />
                   </Td>
-                  <Td className="text-fg-primary">{form.version}</Td>
-                  <Td className="text-fg-secondary">{form.createdBy || "-"}</Td>
+                  <Td className="text-foreground">{form.version}</Td>
+                  <Td className="text-muted-foreground">{form.createdBy || "-"}</Td>
                   <Td>
                     <div className="flex flex-wrap gap-2">
-                      <Link
-                        href={`/forms/${form.formKey}/submit?id=${form.id}`}
-                        className="rounded border border-border px-3 py-1.5 text-xs text-fg-secondary hover:bg-surface"
-                      >
-                        提交测试
+                      <Link href={`/forms/${form.formKey}/submit?id=${form.id}`}>
+                        <Button variant="outline" size="xs">{messages.pages.forms.submitTest}</Button>
                       </Link>
                       {form.status !== "PUBLISHED" && (
-                        <button
+                        <Button
+                          variant="default"
+                          size="xs"
                           onClick={() => void handlePublish(form.id)}
                           disabled={publishingId === form.id}
-                          className="rounded bg-fg-primary px-3 py-1.5 text-xs text-white hover:opacity-90 disabled:opacity-50"
                         >
-                          {publishingId === form.id ? "发布中..." : "发布"}
-                        </button>
+                          {publishingId === form.id ? messages.pages.forms.publishing : messages.pages.forms.publish}
+                        </Button>
                       )}
                     </div>
                   </Td>
@@ -152,6 +147,6 @@ export default function FormsPage() {
           </Table>
         )}
       </Card>
-    </Shell>
+    </AppPage>
   );
 }

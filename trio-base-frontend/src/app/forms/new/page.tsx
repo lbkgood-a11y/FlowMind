@@ -3,9 +3,21 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shell } from "@/components/Shell";
+
 import { lowcodeApi, type FormFieldSchema } from "@/lib/lowcode";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, PageHeader } from "@/components/ui";
+import { AppPage } from "@/components/layout/app-page";
+import { useI18n } from "@/lib/i18n";
 
 const FIELD_TYPES = ["text", "textarea", "number", "select", "date"];
 
@@ -24,6 +36,7 @@ function createEmptyField(sortOrder: number): FormFieldSchema {
 
 export default function NewFormPage() {
   const router = useRouter();
+  const { messages } = useI18n();
   const [formKey, setFormKey] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -80,12 +93,12 @@ export default function NewFormPage() {
     setError("");
 
     if (!formKey || !name) {
-      setError("表单 Key 和名称不能为空");
+      setError(messages.pages.formBuilder.validationMissingMeta);
       return;
     }
 
     if (fields.some((field) => !field.fieldKey || !field.label)) {
-      setError("所有字段都需要填写字段 Key 和标签");
+      setError(messages.pages.formBuilder.validationMissingField);
       return;
     }
 
@@ -101,166 +114,151 @@ export default function NewFormPage() {
       });
       router.push(`/forms/${created.formKey}/submit?id=${created.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "创建表单失败");
+      setError(e instanceof Error ? e.message : messages.pages.formBuilder.createFailed);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <Shell>
+    <AppPage
+      topbarActions={(
+        <Link href="/forms">
+          <Button variant="outline" size="sm">返回列表</Button>
+        </Link>
+      )}
+    >
       <PageHeader
-        breadcrumb="Form Builder"
-        title="新建表单"
+        breadcrumb={messages.pages.formBuilder.breadcrumb}
+        title={messages.pages.formBuilder.title}
         actions={
-          <Link
-            href="/forms"
-            className="rounded border border-border px-4 py-2 text-sm text-fg-secondary hover:bg-surface"
-          >
-            返回列表
-          </Link>
+          <Button type="submit" form="new-form-builder" disabled={loading}>
+            {loading ? messages.pages.formBuilder.createBusy : messages.pages.formBuilder.create}
+          </Button>
         }
       />
 
       <div className="grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
         <Card>
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form id="new-form-builder" onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-sm font-medium text-fg-primary">
-                  表单 Key
-                </span>
-                <input
+              <div className="grid gap-2">
+                <Label htmlFor="formKey">{messages.pages.formBuilder.formKey}</Label>
+                <Input
+                  id="formKey"
                   value={formKey}
                   onChange={(e) => setFormKey(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                   placeholder="expense-approval"
                 />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm font-medium text-fg-primary">
-                  表单名称
-                </span>
-                <input
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="formName">{messages.pages.formBuilder.formName}</Label>
+                <Input
+                  id="formName"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                   placeholder="费用报销申请"
                 />
-              </label>
+              </div>
             </div>
 
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-fg-primary">
-                描述
-              </span>
+            <div className="grid gap-2">
+              <Label htmlFor="formDesc">{messages.pages.formBuilder.formDescription}</Label>
               <textarea
+                id="formDesc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                placeholder="这个表单用于什么场景"
+                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
+                placeholder={messages.pages.formBuilder.formDescriptionPlaceholder}
               />
-            </label>
+            </div>
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-medium text-fg-primary">
-                  字段配置
+                <h2 className="text-base font-medium text-foreground">
+                  {messages.pages.formBuilder.sectionTitle}
                 </h2>
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={addField}
-                  className="rounded border border-border px-3 py-1.5 text-sm text-fg-secondary hover:bg-surface"
                 >
-                  添加字段
-                </button>
+                  {messages.pages.formBuilder.addField}
+                </Button>
               </div>
 
               {fields.map((field, index) => (
                 <div
                   key={`${field.fieldKey}-${index}`}
-                  className="rounded border border-border bg-surface p-4"
+                  className="rounded-lg border border-border bg-muted/20 p-4"
                 >
                   <div className="grid gap-4 md:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-fg-primary">
-                        字段 Key
-                      </span>
-                      <input
+                    <div className="grid gap-2">
+                      <Label className="text-xs text-muted-foreground">{messages.pages.formBuilder.fieldKey}</Label>
+                      <Input
                         value={field.fieldKey}
-                        onChange={(e) =>
-                          updateField(index, { fieldKey: e.target.value })
-                        }
-                        className="w-full rounded border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                        onChange={(e) => updateField(index, { fieldKey: e.target.value })}
                         placeholder="amount"
+                        className="bg-white"
                       />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-fg-primary">
-                        标签
-                      </span>
-                      <input
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-xs text-muted-foreground">{messages.pages.formBuilder.fieldLabel}</Label>
+                      <Input
                         value={field.label}
-                        onChange={(e) =>
-                          updateField(index, { label: e.target.value })
-                        }
-                        className="w-full rounded border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                        onChange={(e) => updateField(index, { label: e.target.value })}
                         placeholder="报销金额"
+                        className="bg-white"
                       />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-fg-primary">
-                        类型
-                      </span>
-                      <select
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-xs text-muted-foreground">{messages.pages.formBuilder.fieldType}</Label>
+                      <Select
                         value={field.fieldType}
-                        onChange={(e) =>
-                          updateField(index, { fieldType: e.target.value })
-                        }
-                        className="w-full rounded border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                        onValueChange={(v) => updateField(index, { fieldType: v ?? "text" })}
                       >
-                        {FIELD_TYPES.map((type) => (
-                          <option key={type} value={type}>
-                            {type}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-fg-primary">
-                        占位提示
-                      </span>
-                      <input
+                        <SelectTrigger className="bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {FIELD_TYPES.map((type) => (
+                            <SelectItem key={type} value={type}>{type}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-xs text-muted-foreground">{messages.pages.formBuilder.placeholder}</Label>
+                      <Input
                         value={field.placeholder || ""}
-                        onChange={(e) =>
-                          updateField(index, { placeholder: e.target.value })
-                        }
-                        className="w-full rounded border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                        onChange={(e) => updateField(index, { placeholder: e.target.value })}
                         placeholder="请输入内容"
+                        className="bg-white"
                       />
-                    </label>
+                    </div>
                   </div>
 
                   <div className="mt-4 flex items-center justify-between">
-                    <label className="flex items-center gap-2 text-sm text-fg-secondary">
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
                       <input
                         type="checkbox"
                         checked={Boolean(field.required)}
-                        onChange={(e) =>
-                          updateField(index, { required: e.target.checked })
-                        }
+                        onChange={(e) => updateField(index, { required: e.target.checked })}
                       />
-                      必填字段
+                      {messages.pages.formBuilder.required}
                     </label>
                     {fields.length > 1 && (
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="xs"
+                        className="text-destructive hover:text-destructive/80"
                         onClick={() => removeField(index)}
-                        className="text-sm text-danger-fg hover:text-danger-fg/80"
                       >
-                        删除字段
-                      </button>
+                        {messages.pages.formBuilder.removeField}
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -268,30 +266,17 @@ export default function NewFormPage() {
             </div>
 
             {error && (
-              <div className="rounded border border-danger-fg/30 bg-danger-bg px-4 py-3 text-sm text-danger-fg">
-                {error}
-              </div>
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
             )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded bg-fg-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-            >
-              {loading ? "创建中..." : "创建表单"}
-            </button>
           </form>
         </Card>
 
-        <aside className="rounded border border-border bg-fg-primary px-4 py-4 text-slate-100">
-          <p className="text-xs uppercase tracking-[0.24em] text-fg-secondary">
-            Schema Preview
-          </p>
-          <pre className="mt-4 overflow-auto rounded bg-black/20 p-4 text-xs leading-6 text-slate-200">
+        <Card title={messages.pages.formBuilder.schemaPreview} className="overflow-hidden">
+          <pre className="overflow-auto rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-200">
             {schemaPreview}
           </pre>
-        </aside>
+        </Card>
       </div>
-    </Shell>
+    </AppPage>
   );
 }

@@ -3,12 +3,26 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shell } from "@/components/Shell";
+
 import { adminApi, type PermissionInfo } from "@/lib/admin";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, PageHeader, Table, THead, Th, Tr, Td } from "@/components/ui";
+import { AppPage } from "@/components/layout/app-page";
+import { useI18n } from "@/lib/i18n";
 
 export default function MenusAdminPage() {
   const router = useRouter();
+  const { messages } = useI18n();
   const [permissions, setPermissions] = useState<PermissionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -32,7 +46,7 @@ export default function MenusAdminPage() {
       const list = await adminApi.listPermissions();
       setPermissions(list);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "加载菜单权限失败");
+      setError(e instanceof Error ? e.message : messages.pages.permissions.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -48,7 +62,7 @@ export default function MenusAdminPage() {
       setDescription("");
       await loadPermissions();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "创建权限失败");
+      setError(e instanceof Error ? e.message : messages.pages.permissions.createFailed);
     }
   }
 
@@ -58,100 +72,98 @@ export default function MenusAdminPage() {
       await adminApi.deletePermission(id);
       await loadPermissions();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "删除权限失败");
+      setError(e instanceof Error ? e.message : messages.pages.permissions.deleteFailed);
     }
   }
 
   return (
-    <Shell>
+    <AppPage
+      topbarActions={(
+        <Link href="/admin/roles">
+          <Button variant="outline" size="sm">{messages.common.roles}</Button>
+        </Link>
+      )}
+    >
       <PageHeader
-        breadcrumb="Admin Console"
-        title="菜单与权限"
-        subtitle="当前先以资源路径 + 动作的方式维护菜单权限，为后续真正菜单树做基础模型。"
+        breadcrumb={messages.pages.permissions.breadcrumb}
+        title={messages.pages.permissions.title}
+        subtitle={messages.pages.permissions.subtitle}
         actions={
-          <Link
-            href="/admin/roles"
-            className="rounded border border-border px-4 py-2 text-sm text-fg-secondary hover:bg-surface"
-          >
-            角色管理
-          </Link>
+          <Button type="submit" form="permission-form">{messages.pages.permissions.newPermission}</Button>
         }
       />
 
       <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <Card title="新增菜单权限">
-          <form onSubmit={handleCreate} className="space-y-4">
-            <input
-              value={resource}
-              onChange={(e) => setResource(e.target.value)}
-              placeholder="/console/forms"
-              className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
-            <select
-              value={action}
-              onChange={(e) => setAction(e.target.value)}
-              className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            >
-              {["GET", "POST", "PUT", "DELETE"].map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="例如：查看表单管理页面"
-              rows={3}
-              className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
+        <Card title={messages.pages.permissions.newPermission}>
+          <form id="permission-form" onSubmit={handleCreate} className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="resource">{messages.pages.permissions.resource}</Label>
+              <Input
+                id="resource"
+                value={resource}
+                onChange={(e) => setResource(e.target.value)}
+                placeholder="/console/forms"
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="action">{messages.pages.permissions.action}</Label>
+              <Select value={action} onValueChange={(v) => setAction(v ?? "GET")}>
+                <SelectTrigger id="action">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["GET", "POST", "PUT", "DELETE"].map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="permDesc">{messages.pages.permissions.description}</Label>
+              <textarea
+                id="permDesc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="例如：查看表单管理页面"
+                rows={3}
+                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
+              />
+            </div>
 
             {error && (
-              <div className="rounded border border-danger-fg/30 bg-danger-bg px-4 py-3 text-sm text-danger-fg">
-                {error}
-              </div>
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
             )}
-
-            <button className="rounded bg-fg-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
-              新增菜单权限
-            </button>
           </form>
         </Card>
 
         <Card>
           {loading ? (
-            <div className="py-10 text-sm text-fg-tertiary">加载中...</div>
+            <div className="py-10 text-sm text-muted-foreground">{messages.pages.permissions.loadBusy}</div>
           ) : (
             <Table>
               <THead>
                 <tr>
-                  <Th>资源</Th>
-                  <Th>动作</Th>
-                  <Th>说明</Th>
-                  <Th>操作</Th>
+                  <Th>{messages.pages.permissions.columns.resource}</Th>
+                  <Th>{messages.pages.permissions.columns.action}</Th>
+                  <Th>{messages.pages.permissions.columns.description}</Th>
+                  <Th>{messages.pages.permissions.columns.actions}</Th>
                 </tr>
               </THead>
               <tbody>
                 {permissions.map((permission) => (
                   <Tr key={permission.id}>
-                    <Td className="font-mono text-xs text-fg-primary">
+                    <Td className="font-mono text-xs text-foreground">
                       {permission.resource}
                     </Td>
                     <Td>
-                      <span className="rounded-full bg-surface px-2.5 py-0.5 text-xs text-fg-secondary">
-                        {permission.action}
-                      </span>
+                      <Badge variant="secondary">{permission.action}</Badge>
                     </Td>
-                    <Td className="text-fg-secondary">
+                    <Td className="text-muted-foreground">
                       {permission.description || "-"}
                     </Td>
                     <Td>
-                      <button
-                        onClick={() => void handleDelete(permission.id)}
-                        className="rounded border border-danger-fg/30 px-3 py-1.5 text-xs text-danger-fg hover:bg-danger-bg"
-                      >
-                        删除
-                      </button>
+                      <Button variant="destructive" size="xs" onClick={() => void handleDelete(permission.id)}>{messages.pages.permissions.delete}</Button>
                     </Td>
                   </Tr>
                 ))}
@@ -160,6 +172,6 @@ export default function MenusAdminPage() {
           )}
         </Card>
       </div>
-    </Shell>
+    </AppPage>
   );
 }

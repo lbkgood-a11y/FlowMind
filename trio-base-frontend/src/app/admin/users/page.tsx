@@ -3,26 +3,63 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shell } from "@/components/Shell";
 import { adminApi, type RoleInfo, type UserInfoPayload } from "@/lib/admin";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Card,
-  PageHeader,
-  Table,
-  THead,
-  Th,
-  Tr,
-  Td,
-  StatusBadge,
-} from "@/components/ui";
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { AppPage } from "@/components/layout/app-page";
+import { useI18n } from "@/lib/i18n";
+import {
+  Search,
+  Plus,
+  CircleCheck,
+  CircleX,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 export default function UsersAdminPage() {
   const router = useRouter();
+  const { messages } = useI18n();
   const [users, setUsers] = useState<UserInfoPayload[]>([]);
   const [roles, setRoles] = useState<RoleInfo[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState("");
+
+  // New user dialog
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [newDialogOpen, setNewDialogOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -31,20 +68,21 @@ export default function UsersAdminPage() {
       return;
     }
     void loadData();
-  }, [router]);
+  }, [router, page]);
 
   async function loadData() {
     setLoading(true);
     setError("");
     try {
       const [userPage, roleList] = await Promise.all([
-        adminApi.listUsers(),
+        adminApi.listUsers(page, 20),
         adminApi.listRoles(),
       ]);
       setUsers(userPage.records);
+      setTotal(userPage.total);
       setRoles(roleList);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "加载用户失败");
+      setError(e instanceof Error ? e.message : messages.pages.users.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -57,7 +95,7 @@ export default function UsersAdminPage() {
       await adminApi.updateUserStatus(user.id, user.status === 1 ? 0 : 1);
       await loadData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "更新状态失败");
+      setError(e instanceof Error ? e.message : messages.pages.users.updateFailed);
     } finally {
       setSavingId(null);
     }
@@ -72,124 +110,245 @@ export default function UsersAdminPage() {
       await adminApi.assignUserRoles(userId, [matched.id]);
       await loadData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "分配角色失败");
+      setError(e instanceof Error ? e.message : messages.pages.users.assignFailed);
     } finally {
       setSavingId(null);
     }
   }
 
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({ username: newUsername, password: newPassword });
+      if (newEmail) params.append("email", newEmail);
+      const res = await fetch(`/api/v1/auth/register?${params.toString()}`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "创建失败");
+      }
+      setNewDialogOpen(false);
+      setNewUsername("");
+      setNewPassword("");
+      setNewEmail("");
+      await loadData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : messages.pages.users.createFailed);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  const totalPages = Math.ceil(total / 20);
+  const filteredUsers = search
+    ? users.filter((u) => u.username.includes(search) || (u.email && u.email.includes(search)))
+    : users;
+
+  function getInitials(name: string): string {
+    return name.slice(0, 2).toUpperCase();
+  }
+
   return (
-    <Shell>
+    <AppPage
+      topbarActions={(
+        <>
+          <Link href="/admin/roles">
+            <Button variant="outline" size="sm">{messages.common.roles}</Button>
+          </Link>
+          <Link href="/admin/menus">
+            <Button variant="outline" size="sm">{messages.common.menus}</Button>
+          </Link>
+        </>
+      )}
+    >
       <PageHeader
-        breadcrumb="Admin Console"
-        title="用户管理"
-        subtitle="维护用户状态与角色分配。"
-        actions={
-          <>
-            <Link
-              href="/admin/roles"
-              className="rounded border border-border px-4 py-2 text-sm text-fg-secondary hover:bg-surface"
-            >
-              角色管理
-            </Link>
-            <Link
-              href="/admin/menus"
-              className="rounded border border-border px-4 py-2 text-sm text-fg-secondary hover:bg-surface"
-            >
-              菜单权限
-            </Link>
-            <Link
-              href="/"
-              className="rounded bg-fg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              返回首页
-            </Link>
-          </>
-        }
+        breadcrumb={messages.pages.users.breadcrumb}
+        title={messages.pages.users.title}
+        subtitle={messages.pages.users.subtitle}
+        actions={(
+          <Dialog open={newDialogOpen} onOpenChange={setNewDialogOpen}>
+            <Button size="sm" onClick={() => setNewDialogOpen(true)}>
+              <Plus /> {messages.pages.users.createUser}
+            </Button>
+            <DialogContent>
+              <form onSubmit={handleCreate}>
+                <DialogHeader>
+                  <DialogTitle>{messages.pages.users.createUser}</DialogTitle>
+                  <DialogDescription>{messages.pages.users.createUserDescription}</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="nu-username">{messages.common.username}</Label>
+                    <Input id="nu-username" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="username" required />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="nu-email">{messages.common.email}</Label>
+                    <Input id="nu-email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder={messages.pages.users.emailPlaceholder} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="nu-password">{messages.common.password}</Label>
+                    <Input id="nu-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="至少8位，含大小写字母+数字" required />
+                    <p className="text-xs text-muted-foreground">{messages.pages.users.passwordHint}</p>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setNewDialogOpen(false)}>{messages.common.cancel}</Button>
+                  <Button type="submit" disabled={creating}>{creating ? messages.pages.users.createBusy : messages.common.create}</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       />
 
-      {error && (
-        <div className="rounded border border-danger-fg/30 bg-danger-bg px-4 py-3 text-sm text-danger-fg">
-          {error}
-        </div>
-      )}
-
-      <Card>
-        {loading ? (
-          <div className="py-10 text-sm text-fg-tertiary">加载中...</div>
-        ) : (
-          <Table>
-            <THead>
-              <tr>
-                <Th>用户名</Th>
-                <Th>邮箱</Th>
-                <Th>角色</Th>
-                <Th>状态</Th>
-                <Th>操作</Th>
-              </tr>
-            </THead>
-            <tbody>
-              {users.map((user) => (
-                <Tr key={user.id}>
-                  <Td>
-                    <div className="font-medium text-fg-primary">{user.username}</div>
-                    <div className="mt-0.5 text-xs text-fg-tertiary">{user.id}</div>
-                  </Td>
-                  <Td className="text-fg-secondary">{user.email || "-"}</Td>
-                  <Td>
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      {(user.roles || []).map((role) => (
-                        <span
-                          key={role}
-                          className="rounded-full bg-surface px-2.5 py-0.5 text-xs text-fg-secondary"
-                        >
-                          {role}
-                        </span>
-                      ))}
-                    </div>
-                    <select
-                      className="rounded border border-border px-3 py-2 text-sm"
-                      defaultValue=""
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          void handleAssignRole(user.id, e.target.value);
-                          e.target.value = "";
-                        }
-                      }}
-                    >
-                      <option value="">分配角色...</option>
-                      {roles.map((role) => (
-                        <option key={role.id} value={role.roleCode}>
-                          {role.roleName}
-                        </option>
-                      ))}
-                    </select>
-                  </Td>
-                  <Td>
-                    <StatusBadge
-                      status={user.status === 1 ? "success" : "danger"}
-                      label={user.status === 1 ? "启用" : "停用"}
-                    />
-                  </Td>
-                  <Td>
-                    <button
-                      onClick={() => void handleStatus(user)}
-                      disabled={savingId === user.id}
-                      className="rounded border border-border px-3 py-1.5 text-xs text-fg-secondary hover:bg-surface disabled:opacity-50"
-                    >
-                      {savingId === user.id
-                        ? "处理中..."
-                        : user.status === 1
-                          ? "停用"
-                          : "启用"}
-                    </button>
-                  </Td>
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
+        {error && (
+          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
         )}
-      </Card>
-    </Shell>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle>{messages.pages.users.allUsers}</CardTitle>
+              <div className="relative w-64">
+                <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                <Input
+                  placeholder={messages.pages.users.searchPlaceholder}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-8 h-8"
+                />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">{messages.common.loading}</div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">{messages.pages.users.empty}</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-muted text-xs text-muted-foreground">
+                    <tr>
+                      <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.user}</th>
+                      <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.email}</th>
+                      <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.roles}</th>
+                      <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.status}</th>
+                      <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.createdAt}</th>
+                      <th className="whitespace-nowrap px-4 py-3 font-medium">{messages.pages.users.columns.actions}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((user) => (
+                      <tr
+                        key={user.id}
+                        className="border-t transition-colors even:bg-muted/30 hover:bg-accent"
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="size-8">
+                              <AvatarFallback className="text-xs">{getInitials(user.username)}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="font-medium text-foreground">{user.username}</div>
+                              <div className="text-xs text-muted-foreground">{user.id}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{user.email || "-"}</td>
+                        <td className="px-4 py-3">
+                          <div className="mb-2 flex flex-wrap gap-2">
+                            {(user.roles || []).map((role) => (
+                              <Badge key={role} variant="secondary">{role}</Badge>
+                            ))}
+                          </div>
+                          <Select
+                            value=""
+                            onValueChange={(v) => handleAssignRole(user.id, v ?? "")}
+                          >
+                            <SelectTrigger className="h-7 text-xs w-32">
+                              <SelectValue placeholder={messages.pages.users.assignRole} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {roles.map((role) => (
+                                <SelectItem key={role.id} value={role.roleCode}>
+                                  {role.roleName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="px-4 py-3">
+                          {user.status === 1 ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                              <CircleCheck className="size-3.5" /> {messages.pages.users.enabled}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
+                              <CircleX className="size-3.5" /> {messages.pages.users.disabled}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {user.createdAt ? new Date(user.createdAt).toLocaleDateString("zh-CN") : "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-2">
+                            <Button
+                              variant={user.status === 1 ? "outline" : "default"}
+                              size="xs"
+                              onClick={() => void handleStatus(user)}
+                              disabled={savingId === user.id}
+                            >
+                              {savingId === user.id
+                                ? "..."
+                                : user.status === 1
+                                  ? messages.pages.users.disable
+                                  : messages.pages.users.enable}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <p className="text-xs text-muted-foreground">
+                {messages.pages.users.total
+                  .replace("{total}", String(total))
+                  .replace("{page}", String(page))
+                  .replace("{pages}", String(totalPages))}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="xs"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft /> {messages.pages.users.previous}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  {messages.pages.users.next} <ChevronRight />
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+    </AppPage>
   );
 }

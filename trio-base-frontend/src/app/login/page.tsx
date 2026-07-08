@@ -3,10 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Bot, Database, GitBranch, ShieldCheck } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 import { useAppStore } from "@/stores/app-store";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { messages } = useI18n();
   const setMode = useAppStore((s) => s.setMode);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -27,7 +33,7 @@ export default function LoginPage() {
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.message || "登录失败");
+        setError(data.message || messages.auth.loginFailed);
         return;
       }
 
@@ -43,68 +49,113 @@ export default function LoginPage() {
       setMode("gui");
       router.push("/");
     } catch {
-      setError("网络错误，请稍后重试");
+      setError(messages.auth.networkError);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="w-full max-w-sm rounded-lg border bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-center text-2xl font-bold text-slate-900">
-          TrioBase
-        </h1>
+    <div className="grid min-h-svh bg-background lg:grid-cols-2">
+      <section className="relative hidden overflow-hidden border-r bg-sidebar text-sidebar-foreground lg:flex">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:48px_48px] opacity-40" />
+        <div className="relative flex min-h-svh w-full flex-col justify-between p-10">
+          <Link href="/" className="flex items-center gap-3 font-semibold">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+              <Bot className="size-5" />
+            </span>
+            <span>TrioBase</span>
+          </Link>
+
+          <div className="max-w-xl space-y-6">
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-muted-foreground">
+                {messages.auth.eyebrow}
+              </p>
+              <h1 className="text-4xl font-semibold leading-tight">
+                {messages.auth.loginHeroTitle}
+              </h1>
+              <p className="text-base leading-7 text-muted-foreground">
+                {messages.auth.loginHeroDescription}
+              </p>
+            </div>
+
+            <div className="grid gap-3 text-sm sm:grid-cols-3">
+              <div className="rounded-lg border bg-background/50 p-3">
+                <GitBranch className="mb-3 size-4 text-muted-foreground" />
+                <p className="font-medium">{messages.auth.featureFlow}</p>
+              </div>
+              <div className="rounded-lg border bg-background/50 p-3">
+                <Database className="mb-3 size-4 text-muted-foreground" />
+                <p className="font-medium">{messages.auth.featureData}</p>
+              </div>
+              <div className="rounded-lg border bg-background/50 p-3">
+                <ShieldCheck className="mb-3 size-4 text-muted-foreground" />
+                <p className="font-medium">{messages.auth.featureAi}</p>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            {messages.auth.gatewayNote}
+          </p>
+        </div>
+      </section>
+
+      <main className="flex min-h-svh items-center justify-center px-4 py-10 sm:px-6">
+        <div className="w-full max-w-[22rem] space-y-6 sm:max-w-sm">
+          <div className="space-y-2 text-center">
+            <div className="mx-auto flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground lg:hidden">
+              <Bot className="size-5" />
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight">{messages.auth.loginTitle}</h1>
+            <p className="text-sm text-muted-foreground">
+              {messages.auth.loginSubtitle}
+            </p>
+          </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              用户名
-            </label>
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="username">{messages.common.username}</Label>
+            <Input
+              id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="admin"
               required
             />
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              密码
-            </label>
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="password">{messages.common.password}</Label>
+            <Input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="admin123"
               required
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-destructive">{error}</p>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-          >
-            {loading ? "登录中..." : "登 录"}
-          </button>
+          <Button type="submit" disabled={loading} className="w-full">
+            {loading ? messages.auth.loginBusy : messages.auth.submitLogin}
+          </Button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-slate-500">
-          没有账号？
-          <Link href="/register" className="ml-1 text-blue-600 hover:underline">
-            去注册
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          {messages.auth.noAccount}
+          <Link href="/register" className="ml-1 font-medium text-primary hover:underline">
+            {messages.auth.goRegister}
           </Link>
         </p>
       </div>
+      </main>
     </div>
   );
 }

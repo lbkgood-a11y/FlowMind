@@ -4,12 +4,18 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Shell } from "@/components/Shell";
+
 import { lowcodeApi, type FormDefinition, type FormInstance } from "@/lib/lowcode";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, PageHeader } from "@/components/ui";
+import { AppPage } from "@/components/layout/app-page";
+import { useI18n } from "@/lib/i18n";
 
 export default function FormSubmitPage() {
   const router = useRouter();
+  const { messages } = useI18n();
   const params = useParams<{ formKey: string }>();
   const searchParams = useSearchParams();
   const formId = searchParams.get("id");
@@ -29,7 +35,7 @@ export default function FormSubmitPage() {
     }
 
     if (!formId) {
-      setError("缺少表单 id，无法加载表单详情");
+      setError(messages.pages.formSubmit.missingId);
       setLoading(false);
       return;
     }
@@ -48,7 +54,7 @@ export default function FormSubmitPage() {
       );
       setValues(defaults);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "加载表单失败");
+      setError(e instanceof Error ? e.message : messages.pages.formSubmit.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -71,71 +77,64 @@ export default function FormSubmitPage() {
       });
       setSubmitted(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "提交失败");
+      setError(e instanceof Error ? e.message : messages.pages.formSubmit.submitFailed);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Shell>
+    <AppPage
+      topbarActions={(
+        <Link href="/forms">
+          <Button variant="outline" size="sm">返回列表</Button>
+        </Link>
+      )}
+    >
       <PageHeader
-        breadcrumb="Runtime Preview"
-        title="表单提交测试"
-        subtitle="用运行时视角验证表单定义是否可真正收集结构化数据。"
+        breadcrumb={messages.pages.formSubmit.breadcrumb}
+        title={messages.pages.formSubmit.title}
+        subtitle={messages.pages.formSubmit.subtitle}
         actions={
-          <>
-            <Link
-              href="/forms"
-              className="rounded border border-border px-4 py-2 text-sm text-fg-secondary hover:bg-surface"
-            >
-              返回列表
-            </Link>
-            <Link
-              href="/forms/new"
-              className="rounded bg-fg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              新建表单
-            </Link>
-          </>
+          <Link href="/forms/new">
+            <Button variant="default" size="sm">{messages.common.newForm}</Button>
+          </Link>
         }
       />
 
       {error && (
-        <div className="rounded border border-danger-fg/30 bg-danger-bg px-4 py-3 text-sm text-danger-fg">
-          {error}
-        </div>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
       )}
 
       {loading ? (
         <Card>
-          <div className="py-10 text-sm text-fg-tertiary">加载中...</div>
+          <div className="py-10 text-sm text-muted-foreground">{messages.common.loading}</div>
         </Card>
       ) : !form ? (
         <Card>
-          <div className="py-10 text-sm text-fg-tertiary">未找到表单。</div>
+          <div className="py-10 text-sm text-muted-foreground">{messages.pages.formSubmit.missingForm}</div>
         </Card>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <Card>
-            <h2 className="text-base font-medium text-fg-primary">{form.name}</h2>
-            <p className="mt-1 text-sm text-fg-secondary">
-              {form.description || "暂无描述"}
+            <h2 className="text-base font-medium text-foreground">{form.name}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {form.description || messages.pages.formSubmit.noDescription}
             </p>
-            <p className="mt-2 text-xs text-fg-tertiary">
-              表单 Key：
+            <p className="mt-2 text-xs text-muted-foreground">
+              {messages.pages.formSubmit.formKey}:
               <span className="font-mono">{form.formKey}</span>
             </p>
 
             <form onSubmit={handleSubmit} className="mt-6 space-y-4">
               {orderedFields.map((field) => (
-                <label key={field.fieldKey} className="block">
-                  <span className="mb-1 block text-sm font-medium text-fg-primary">
+                <div key={field.fieldKey} className="grid gap-2">
+                  <Label>
                     {field.label}
                     {field.required ? (
-                      <span className="ml-1 text-danger-fg">*</span>
+                      <span className="ml-1 text-destructive">*</span>
                     ) : null}
-                  </span>
+                  </Label>
 
                   {field.fieldType === "textarea" ? (
                     <textarea
@@ -149,10 +148,10 @@ export default function FormSubmitPage() {
                       rows={4}
                       required={Boolean(field.required)}
                       placeholder={field.placeholder || ""}
-                      className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                      className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
                     />
                   ) : (
-                    <input
+                    <Input
                       type={field.fieldType === "number" ? "number" : "text"}
                       value={values[field.fieldKey] || ""}
                       onChange={(e) =>
@@ -163,43 +162,38 @@ export default function FormSubmitPage() {
                       }
                       required={Boolean(field.required)}
                       placeholder={field.placeholder || ""}
-                      className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                     />
                   )}
-                </label>
+                </div>
               ))}
 
-              <button
-                type="submit"
-                disabled={submitting}
-                className="rounded bg-fg-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-              >
-                {submitting ? "提交中..." : "提交表单"}
-              </button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? messages.pages.formSubmit.submitBusy : messages.pages.formSubmit.submit}
+              </Button>
             </form>
           </Card>
 
           <aside className="space-y-6">
-            <Card title="表单元数据">
-              <pre className="overflow-auto rounded bg-fg-primary p-4 text-xs leading-6 text-slate-100">
+            <Card title={messages.pages.formSubmit.metadata}>
+              <pre className="overflow-auto rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-200">
                 {JSON.stringify(form, null, 2)}
               </pre>
             </Card>
 
-            <Card title="最近提交结果">
+            <Card title={messages.pages.formSubmit.latestResult}>
               {submitted ? (
-                <pre className="overflow-auto rounded bg-fg-primary p-4 text-xs leading-6 text-slate-100">
+                <pre className="overflow-auto rounded-lg bg-slate-950 p-4 text-xs leading-6 text-slate-200">
                   {JSON.stringify(submitted, null, 2)}
                 </pre>
               ) : (
-                <p className="text-sm text-fg-tertiary">
-                  还没有提交，提交后会在这里展示实例数据。
+                <p className="text-sm text-muted-foreground">
+                  {messages.pages.formSubmit.latestResultEmpty}
                 </p>
               )}
             </Card>
           </aside>
         </div>
       )}
-    </Shell>
+    </AppPage>
   );
 }

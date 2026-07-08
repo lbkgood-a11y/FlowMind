@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shell } from "@/components/Shell";
+
 import { adminApi, type PermissionInfo, type RoleInfo } from "@/lib/admin";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   PageHeader,
@@ -14,9 +17,12 @@ import {
   Tr,
   Td,
 } from "@/components/ui";
+import { AppPage } from "@/components/layout/app-page";
+import { useI18n } from "@/lib/i18n";
 
 export default function RolesAdminPage() {
   const router = useRouter();
+  const { messages } = useI18n();
   const [roles, setRoles] = useState<RoleInfo[]>([]);
   const [permissions, setPermissions] = useState<PermissionInfo[]>([]);
   const [error, setError] = useState("");
@@ -47,7 +53,7 @@ export default function RolesAdminPage() {
       setRoles(roleList);
       setPermissions(permissionList);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "加载角色失败");
+      setError(e instanceof Error ? e.message : messages.pages.roles.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -70,7 +76,7 @@ export default function RolesAdminPage() {
       setSelectedPermissions([]);
       await loadData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "创建角色失败");
+      setError(e instanceof Error ? e.message : messages.pages.roles.createFailed);
     } finally {
       setSaving(false);
     }
@@ -82,55 +88,68 @@ export default function RolesAdminPage() {
       await adminApi.deleteRole(id);
       await loadData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "删除角色失败");
+      setError(e instanceof Error ? e.message : messages.pages.roles.deleteFailed);
     }
   }
 
   return (
-    <Shell>
+    <AppPage
+      topbarActions={(
+        <Link href="/admin/users">
+          <Button variant="outline" size="sm">{messages.common.users}</Button>
+        </Link>
+      )}
+    >
       <PageHeader
-        breadcrumb="Admin Console"
-        title="角色管理"
+        breadcrumb={messages.pages.roles.breadcrumb}
+        title={messages.pages.roles.title}
         actions={
-          <Link
-            href="/admin/users"
-            className="rounded border border-border px-4 py-2 text-sm text-fg-secondary hover:bg-surface"
-          >
-            用户管理
-          </Link>
+          <Button disabled={saving} type="submit" form="role-form">
+            {saving ? messages.pages.roles.createBusy : messages.pages.roles.createRole}
+          </Button>
         }
       />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
-        <Card title="新建角色">
-          <form onSubmit={handleCreate} className="space-y-4">
-            <input
-              value={roleCode}
-              onChange={(e) => setRoleCode(e.target.value)}
-              placeholder="角色编码，如 FINANCE"
-              className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
-            <input
-              value={roleName}
-              onChange={(e) => setRoleName(e.target.value)}
-              placeholder="角色名称，如 财务经理"
-              className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="角色描述"
-              rows={3}
-              className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
+        <Card title={messages.pages.roles.newRole}>
+          <form id="role-form" onSubmit={handleCreate} className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="roleCode">{messages.pages.roles.roleCode}</Label>
+              <Input
+                id="roleCode"
+                value={roleCode}
+                onChange={(e) => setRoleCode(e.target.value)}
+                placeholder="如 FINANCE"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="roleName">{messages.pages.roles.roleName}</Label>
+              <Input
+                id="roleName"
+                value={roleName}
+                onChange={(e) => setRoleName(e.target.value)}
+                placeholder="如 财务经理"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="roleDesc">{messages.pages.roles.roleDescription}</Label>
+              <textarea
+                id="roleDesc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="角色描述"
+                rows={3}
+                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
+              />
+            </div>
 
             <div className="rounded border border-border p-4">
-              <p className="text-sm font-medium text-fg-primary">权限绑定</p>
+              <p className="text-sm font-medium text-foreground">{messages.pages.roles.permissions}</p>
               <div className="mt-3 grid gap-2">
                 {permissions.map((permission) => (
                   <label
                     key={permission.id}
-                    className="flex items-start gap-2 text-sm text-fg-secondary"
+                    className="flex items-start gap-2 text-sm text-muted-foreground"
                   >
                     <input
                       type="checkbox"
@@ -144,11 +163,11 @@ export default function RolesAdminPage() {
                       }
                     />
                     <span>
-                      <span className="font-mono text-xs text-fg-tertiary">
+                      <span className="font-mono text-xs text-muted-foreground">
                         {permission.action}
                       </span>{" "}
                       {permission.resource}
-                      <span className="ml-2 text-xs text-fg-tertiary">
+                      <span className="ml-2 text-xs text-muted-foreground">
                         {permission.description}
                       </span>
                     </span>
@@ -158,52 +177,38 @@ export default function RolesAdminPage() {
             </div>
 
             {error && (
-              <div className="rounded border border-danger-fg/30 bg-danger-bg px-4 py-3 text-sm text-danger-fg">
-                {error}
-              </div>
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
             )}
-
-            <button
-              disabled={saving}
-              className="rounded bg-fg-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-            >
-              {saving ? "创建中..." : "创建角色"}
-            </button>
           </form>
         </Card>
 
         <Card>
           {loading ? (
-            <div className="py-10 text-sm text-fg-tertiary">加载中...</div>
+            <div className="py-10 text-sm text-muted-foreground">{messages.pages.roles.loadBusy}</div>
           ) : (
             <Table>
               <THead>
                 <tr>
-                  <Th>角色</Th>
-                  <Th>编码</Th>
-                  <Th>描述</Th>
-                  <Th>操作</Th>
+                  <Th>{messages.pages.roles.columns.role}</Th>
+                  <Th>{messages.pages.roles.columns.code}</Th>
+                  <Th>{messages.pages.roles.columns.description}</Th>
+                  <Th>{messages.pages.roles.columns.actions}</Th>
                 </tr>
               </THead>
               <tbody>
                 {roles.map((role) => (
                   <Tr key={role.id}>
-                    <Td className="font-medium text-fg-primary">
+                    <Td className="font-medium text-foreground">
                       {role.roleName}
                     </Td>
-                    <Td className="font-mono text-xs text-fg-secondary">
+                    <Td className="font-mono text-xs text-muted-foreground">
                       {role.roleCode}
                     </Td>
-                    <Td className="text-fg-secondary">
+                    <Td className="text-muted-foreground">
                       {role.description || "-"}
                     </Td>
                     <Td>
-                      <button
-                        onClick={() => void handleDelete(role.id)}
-                        className="rounded border border-danger-fg/30 px-3 py-1.5 text-xs text-danger-fg hover:bg-danger-bg"
-                      >
-                        删除
-                      </button>
+                      <Button variant="destructive" size="xs" onClick={() => void handleDelete(role.id)}>{messages.pages.roles.delete}</Button>
                     </Td>
                   </Tr>
                 ))}
@@ -212,6 +217,6 @@ export default function RolesAdminPage() {
           )}
         </Card>
       </div>
-    </Shell>
+    </AppPage>
   );
 }

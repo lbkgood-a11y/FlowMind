@@ -1,14 +1,38 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Shell } from "@/components/Shell";
-import { Card, PageHeader } from "@/components/ui";
+import Link from "next/link";
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { AppPage } from "@/components/layout/app-page";
+import { useI18n } from "@/lib/i18n";
+import {
+  FileText,
+  Users,
+  Shield,
+  Menu,
+  Activity,
+} from "lucide-react";
 
-export default function Home() {
+export default function Dashboard() {
   const router = useRouter();
+  const { messages } = useI18n();
   const [authenticated, setAuthenticated] = useState(false);
+
+  const chartData = messages.dashboard.months.map((name, index) => ({
+    name,
+    total: [1800, 2200, 2900, 2400, 3200, 3800, 4100, 3600, 4300, 3900, 4700, 5100][index],
+  }));
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -22,50 +46,167 @@ export default function Home() {
   if (!authenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-fg-tertiary">加载中...</p>
+        <p className="text-muted-foreground">{messages.common.loading}</p>
       </div>
     );
   }
 
   return (
-    <Shell>
+    <AppPage>
       <PageHeader
-        breadcrumb="TrioBase Console"
-        title="流程、数据、AI 三核驱动"
-        subtitle="当前版本先把统一表单能力做成一个可见的入口，后续会继续把流程引擎和数据分析能力接进来。"
+        breadcrumb={messages.dashboard.breadcrumb}
+        title={messages.dashboard.title}
+        subtitle={messages.dashboard.subtitle}
+        actions={(
+          <Link href="/forms/new">
+            <Button size="sm">{messages.dashboard.newForm}</Button>
+          </Link>
+        )}
       />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Link href="/forms">
-          <Card className="transition hover:-translate-y-0.5 hover:border-brand/30">
-            <p className="text-xs uppercase tracking-[0.24em] text-fg-tertiary">
-              Form Studio
-            </p>
-            <h2 className="mt-2 text-base font-medium text-fg-primary">表单配置台</h2>
-            <p className="mt-1 text-sm leading-6 text-fg-secondary">
-              创建统一表单定义、发布表单、提交实例，为流程编排和数据沉淀提供结构化入口。
-            </p>
-          </Card>
-        </Link>
+        <Tabs defaultValue="overview" className="space-y-4">
+          <div className="w-full overflow-x-auto pb-2">
+            <TabsList>
+              <TabsTrigger value="overview">{messages.dashboard.tabs.overview}</TabsTrigger>
+              <TabsTrigger value="analytics" disabled>
+                {messages.dashboard.tabs.analytics}
+              </TabsTrigger>
+              <TabsTrigger value="reports" disabled>
+                {messages.dashboard.tabs.reports}
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-        <Link href="/admin/users">
-          <Card className="transition hover:-translate-y-0.5 hover:border-brand/30">
-            <p className="text-xs uppercase tracking-[0.24em] text-fg-tertiary">
-              Access Control
-            </p>
-            <h2 className="mt-2 text-base font-medium text-fg-primary">权限管理台</h2>
-            <p className="mt-1 text-sm leading-6 text-fg-secondary">
-              维护用户、角色、菜单与权限目录，为流程和表单运行时提供安全边界。
-            </p>
-          </Card>
-        </Link>
-      </div>
+          <TabsContent value="overview" className="space-y-4">
+            {/* 4 Stat Cards */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    {messages.dashboard.stats.forms}
+                  </CardTitle>
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">—</div>
+                  <p className="text-xs text-muted-foreground">
+                    {messages.dashboard.stats.formsHint}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    {messages.dashboard.stats.users}
+                  </CardTitle>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">—</div>
+                  <p className="text-xs text-muted-foreground">
+                    {messages.dashboard.stats.usersHint}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    {messages.dashboard.stats.roles}
+                  </CardTitle>
+                  <Shield className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">—</div>
+                  <p className="text-xs text-muted-foreground">
+                    {messages.dashboard.stats.rolesHint}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    {messages.dashboard.stats.menus}
+                  </CardTitle>
+                  <Menu className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">—</div>
+                  <p className="text-xs text-muted-foreground">
+                    {messages.dashboard.stats.menusHint}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
 
-      <Card title="AI 助手">
-        <p className="text-sm text-fg-secondary">
-          保留右侧智能助手，后续会逐步接入 AI 辅助填单、流程发起建议和数据分析解释。
-        </p>
-      </Card>
-    </Shell>
+            {/* Chart + Recent Activity */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-7">
+              <Card className="col-span-1 lg:col-span-4">
+                <CardHeader>
+                  <CardTitle>{messages.dashboard.overview}</CardTitle>
+                </CardHeader>
+                <CardContent className="pl-2">
+                  <ResponsiveContainer width="100%" height={350}>
+                    <BarChart data={chartData}>
+                      <XAxis
+                        dataKey="name"
+                        stroke="#888888"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        stroke="#888888"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(value: number) => `${value}`}
+                      />
+                      <Bar
+                        dataKey="total"
+                        fill="currentColor"
+                        radius={[4, 4, 0, 0]}
+                        className="fill-primary"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              <Card className="col-span-1 lg:col-span-3">
+                <CardHeader>
+                  <CardTitle>{messages.dashboard.recentActivity}</CardTitle>
+                  <CardDescription>
+                    {messages.dashboard.recentActivityDescription}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {messages.dashboard.recentActivityItems.map((item, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-4 border-b pb-3 last:border-0 last:pb-0"
+                      >
+                        <div className="flex size-9 items-center justify-center rounded-full bg-muted">
+                          <Activity className="size-4 text-muted-foreground" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">
+                            {item.action}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {item.name}
+                          </p>
+                        </div>
+                        <div className="text-xs text-muted-foreground shrink-0">
+                          {item.time}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+    </AppPage>
   );
 }
