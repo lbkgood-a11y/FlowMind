@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { lowcodeApi, type FormFieldSchema } from "@/lib/lowcode";
+import { Card, PageHeader } from "@/components/ui";
 
 const FIELD_TYPES = ["text", "textarea", "number", "select", "date"];
 
@@ -46,17 +47,21 @@ export default function NewFormPage() {
             }
             return acc;
           }, {}),
-          required: fields.filter((field) => field.required).map((field) => field.fieldKey),
+          required: fields
+            .filter((field) => field.required)
+            .map((field) => field.fieldKey),
         },
         null,
-        2
+        2,
       ),
-    [fields, formKey, name]
+    [fields, formKey, name],
   );
 
   function updateField(index: number, patch: Partial<FormFieldSchema>) {
     setFields((current) =>
-      current.map((field, fieldIndex) => (fieldIndex === index ? { ...field, ...patch } : field))
+      current.map((field, fieldIndex) =>
+        fieldIndex === index ? { ...field, ...patch } : field,
+      ),
     );
   }
 
@@ -65,7 +70,9 @@ export default function NewFormPage() {
   }
 
   function removeField(index: number) {
-    setFields((current) => current.filter((_, fieldIndex) => fieldIndex !== index));
+    setFields((current) =>
+      current.filter((_, fieldIndex) => fieldIndex !== index),
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -102,93 +109,116 @@ export default function NewFormPage() {
 
   return (
     <Shell>
-      <div className="grid h-full gap-6 lg:grid-cols-[1.3fr_0.9fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Form Builder</p>
-              <h1 className="mt-1 text-3xl font-semibold text-slate-900">新建表单</h1>
-            </div>
-            <Link
-              href="/forms"
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-            >
-              返回列表
-            </Link>
-          </div>
+      <PageHeader
+        breadcrumb="Form Builder"
+        title="新建表单"
+        actions={
+          <Link
+            href="/forms"
+            className="rounded border border-border px-4 py-2 text-sm text-fg-secondary hover:bg-surface"
+          >
+            返回列表
+          </Link>
+        }
+      />
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
+        <Card>
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700">表单 Key</span>
+                <span className="mb-1 block text-sm font-medium text-fg-primary">
+                  表单 Key
+                </span>
                 <input
                   value={formKey}
                   onChange={(e) => setFormKey(e.target.value)}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                   placeholder="expense-approval"
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700">表单名称</span>
+                <span className="mb-1 block text-sm font-medium text-fg-primary">
+                  表单名称
+                </span>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                   placeholder="费用报销申请"
                 />
               </label>
             </div>
 
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">描述</span>
+              <span className="mb-1 block text-sm font-medium text-fg-primary">
+                描述
+              </span>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                 placeholder="这个表单用于什么场景"
               />
             </label>
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-medium text-slate-900">字段配置</h2>
+                <h2 className="text-base font-medium text-fg-primary">
+                  字段配置
+                </h2>
                 <button
                   type="button"
                   onClick={addField}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  className="rounded border border-border px-3 py-1.5 text-sm text-fg-secondary hover:bg-surface"
                 >
                   添加字段
                 </button>
               </div>
 
               {fields.map((field, index) => (
-                <div key={`${field.fieldKey}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div
+                  key={`${field.fieldKey}-${index}`}
+                  className="rounded border border-border bg-surface p-4"
+                >
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-slate-700">字段 Key</span>
+                      <span className="mb-1 block text-sm font-medium text-fg-primary">
+                        字段 Key
+                      </span>
                       <input
                         value={field.fieldKey}
-                        onChange={(e) => updateField(index, { fieldKey: e.target.value })}
-                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        onChange={(e) =>
+                          updateField(index, { fieldKey: e.target.value })
+                        }
+                        className="w-full rounded border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                         placeholder="amount"
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-slate-700">标签</span>
+                      <span className="mb-1 block text-sm font-medium text-fg-primary">
+                        标签
+                      </span>
                       <input
                         value={field.label}
-                        onChange={(e) => updateField(index, { label: e.target.value })}
-                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        onChange={(e) =>
+                          updateField(index, { label: e.target.value })
+                        }
+                        className="w-full rounded border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                         placeholder="报销金额"
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-slate-700">类型</span>
+                      <span className="mb-1 block text-sm font-medium text-fg-primary">
+                        类型
+                      </span>
                       <select
                         value={field.fieldType}
-                        onChange={(e) => updateField(index, { fieldType: e.target.value })}
-                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        onChange={(e) =>
+                          updateField(index, { fieldType: e.target.value })
+                        }
+                        className="w-full rounded border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                       >
                         {FIELD_TYPES.map((type) => (
                           <option key={type} value={type}>
@@ -198,22 +228,28 @@ export default function NewFormPage() {
                       </select>
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-slate-700">占位提示</span>
+                      <span className="mb-1 block text-sm font-medium text-fg-primary">
+                        占位提示
+                      </span>
                       <input
                         value={field.placeholder || ""}
-                        onChange={(e) => updateField(index, { placeholder: e.target.value })}
-                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        onChange={(e) =>
+                          updateField(index, { placeholder: e.target.value })
+                        }
+                        className="w-full rounded border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                         placeholder="请输入内容"
                       />
                     </label>
                   </div>
 
                   <div className="mt-4 flex items-center justify-between">
-                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <label className="flex items-center gap-2 text-sm text-fg-secondary">
                       <input
                         type="checkbox"
                         checked={Boolean(field.required)}
-                        onChange={(e) => updateField(index, { required: e.target.checked })}
+                        onChange={(e) =>
+                          updateField(index, { required: e.target.checked })
+                        }
                       />
                       必填字段
                     </label>
@@ -221,7 +257,7 @@ export default function NewFormPage() {
                       <button
                         type="button"
                         onClick={() => removeField(index)}
-                        className="text-sm text-red-600 hover:text-red-700"
+                        className="text-sm text-danger-fg hover:text-danger-fg/80"
                       >
                         删除字段
                       </button>
@@ -232,7 +268,7 @@ export default function NewFormPage() {
             </div>
 
             {error && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rounded border border-danger-fg/30 bg-danger-bg px-4 py-3 text-sm text-danger-fg">
                 {error}
               </div>
             )}
@@ -240,16 +276,18 @@ export default function NewFormPage() {
             <button
               type="submit"
               disabled={loading}
-              className="rounded-md bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              className="rounded bg-fg-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
             >
               {loading ? "创建中..." : "创建表单"}
             </button>
           </form>
-        </section>
+        </Card>
 
-        <aside className="rounded-2xl border border-slate-200 bg-slate-950 p-6 text-slate-100 shadow-sm">
-          <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Schema Preview</p>
-          <pre className="mt-4 overflow-auto rounded-xl bg-slate-900 p-4 text-xs leading-6 text-slate-200">
+        <aside className="rounded border border-border bg-fg-primary px-4 py-4 text-slate-100">
+          <p className="text-xs uppercase tracking-[0.24em] text-fg-secondary">
+            Schema Preview
+          </p>
+          <pre className="mt-4 overflow-auto rounded bg-black/20 p-4 text-xs leading-6 text-slate-200">
             {schemaPreview}
           </pre>
         </aside>

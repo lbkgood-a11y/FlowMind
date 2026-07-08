@@ -8,7 +8,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex h-screen flex-col p-4">{children}</div>
+      <div className="mx-auto flex min-h-screen w-full flex-col gap-6 p-6">
+        {children}
+      </div>
     </QueryClientProvider>
   );
 }

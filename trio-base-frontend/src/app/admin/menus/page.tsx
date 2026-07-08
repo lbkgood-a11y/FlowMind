@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { adminApi, type PermissionInfo } from "@/lib/admin";
+import { Card, PageHeader, Table, THead, Th, Tr, Td } from "@/components/ui";
 
 export default function MenusAdminPage() {
   const router = useRouter();
@@ -63,75 +64,101 @@ export default function MenusAdminPage() {
 
   return (
     <Shell>
-      <div className="grid h-full gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Admin Console</p>
-              <h1 className="mt-1 text-3xl font-semibold text-slate-900">菜单与权限</h1>
-              <p className="mt-2 text-sm text-slate-600">
-                当前先以资源路径 + 动作的方式维护菜单权限，为后续真正菜单树做基础模型。
-              </p>
-            </div>
-            <Link href="/admin/roles" className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
-              角色管理
-            </Link>
-          </div>
+      <PageHeader
+        breadcrumb="Admin Console"
+        title="菜单与权限"
+        subtitle="当前先以资源路径 + 动作的方式维护菜单权限，为后续真正菜单树做基础模型。"
+        actions={
+          <Link
+            href="/admin/roles"
+            className="rounded border border-border px-4 py-2 text-sm text-fg-secondary hover:bg-surface"
+          >
+            角色管理
+          </Link>
+        }
+      />
 
-          <form onSubmit={handleCreate} className="mt-8 space-y-4">
-            <input value={resource} onChange={(e) => setResource(e.target.value)} placeholder="/console/forms" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            <select value={action} onChange={(e) => setAction(e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+      <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+        <Card title="新增菜单权限">
+          <form onSubmit={handleCreate} className="space-y-4">
+            <input
+              value={resource}
+              onChange={(e) => setResource(e.target.value)}
+              placeholder="/console/forms"
+              className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            />
+            <select
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            >
               {["GET", "POST", "PUT", "DELETE"].map((item) => (
-                <option key={item} value={item}>{item}</option>
+                <option key={item} value={item}>
+                  {item}
+                </option>
               ))}
             </select>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="例如：查看表单管理页面" rows={3} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="例如：查看表单管理页面"
+              rows={3}
+              className="w-full rounded border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            />
 
-            {error && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+            {error && (
+              <div className="rounded border border-danger-fg/30 bg-danger-bg px-4 py-3 text-sm text-danger-fg">
+                {error}
+              </div>
+            )}
 
-            <button className="rounded-md bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800">
+            <button className="rounded bg-fg-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
               新增菜单权限
             </button>
           </form>
-        </section>
+        </Card>
 
-        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-4">
-            <h2 className="text-lg font-medium text-slate-900">权限目录</h2>
-          </div>
+        <Card>
           {loading ? (
-            <div className="px-6 py-10 text-sm text-slate-500">加载中...</div>
+            <div className="py-10 text-sm text-fg-tertiary">加载中...</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-slate-500">
-                  <tr>
-                    <th className="px-6 py-3 font-medium">资源</th>
-                    <th className="px-6 py-3 font-medium">动作</th>
-                    <th className="px-6 py-3 font-medium">说明</th>
-                    <th className="px-6 py-3 font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {permissions.map((permission) => (
-                    <tr key={permission.id} className="border-t border-slate-100">
-                      <td className="px-6 py-4 font-mono text-xs text-slate-700">{permission.resource}</td>
-                      <td className="px-6 py-4">
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">{permission.action}</span>
-                      </td>
-                      <td className="px-6 py-4 text-slate-600">{permission.description || "-"}</td>
-                      <td className="px-6 py-4">
-                        <button onClick={() => void handleDelete(permission.id)} className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50">
-                          删除
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <THead>
+                <tr>
+                  <Th>资源</Th>
+                  <Th>动作</Th>
+                  <Th>说明</Th>
+                  <Th>操作</Th>
+                </tr>
+              </THead>
+              <tbody>
+                {permissions.map((permission) => (
+                  <Tr key={permission.id}>
+                    <Td className="font-mono text-xs text-fg-primary">
+                      {permission.resource}
+                    </Td>
+                    <Td>
+                      <span className="rounded-full bg-surface px-2.5 py-0.5 text-xs text-fg-secondary">
+                        {permission.action}
+                      </span>
+                    </Td>
+                    <Td className="text-fg-secondary">
+                      {permission.description || "-"}
+                    </Td>
+                    <Td>
+                      <button
+                        onClick={() => void handleDelete(permission.id)}
+                        className="rounded border border-danger-fg/30 px-3 py-1.5 text-xs text-danger-fg hover:bg-danger-bg"
+                      >
+                        删除
+                      </button>
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
           )}
-        </section>
+        </Card>
       </div>
     </Shell>
   );

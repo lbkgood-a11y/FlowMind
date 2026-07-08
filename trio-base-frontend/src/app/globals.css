@@ -1,1 +1,37 @@
 @import "tailwindcss";
+
+@theme {
+  /* ── Typography ───────────────────────────────── */
+  --font-sans: Intel, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+
+  /* ── Brand ────────────────────────────────────── */
+  --color-brand: #1677ff;
+
+  /* ── Neutral text hierarchy ──────────────────────── */
+  --color-fg-primary: #1f2329;
+  --color-fg-secondary: #646a73;
+  --color-fg-tertiary: #8f959e;
+
+  /* ── Surfaces & borders ─────────────────────────── */
+  --color-border: #dee1e5;
+  --color-canvas: #f5f6f7;
+  --color-surface: #fafafa;
+  --color-hover: #e6f7ff;
+
+  /* ── Supply-chain semantic status ───────────────── */
+  --color-success-bg: #f0f9eb;
+  --color-success-fg: #67c23a;
+  --color-processing-bg: #e6f7ff;
+  --color-processing-fg: #1890ff;
+  --color-warning-bg: #fff7e6;
+  --color-warning-fg: #fa8c16;
+  --color-danger-bg: #fff1f0;
+  --color-danger-fg: #f5222d;
+}
+
+/* ── Default page background & text ────────────── */
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-fg-primary);
+}

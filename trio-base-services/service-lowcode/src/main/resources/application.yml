@@ -13,7 +13,7 @@ spring:
     driver-class-name: org.postgresql.Driver
     type: com.alibaba.druid.pool.DruidDataSource
   flyway:
-    enabled: true
+    enabled: false
     locations: classpath:db/migration
   cloud:
     nacos:
