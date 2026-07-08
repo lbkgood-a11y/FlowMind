@@ -5,6 +5,7 @@ export interface UserInfoPayload {
   id: string;
   username: string;
   email?: string;
+  phone?: string;
   status: number;
   roles: string[];
   createdAt?: string;
@@ -16,6 +17,10 @@ export interface RoleInfo {
   roleName: string;
   description?: string;
   createdAt?: string;
+}
+
+export interface RoleDetailInfo extends RoleInfo {
+  permissionIds: string[];
 }
 
 export interface PermissionInfo {
@@ -44,6 +49,12 @@ export interface MenuInfo {
 
 export interface CreateRoleRequest {
   roleCode: string;
+  roleName: string;
+  description?: string;
+  permissionIds?: string[];
+}
+
+export interface UpdateRoleRequest {
   roleName: string;
   description?: string;
   permissionIds?: string[];
@@ -93,6 +104,11 @@ export const adminApi = {
     return response.data;
   },
 
+  getRoleDetail: async (id: string) => {
+    const response = await api.get<ApiResponse<RoleDetailInfo>>(`/api/v1/roles/${id}`);
+    return response.data;
+  },
+
   createRole: async (payload: CreateRoleRequest) => {
     const query = new URLSearchParams({
       roleCode: payload.roleCode,
@@ -110,8 +126,20 @@ export const adminApi = {
     return response.data;
   },
 
+  updateRole: async (id: string, payload: UpdateRoleRequest) => {
+    const response = await api.put<ApiResponse<RoleInfo>>(`/api/v1/roles/${id}`, payload);
+    return response.data;
+  },
+
   listPermissions: async () => {
     const response = await api.get<ApiResponse<PermissionInfo[]>>("/api/v1/permissions");
+    return response.data;
+  },
+
+  listPermissionsPage: async (page = 1, size = 20) => {
+    const response = await api.get<ApiResponse<PageResult<PermissionInfo>>>("/api/v1/permissions/page", {
+      params: { page: String(page), size: String(size) },
+    });
     return response.data;
   },
 

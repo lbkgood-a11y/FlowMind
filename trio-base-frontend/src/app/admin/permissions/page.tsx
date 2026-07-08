@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { adminApi, type PermissionInfo } from "@/lib/admin";
+import type { PageResult } from "@/lib/lowcode";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,13 +20,15 @@ import {
 import { Card, PageHeader, Table, THead, Th, Tr, Td } from "@/components/ui";
 import { AppPage } from "@/components/layout/app-page";
 import { useI18n } from "@/lib/i18n";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function PermissionsAdminPage() {
   const router = useRouter();
   const { messages } = useI18n();
-  const [permissions, setPermissions] = useState<PermissionInfo[]>([]);
+  const [permissionPage, setPermissionPage] = useState<PageResult<PermissionInfo> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
   const [resource, setResource] = useState("");
   const [action, setAction] = useState("GET");
   const [description, setDescription] = useState("");
@@ -37,14 +40,14 @@ export default function PermissionsAdminPage() {
       return;
     }
     void loadPermissions();
-  }, [router]);
+  }, [router, page]);
 
   async function loadPermissions() {
     setLoading(true);
     setError("");
     try {
-      const list = await adminApi.listPermissions();
-      setPermissions(list);
+      const result = await adminApi.listPermissionsPage(page, 20);
+      setPermissionPage(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : messages.pages.permissions.loadFailed);
     } finally {
@@ -60,6 +63,7 @@ export default function PermissionsAdminPage() {
       setResource("");
       setAction("GET");
       setDescription("");
+      setPage(1);
       await loadPermissions();
     } catch (e) {
       setError(e instanceof Error ? e.message : messages.pages.permissions.createFailed);
@@ -75,6 +79,8 @@ export default function PermissionsAdminPage() {
       setError(e instanceof Error ? e.message : messages.pages.permissions.deleteFailed);
     }
   }
+
+  const totalPages = permissionPage ? Math.ceil(permissionPage.total / permissionPage.size) : 1;
 
   return (
     <AppPage
@@ -153,41 +159,76 @@ export default function PermissionsAdminPage() {
             <div className="py-10 text-sm text-muted-foreground">
               {messages.pages.permissions.loadBusy}
             </div>
+          ) : !permissionPage || permissionPage.records.length === 0 ? (
+            <div className="py-10 text-sm text-muted-foreground">
+              {messages.pages.permissions.loadBusy}
+            </div>
           ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th>{messages.pages.permissions.columns.resource}</Th>
-                  <Th>{messages.pages.permissions.columns.action}</Th>
-                  <Th>{messages.pages.permissions.columns.description}</Th>
-                  <Th>{messages.pages.permissions.columns.actions}</Th>
-                </tr>
-              </THead>
-              <tbody>
-                {permissions.map((permission) => (
-                  <Tr key={permission.id}>
-                    <Td className="font-mono text-xs text-foreground">
-                      {permission.resource}
-                    </Td>
-                    <Td>
-                      <Badge variant="secondary">{permission.action}</Badge>
-                    </Td>
-                    <Td className="text-muted-foreground">
-                      {permission.description || "-"}
-                    </Td>
-                    <Td>
-                      <Button
-                        variant="destructive"
-                        size="xs"
-                        onClick={() => void handleDelete(permission.id)}
-                      >
-                        {messages.pages.permissions.delete}
-                      </Button>
-                    </Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
+            <>
+              <Table>
+                <THead>
+                  <tr>
+                    <Th>{messages.pages.permissions.columns.resource}</Th>
+                    <Th>{messages.pages.permissions.columns.action}</Th>
+                    <Th>{messages.pages.permissions.columns.description}</Th>
+                    <Th>{messages.pages.permissions.columns.actions}</Th>
+                  </tr>
+                </THead>
+                <tbody>
+                  {permissionPage.records.map((permission) => (
+                    <Tr key={permission.id}>
+                      <Td className="font-mono text-xs text-foreground">
+                        {permission.resource}
+                      </Td>
+                      <Td>
+                        <Badge variant="secondary">{permission.action}</Badge>
+                      </Td>
+                      <Td className="text-muted-foreground">
+                        {permission.description || "-"}
+                      </Td>
+                      <Td>
+                        <Button
+                          variant="destructive"
+                          size="xs"
+                          onClick={() => void handleDelete(permission.id)}
+                        >
+                          {messages.pages.permissions.delete}
+                        </Button>
+                      </Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t px-4 py-3">
+                  <p className="text-xs text-muted-foreground">
+                    {messages.pages.users.total
+                      .replace("{total}", String(permissionPage.total))
+                      .replace("{page}", String(page))
+                      .replace("{pages}", String(totalPages))}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft /> {messages.pages.users.previous}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      {messages.pages.users.next} <ChevronRight />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </Card>
       </div>

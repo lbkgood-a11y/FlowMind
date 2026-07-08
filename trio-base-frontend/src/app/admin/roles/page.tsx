@@ -1,33 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, Search, Shield, Trash2 } from "lucide-react";
 
-import { adminApi, type PermissionInfo, type RoleInfo } from "@/lib/admin";
+import {
+  adminApi,
+  type PermissionInfo,
+  type RoleInfo,
+} from "@/lib/admin";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  PageHeader,
-  Table,
-  THead,
-  Th,
-  Tr,
-  Td,
-} from "@/components/ui";
+import { Card, PageHeader } from "@/components/ui";
 import { AppPage } from "@/components/layout/app-page";
 import { useI18n } from "@/lib/i18n";
+
+const NEW_ROLE_ID = "__new__";
 
 export default function RolesAdminPage() {
   const router = useRouter();
   const { messages } = useI18n();
   const [roles, setRoles] = useState<RoleInfo[]>([]);
   const [permissions, setPermissions] = useState<PermissionInfo[]>([]);
+  const [selectedRoleId, setSelectedRoleId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+
   const [roleCode, setRoleCode] = useState("");
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
@@ -42,6 +46,13 @@ export default function RolesAdminPage() {
     void loadData();
   }, [router]);
 
+  useEffect(() => {
+    if (!selectedRoleId || selectedRoleId === NEW_ROLE_ID) {
+      return;
+    }
+    void loadRoleDetail(selectedRoleId);
+  }, [selectedRoleId]);
+
   async function loadData() {
     setLoading(true);
     setError("");
@@ -52,6 +63,9 @@ export default function RolesAdminPage() {
       ]);
       setRoles(roleList);
       setPermissions(permissionList);
+      if (!selectedRoleId && roleList[0]) {
+        setSelectedRoleId(roleList[0].id);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : messages.pages.roles.loadFailed);
     } finally {
@@ -59,22 +73,62 @@ export default function RolesAdminPage() {
     }
   }
 
-  async function handleCreate(e: React.FormEvent) {
+  async function loadRoleDetail(roleId: string) {
+    setDetailLoading(true);
+    setError("");
+    try {
+      const detail = await adminApi.getRoleDetail(roleId);
+      setRoleCode(detail.roleCode);
+      setRoleName(detail.roleName);
+      setDescription(detail.description || "");
+      setSelectedPermissions(detail.permissionIds || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : messages.pages.roles.loadFailed);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  function handleCreateMode() {
+    setSelectedRoleId(NEW_ROLE_ID);
+    setRoleCode("");
+    setRoleName("");
+    setDescription("");
+    setSelectedPermissions([]);
+    setError("");
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError("");
     try {
-      await adminApi.createRole({
-        roleCode,
-        roleName,
-        description,
-        permissionIds: selectedPermissions,
-      });
-      setRoleCode("");
-      setRoleName("");
-      setDescription("");
-      setSelectedPermissions([]);
+      if (selectedRoleId && selectedRoleId !== NEW_ROLE_ID) {
+        await adminApi.updateRole(selectedRoleId, {
+          roleName,
+          description,
+          permissionIds: selectedPermissions,
+        });
+      } else {
+        await adminApi.createRole({
+          roleCode,
+          roleName,
+          description,
+          permissionIds: selectedPermissions,
+        });
+      }
+
       await loadData();
+      if (selectedRoleId === NEW_ROLE_ID) {
+        const latestRoles = await adminApi.listRoles();
+        setRoles(latestRoles);
+        const matched = latestRoles.find((role) => role.roleCode === roleCode) || latestRoles[0];
+        if (matched) {
+          setSelectedRoleId(matched.id);
+        }
+      } else if (selectedRoleId) {
+        await loadRoleDetail(selectedRoleId);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : messages.pages.roles.createFailed);
     } finally {
@@ -87,10 +141,31 @@ export default function RolesAdminPage() {
     try {
       await adminApi.deleteRole(id);
       await loadData();
+      setSelectedRoleId("");
+      setRoleCode("");
+      setRoleName("");
+      setDescription("");
+      setSelectedPermissions([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : messages.pages.roles.deleteFailed);
     }
   }
+
+  const filteredRoles = useMemo(
+    () =>
+      search
+        ? roles.filter(
+            (role) =>
+              role.roleName.toLowerCase().includes(search.toLowerCase()) ||
+              role.roleCode.toLowerCase().includes(search.toLowerCase()),
+          )
+        : roles,
+    [roles, search],
+  );
+
+  const activeRole = selectedRoleId && selectedRoleId !== NEW_ROLE_ID
+    ? roles.find((role) => role.id === selectedRoleId)
+    : null;
 
   return (
     <AppPage
@@ -108,117 +183,171 @@ export default function RolesAdminPage() {
       <PageHeader
         breadcrumb={messages.pages.roles.breadcrumb}
         title={messages.pages.roles.title}
-        actions={
-          <Button disabled={saving} type="submit" form="role-form">
-            {saving ? messages.pages.roles.createBusy : messages.pages.roles.createRole}
+        subtitle={messages.pages.roles.permissions}
+        actions={(
+          <Button size="sm" onClick={handleCreateMode}>
+            <Plus className="size-4" />
+            {messages.pages.roles.createRole}
           </Button>
-        }
+        )}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
-        <Card title={messages.pages.roles.newRole}>
-          <form id="role-form" onSubmit={handleCreate} className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="roleCode">{messages.pages.roles.roleCode}</Label>
-              <Input
-                id="roleCode"
-                value={roleCode}
-                onChange={(e) => setRoleCode(e.target.value)}
-                placeholder="如 FINANCE"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="roleName">{messages.pages.roles.roleName}</Label>
-              <Input
-                id="roleName"
-                value={roleName}
-                onChange={(e) => setRoleName(e.target.value)}
-                placeholder="如 财务经理"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="roleDesc">{messages.pages.roles.roleDescription}</Label>
-              <textarea
-                id="roleDesc"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="角色描述"
-                rows={3}
-                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
-              />
-            </div>
+      {error ? (
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
 
-            <div className="rounded border border-border p-4">
-              <p className="text-sm font-medium text-foreground">{messages.pages.roles.permissions}</p>
-              <div className="mt-3 grid gap-2">
-                {permissions.map((permission) => (
-                  <label
-                    key={permission.id}
-                    className="flex items-start gap-2 text-sm text-muted-foreground"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedPermissions.includes(permission.id)}
-                      onChange={(e) =>
-                        setSelectedPermissions((current) =>
-                          e.target.checked
-                            ? [...current, permission.id]
-                            : current.filter((item) => item !== permission.id)
-                        )
-                      }
-                    />
-                    <span>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {permission.action}
-                      </span>{" "}
-                      {permission.resource}
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {permission.description}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
+      <div className="grid gap-6 xl:grid-cols-[0.42fr_0.58fr]">
+        <Card title={messages.pages.roles.columns.role}>
+          <div className="mb-4 relative">
+            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={messages.pages.users.searchPlaceholder}
+              className="pl-8 h-8"
+            />
+          </div>
 
-            {error && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
-            )}
-          </form>
-        </Card>
-
-        <Card>
           {loading ? (
             <div className="py-10 text-sm text-muted-foreground">{messages.pages.roles.loadBusy}</div>
           ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <Th>{messages.pages.roles.columns.role}</Th>
-                  <Th>{messages.pages.roles.columns.code}</Th>
-                  <Th>{messages.pages.roles.columns.description}</Th>
-                  <Th>{messages.pages.roles.columns.actions}</Th>
-                </tr>
-              </THead>
-              <tbody>
-                {roles.map((role) => (
-                  <Tr key={role.id}>
-                    <Td className="font-medium text-foreground">
-                      {role.roleName}
-                    </Td>
-                    <Td className="font-mono text-xs text-muted-foreground">
-                      {role.roleCode}
-                    </Td>
-                    <Td className="text-muted-foreground">
-                      {role.description || "-"}
-                    </Td>
-                    <Td>
-                      <Button variant="destructive" size="xs" onClick={() => void handleDelete(role.id)}>{messages.pages.roles.delete}</Button>
-                    </Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
+            <div className="space-y-3">
+              {filteredRoles.map((role) => {
+                const active = role.id === selectedRoleId;
+                return (
+                  <button
+                    key={role.id}
+                    type="button"
+                    onClick={() => setSelectedRoleId(role.id)}
+                    className={`flex w-full items-start justify-between rounded-lg border px-3 py-3 text-left transition-colors ${
+                      active
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-background hover:bg-accent/40"
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Shield className="size-4 text-muted-foreground" />
+                        <p className="truncate font-medium">{role.roleName}</p>
+                      </div>
+                      <p className="mt-1 font-mono text-xs text-muted-foreground">{role.roleCode}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{role.description || "-"}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+        <Card title={activeRole?.roleName || messages.pages.roles.newRole}>
+          {detailLoading ? (
+            <div className="py-10 text-sm text-muted-foreground">{messages.common.loading}</div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="rounded-lg border bg-muted/20 p-4">
+                <p className="text-sm font-medium">
+                  {activeRole ? activeRole.roleName : messages.pages.roles.newRole}
+                </p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">
+                  {selectedRoleId === NEW_ROLE_ID ? "NEW_ROLE" : roleCode || "-"}
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="roleCode">{messages.pages.roles.roleCode}</Label>
+                  <Input
+                    id="roleCode"
+                    value={roleCode}
+                    onChange={(event) => setRoleCode(event.target.value)}
+                    placeholder="FINANCE"
+                    disabled={selectedRoleId !== NEW_ROLE_ID}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="roleName">{messages.pages.roles.roleName}</Label>
+                  <Input
+                    id="roleName"
+                    value={roleName}
+                    onChange={(event) => setRoleName(event.target.value)}
+                    placeholder="财务经理"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="roleDesc">{messages.pages.roles.roleDescription}</Label>
+                <textarea
+                  id="roleDesc"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="角色描述"
+                  rows={3}
+                  className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
+                />
+              </div>
+
+              <div className="rounded-lg border border-border p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-medium">{messages.pages.roles.permissions}</p>
+                  <Badge variant="secondary">{selectedPermissions.length}</Badge>
+                </div>
+                <div className="grid gap-2">
+                  {permissions.map((permission) => (
+                    <label
+                      key={permission.id}
+                      className="flex items-start gap-2 rounded-lg border border-transparent px-2 py-2 text-sm text-muted-foreground hover:border-border hover:bg-accent/20"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedPermissions.includes(permission.id)}
+                        onChange={(event) =>
+                          setSelectedPermissions((current) =>
+                            event.target.checked
+                              ? [...current, permission.id]
+                              : current.filter((item) => item !== permission.id),
+                          )
+                        }
+                      />
+                      <span>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {permission.action}
+                        </span>{" "}
+                        {permission.resource}
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {permission.description}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs text-muted-foreground">
+                  {activeRole ? activeRole.description || "-" : messages.pages.roles.newRole}
+                </div>
+                <div className="flex gap-2">
+                  {activeRole ? (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => void handleDelete(activeRole.id)}
+                    >
+                      <Trash2 className="size-4" />
+                      {messages.pages.roles.delete}
+                    </Button>
+                  ) : null}
+                  <Button type="submit" size="sm" disabled={saving}>
+                    {saving ? messages.pages.roles.createBusy : messages.common.save}
+                  </Button>
+                </div>
+              </div>
+            </form>
           )}
         </Card>
       </div>

@@ -1,7 +1,10 @@
 package com.triobase.service.auth.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.result.PageResult;
 import com.triobase.service.auth.dto.CreatePermissionRequest;
 import com.triobase.service.auth.entity.SysPermission;
 import com.triobase.service.auth.entity.SysRolePermission;
@@ -26,6 +29,14 @@ public class PermissionService {
         return permissionMapper.selectList(new LambdaQueryWrapper<SysPermission>()
                 .orderByAsc(SysPermission::getResource)
                 .orderByAsc(SysPermission::getAction));
+    }
+
+    public PageResult<SysPermission> page(int pageNo, int pageSize) {
+        IPage<SysPermission> permPage = permissionMapper.selectPage(new Page<>(pageNo, pageSize),
+                new LambdaQueryWrapper<SysPermission>()
+                        .orderByAsc(SysPermission::getResource)
+                        .orderByAsc(SysPermission::getAction));
+        return PageResult.of(permPage.getRecords(), permPage.getTotal(), pageNo, pageSize);
     }
 
     @Transactional

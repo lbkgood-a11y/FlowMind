@@ -46,7 +46,7 @@ public class AuthService {
     private int refreshTokenTtl;
 
     @Transactional
-    public LoginResponse register(String username, String password, String email) {
+    public LoginResponse register(String username, String password, String email, String phone) {
         if (userMapper.selectCount(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, username)) > 0) {
             throw new BizException(AuthErrorCode.USER_ALREADY_EXISTS);
@@ -62,6 +62,7 @@ public class AuthService {
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(password));
         user.setEmail(email);
+        user.setPhone(phone);
         user.setStatus(1);
         userMapper.insert(user);
 

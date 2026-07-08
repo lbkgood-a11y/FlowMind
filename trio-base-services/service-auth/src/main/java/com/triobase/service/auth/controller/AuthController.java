@@ -19,8 +19,9 @@ public class AuthController {
     @PostMapping("/register")
     public R<LoginResponse> register(@RequestParam String username,
                                      @RequestParam String password,
-                                     @RequestParam(required = false) String email) {
-        return R.ok(authService.register(username, password, email));
+                                     @RequestParam(required = false) String email,
+                                     @RequestParam(required = false) String phone) {
+        return R.ok(authService.register(username, password, email, phone));
     }
 
     @PostMapping("/login")

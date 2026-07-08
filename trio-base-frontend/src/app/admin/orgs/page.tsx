@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, ChevronRight, Users } from "lucide-react";
+import {
+  Building2,
+  ChevronRight,
+  Users,
+  GitBranch,
+  Plus,
+  Trash2,
+} from "lucide-react";
 
 import { adminApi, type UserInfoPayload } from "@/lib/admin";
 import { orgApi, type OrgUnitInfo, type UserOrgRelation } from "@/lib/org";
@@ -11,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -18,11 +26,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  TreeView,
+  type TreeDataItem,
+} from "@/components/ui/tree-view";
 import { Card, PageHeader } from "@/components/ui";
 import { AppPage } from "@/components/layout/app-page";
 import { useI18n } from "@/lib/i18n";
 
 const ROOT_PARENT = "__root__";
+
+/** 将扁平的组织单元列表转为 TreeDataItem 树 */
+function buildOrgTree(
+  units: OrgUnitInfo[],
+  parentId: string | null = null,
+): TreeDataItem[] {
+  return units
+    .filter((u) => (u.parentId ?? null) === parentId)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((u) => ({
+      id: u.id,
+      name: u.unitName,
+      icon: u.parentId ? ChevronRight : Building2,
+      children: buildOrgTree(units, u.id),
+    }));
+}
 
 export default function OrgAdminPage() {
   const router = useRouter();
@@ -39,6 +67,7 @@ export default function OrgAdminPage() {
   const [sortOrder, setSortOrder] = useState("100");
   const [description, setDescription] = useState("");
   const [enabled, setEnabled] = useState(true);
+  const [selectedUnitId, setSelectedUnitId] = useState("");
 
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>([]);
@@ -64,6 +93,9 @@ export default function OrgAdminPage() {
       setUnits(unitList);
       setRelations(relationList);
       setUsers(userPage.records);
+      if (!selectedUnitId && unitList[0]) {
+        setSelectedUnitId(unitList[0].id);
+      }
       if (!selectedUserId && userPage.records[0]) {
         setSelectedUserId(userPage.records[0].id);
       }
@@ -102,6 +134,7 @@ export default function OrgAdminPage() {
     setError("");
     try {
       await orgApi.deleteOrgUnit(id);
+      if (selectedUnitId === id) setSelectedUnitId("");
       await loadData();
     } catch (e) {
       setError(e instanceof Error ? e.message : messages.pages.orgs.deleteFailed);
@@ -109,9 +142,7 @@ export default function OrgAdminPage() {
   }
 
   async function handleSaveAssignments() {
-    if (!selectedUserId) {
-      return;
-    }
+    if (!selectedUserId) return;
     setError("");
     try {
       await orgApi.assignUserOrgUnits(selectedUserId, selectedOrgIds);
@@ -121,60 +152,66 @@ export default function OrgAdminPage() {
     }
   }
 
-  const unitMap = useMemo(() => new Map(units.map((unit) => [unit.id, unit])), [units]);
+  const unitMap = useMemo(
+    () => new Map(units.map((u) => [u.id, u])),
+    [units],
+  );
   const userOrgMap = useMemo(() => {
     const map = new Map<string, string[]>();
-    for (const relation of relations) {
-      const current = map.get(relation.userId) || [];
-      current.push(relation.orgUnitId);
-      map.set(relation.userId, current);
+    for (const r of relations) {
+      const cur = map.get(r.userId) ?? [];
+      cur.push(r.orgUnitId);
+      map.set(r.userId, cur);
     }
     return map;
   }, [relations]);
 
   useEffect(() => {
     if (selectedUserId) {
-      setSelectedOrgIds(userOrgMap.get(selectedUserId) || []);
+      setSelectedOrgIds(userOrgMap.get(selectedUserId) ?? []);
     }
   }, [selectedUserId, userOrgMap]);
+
+  const treeData = useMemo(() => buildOrgTree(units), [units]);
 
   const sortedUnits = useMemo(
     () =>
       [...units].sort((a, b) => {
-        const pathA = a.treePath || a.id;
-        const pathB = b.treePath || b.id;
-        return pathA.localeCompare(pathB);
+        const pa = a.treePath || a.id;
+        const pb = b.treePath || b.id;
+        return pa.localeCompare(pb);
       }),
     [units],
   );
 
-  function getDepth(treePath?: string): number {
-    if (!treePath) {
-      return 0;
-    }
-    return Math.max(treePath.split("/").filter(Boolean).length - 1, 0);
-  }
+  const selectedUnit = selectedUnitId ? unitMap.get(selectedUnitId) : undefined;
 
   return (
     <AppPage
-      topbarActions={(
+      topbarActions={
         <>
           <Link href="/admin/users">
-            <Button variant="outline" size="sm">{messages.common.users}</Button>
+            <Button variant="outline" size="sm">
+              {messages.common.users}
+            </Button>
           </Link>
           <Link href="/admin/permissions">
-            <Button variant="outline" size="sm">{messages.common.permissions}</Button>
+            <Button variant="outline" size="sm">
+              {messages.common.permissions}
+            </Button>
           </Link>
         </>
-      )}
+      }
     >
       <PageHeader
         breadcrumb={messages.pages.orgs.breadcrumb}
         title={messages.pages.orgs.title}
         subtitle={messages.pages.orgs.subtitle}
-        actions={(
-          <Button type="submit" form="org-unit-form">{messages.common.create}</Button>
-        )}
+        actions={
+          <Button type="submit" form="org-unit-form">
+            {messages.common.create}
+          </Button>
+        }
       />
 
       {error && (
@@ -183,201 +220,313 @@ export default function OrgAdminPage() {
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card title={messages.pages.orgs.createTitle}>
-          <form id="org-unit-form" onSubmit={handleCreate} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="grid gap-2">
-                <Label htmlFor="unit-code">{messages.pages.orgs.fields.code}</Label>
-                <Input
-                  id="unit-code"
-                  value={unitCode}
-                  onChange={(e) => setUnitCode(e.target.value)}
-                  placeholder="TECH-FE"
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="unit-name">{messages.pages.orgs.fields.name}</Label>
-                <Input
-                  id="unit-name"
-                  value={unitName}
-                  onChange={(e) => setUnitName(e.target.value)}
-                  placeholder="前端组"
-                  required
-                />
-              </div>
+      <div className="grid gap-6 xl:grid-cols-[0.38fr_0.62fr]">
+        {/* 左侧：组织树 */}
+        <Card
+          title={messages.pages.orgs.treeTitle}
+          subtitle={messages.pages.orgs.assignmentHint}
+        >
+          {loading ? (
+            <div className="py-10 text-sm text-muted-foreground">
+              {messages.common.loading}
             </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="grid gap-2">
-                <Label htmlFor="unit-parent">{messages.pages.orgs.fields.parent}</Label>
-                <Select value={parentId || ROOT_PARENT} onValueChange={(value) => setParentId(value === ROOT_PARENT ? "" : value || "")}>
-                  <SelectTrigger id="unit-parent">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ROOT_PARENT}>{messages.pages.orgs.noParent}</SelectItem>
-                    {sortedUnits.map((unit) => (
-                      <SelectItem key={unit.id} value={unit.id}>
-                        {unit.unitName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="unit-sort">{messages.pages.orgs.fields.sort}</Label>
-                <Input
-                  id="unit-sort"
-                  type="number"
-                  value={sortOrder}
-                  onChange={(e) => setSortOrder(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="unit-status">{messages.pages.orgs.fields.status}</Label>
-                <Select value={enabled ? "enabled" : "disabled"} onValueChange={(value) => setEnabled(value !== "disabled")}>
-                  <SelectTrigger id="unit-status">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="enabled">{messages.pages.orgs.fields.enabled}</SelectItem>
-                    <SelectItem value="disabled">{messages.pages.orgs.fields.disabled}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+          ) : treeData.length === 0 ? (
+            <div className="py-10 text-sm text-muted-foreground">
+              {messages.pages.orgs.empty}
             </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="unit-desc">{messages.pages.orgs.fields.description}</Label>
-              <textarea
-                id="unit-desc"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder={messages.pages.orgs.subtitle}
-                rows={3}
-                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
+          ) : (
+            <div className="-ml-2">
+              <TreeView
+                data={treeData}
+                initialSelectedItemId={selectedUnitId}
+                onSelectChange={(item) =>
+                  item && setSelectedUnitId(item.id)
+                }
+                expandAll
+                renderItem={({ item, isSelected }) => {
+                  const unit = unitMap.get(item.id);
+                  if (!unit) return null;
+                  const memberCount = relations.filter(
+                    (r) => r.orgUnitId === unit.id,
+                  ).length;
+                  return (
+                    <div
+                      className={`flex w-full items-center justify-between gap-2 py-0.5 ${
+                        isSelected ? "" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span className="text-sm font-medium truncate">
+                          {unit.unitName}
+                        </span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {unit.unitCode}
+                        </span>
+                      </div>
+                      <Badge
+                        variant="secondary"
+                        className="shrink-0 text-xs px-1.5 py-0 h-5"
+                      >
+                        <Users className="size-3 mr-0.5" />
+                        {memberCount}
+                      </Badge>
+                    </div>
+                  );
+                }}
               />
             </div>
-          </form>
-        </Card>
-
-        <Card title={messages.pages.orgs.treeTitle} subtitle={messages.pages.orgs.assignmentHint}>
-          {loading ? (
-            <div className="py-10 text-sm text-muted-foreground">{messages.common.loading}</div>
-          ) : sortedUnits.length === 0 ? (
-            <div className="py-10 text-sm text-muted-foreground">{messages.pages.orgs.empty}</div>
-          ) : (
-            <div className="space-y-3">
-              {sortedUnits.map((unit) => {
-                const depth = getDepth(unit.treePath);
-                const memberCount = relations.filter((relation) => relation.orgUnitId === unit.id).length;
-                return (
-                  <div key={unit.id} className="rounded-lg border border-border bg-muted/20 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0" style={{ paddingLeft: `${depth * 16}px` }}>
-                        <div className="flex items-center gap-2">
-                          {depth > 0 ? <ChevronRight className="size-4 text-muted-foreground" /> : <Building2 className="size-4 text-muted-foreground" />}
-                          <p className="font-medium text-foreground">{unit.unitName}</p>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{unit.unitCode} · {unit.treePath}</p>
-                        {unit.description ? (
-                          <p className="mt-1 text-xs text-muted-foreground">{unit.description}</p>
-                        ) : null}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Badge variant="secondary">
-                          <Users className="mr-1 size-3" />
-                          {memberCount}
-                        </Badge>
-                        <Button variant="destructive" size="xs" onClick={() => void handleDelete(unit.id)}>
-                          {messages.pages.permissions.delete}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           )}
         </Card>
-      </div>
 
-      <div className="mt-6">
-        <Card title={messages.pages.orgs.membersTitle}>
-          {loading ? (
-            <div className="py-10 text-sm text-muted-foreground">{messages.common.loading}</div>
-          ) : (
-            <div className="grid gap-6 lg:grid-cols-[0.35fr_0.65fr]">
-              <div className="space-y-3">
-                {users.map((user) => (
-                  <button
-                    key={user.id}
-                    type="button"
-                    onClick={() => setSelectedUserId(user.id)}
-                    className={`flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left text-sm transition-colors ${
-                      selectedUserId === user.id
-                        ? "border-primary bg-primary/10"
-                        : "border-border bg-background hover:bg-accent/40"
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{user.username}</p>
-                      <p className="truncate text-xs text-muted-foreground">{user.email || user.id}</p>
+        {/* 右侧：详情 / 建组 / 成员 */}
+        <Card>
+          <Tabs defaultValue="unit" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="unit">
+                {messages.pages.orgs.createTitle}
+              </TabsTrigger>
+              <TabsTrigger value="members">
+                {messages.pages.orgs.membersTitle}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="unit">
+              {/* 当前选中节点信息 */}
+              {selectedUnit ? (
+                <div className="mb-4 rounded-lg border bg-muted/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">
+                        {selectedUnit.unitName}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {selectedUnit.unitCode} · {selectedUnit.treePath}
+                      </p>
                     </div>
-                    <Badge variant="secondary">
-                      {(userOrgMap.get(user.id) || []).length}
-                    </Badge>
-                  </button>
-                ))}
-              </div>
-
-              <div>
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{messages.pages.orgs.fields.assign}</p>
-                    <p className="text-xs text-muted-foreground">{messages.pages.orgs.assignmentHint}</p>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => void handleDelete(selectedUnit.id)}
+                    >
+                      <Trash2 className="size-4 mr-1" />
+                      {messages.pages.permissions.delete}
+                    </Button>
                   </div>
-                  <Button size="sm" onClick={() => void handleSaveAssignments()} disabled={!selectedUserId}>
-                    {messages.pages.orgs.saveAssignment}
-                  </Button>
+                  {selectedUnit.description && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {selectedUnit.description}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="mb-4 rounded-lg border bg-muted/20 p-4">
+                  <p className="text-sm text-muted-foreground">
+                    {messages.pages.orgs.noParent}
+                  </p>
+                </div>
+              )}
+
+              <form id="org-unit-form" onSubmit={handleCreate} className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="unit-code">
+                      {messages.pages.orgs.fields.code}
+                    </Label>
+                    <Input
+                      id="unit-code"
+                      value={unitCode}
+                      onChange={(e) => setUnitCode(e.target.value)}
+                      placeholder="TECH-FE"
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="unit-name">
+                      {messages.pages.orgs.fields.name}
+                    </Label>
+                    <Input
+                      id="unit-name"
+                      value={unitName}
+                      onChange={(e) => setUnitName(e.target.value)}
+                      placeholder="前端组"
+                      required
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  {sortedUnits.map((unit) => {
-                    const depth = getDepth(unit.treePath);
-                    const checked = selectedOrgIds.includes(unit.id);
-                    return (
-                      <label
-                        key={unit.id}
-                        className="flex items-start gap-3 rounded-lg border border-border px-3 py-3 text-sm hover:bg-accent/30"
-                        style={{ paddingLeft: `${12 + depth * 16}px` }}
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="grid gap-2">
+                    <Label htmlFor="unit-parent">
+                      {messages.pages.orgs.fields.parent}
+                    </Label>
+                    <Select
+                      value={parentId || ROOT_PARENT}
+                      onValueChange={(v) =>
+                        setParentId(v === ROOT_PARENT ? "" : v || "")
+                      }
+                    >
+                      <SelectTrigger id="unit-parent">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ROOT_PARENT}>
+                          {messages.pages.orgs.noParent}
+                        </SelectItem>
+                        {sortedUnits.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.unitName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="unit-sort">
+                      {messages.pages.orgs.fields.sort}
+                    </Label>
+                    <Input
+                      id="unit-sort"
+                      type="number"
+                      value={sortOrder}
+                      onChange={(e) => setSortOrder(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="unit-status">
+                      {messages.pages.orgs.fields.status}
+                    </Label>
+                    <Select
+                      value={enabled ? "enabled" : "disabled"}
+                      onValueChange={(v) => setEnabled(v !== "disabled")}
+                    >
+                      <SelectTrigger id="unit-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="enabled">
+                          {messages.pages.orgs.fields.enabled}
+                        </SelectItem>
+                        <SelectItem value="disabled">
+                          {messages.pages.orgs.fields.disabled}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="unit-desc">
+                    {messages.pages.orgs.fields.description}
+                  </Label>
+                  <textarea
+                    id="unit-desc"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder={messages.pages.orgs.subtitle}
+                    rows={3}
+                    className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
+                  />
+                </div>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="members">
+              {loading ? (
+                <div className="py-10 text-sm text-muted-foreground">
+                  {messages.common.loading}
+                </div>
+              ) : (
+                <div className="grid gap-6 lg:grid-cols-[0.35fr_0.65fr]">
+                  <div className="space-y-3">
+                    {users.map((user) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => setSelectedUserId(user.id)}
+                        className={`flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left text-sm transition-colors ${
+                          selectedUserId === user.id
+                            ? "border-primary bg-primary/10"
+                            : "border-border bg-background hover:bg-accent/40"
+                        }`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(event) => {
-                            setSelectedOrgIds((current) =>
-                              event.target.checked
-                                ? [...current, unit.id]
-                                : current.filter((item) => item !== unit.id),
-                            );
-                          }}
-                        />
-                        <span>
-                          <span className="block font-medium">{unit.unitName}</span>
-                          <span className="block text-xs text-muted-foreground">
-                            {unit.unitCode} · {unitMap.get(unit.parentId || "")?.unitName || messages.pages.orgs.noParent}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{user.username}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {user.email || user.id}
+                          </p>
+                        </div>
+                        <Badge variant="secondary">
+                          {(userOrgMap.get(user.id) || []).length}
+                        </Badge>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <div className="mb-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">
+                          {messages.pages.orgs.fields.assign}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {messages.pages.orgs.assignmentHint}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => void handleSaveAssignments()}
+                        disabled={!selectedUserId}
+                      >
+                        {messages.pages.orgs.saveAssignment}
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {sortedUnits.map((unit) => {
+                        const depth = unit.treePath
+                          ? Math.max(
+                              unit.treePath.split("/").filter(Boolean).length - 1,
+                              0,
+                            )
+                          : 0;
+                        const checked = selectedOrgIds.includes(unit.id);
+                        return (
+                          <label
+                            key={unit.id}
+                            className="flex items-start gap-3 rounded-lg border border-border px-3 py-3 text-sm hover:bg-accent/30"
+                            style={{ paddingLeft: `${12 + depth * 16}px` }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) => {
+                                setSelectedOrgIds((cur) =>
+                                  event.target.checked
+                                    ? [...cur, unit.id]
+                                    : cur.filter((i) => i !== unit.id),
+                                );
+                              }}
+                            />
+                            <span>
+                              <span className="block font-medium">
+                                {unit.unitName}
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                {unit.unitCode} ·{" "}
+                                {unitMap.get(unit.parentId ?? "")?.unitName ??
+                                  messages.pages.orgs.noParent}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
+            </TabsContent>
+          </Tabs>
         </Card>
       </div>
     </AppPage>

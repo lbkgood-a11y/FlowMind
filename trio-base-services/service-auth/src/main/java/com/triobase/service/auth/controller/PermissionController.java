@@ -1,5 +1,6 @@
 package com.triobase.service.auth.controller;
 
+import com.triobase.common.core.result.PageResult;
 import com.triobase.common.core.result.R;
 import com.triobase.service.auth.dto.CreatePermissionRequest;
 import com.triobase.service.auth.entity.SysPermission;
@@ -19,6 +20,12 @@ public class PermissionController {
     @GetMapping
     public R<List<SysPermission>> list() {
         return R.ok(permissionService.list());
+    }
+
+    @GetMapping("/page")
+    public R<PageResult<SysPermission>> page(@RequestParam(defaultValue = "1") int page,
+                                              @RequestParam(defaultValue = "20") int size) {
+        return R.ok(permissionService.page(page, size));
     }
 
     @PostMapping

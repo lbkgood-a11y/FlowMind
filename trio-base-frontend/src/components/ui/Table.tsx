@@ -1,72 +1,125 @@
-"use client";
+import { cn } from "@/lib/utils";
 
-/* ── Table wrapper ────────────────────────────── */
-
-interface TableProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-export function Table({ children, className = "" }: TableProps) {
+function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
-    <div className="overflow-x-auto">
-      <table className={`w-full text-left text-sm ${className}`}>
-        {children}
-      </table>
+    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+      <table
+        data-slot="table"
+        className={cn("w-full caption-bottom text-sm", className)}
+        {...props}
+      />
     </div>
   );
 }
 
-/* ── Head parts ───────────────────────────────── */
-
-export function THead({ children }: { children: React.ReactNode }) {
+function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
-    <thead className="bg-muted/50 text-xs text-muted-foreground">
-      {children}
-    </thead>
+    <thead
+      data-slot="table-header"
+      className={cn("[&_tr]:border-b", className)}
+      {...props}
+    />
   );
 }
 
-export function Th({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   return (
-    <th className={`whitespace-nowrap px-4 py-3 font-medium ${className}`}>
-      {children}
-    </th>
+    <tbody
+      data-slot="table-body"
+      className={cn("[&_tr:last-child]:border-0", className)}
+      {...props}
+    />
   );
 }
 
-/* ── Body parts ───────────────────────────────── */
+function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
+  return (
+    <tfoot
+      data-slot="table-footer"
+      className={cn(
+        "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
 
-export function Tr({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   return (
     <tr
-      className={`border-t border-border transition-colors even:bg-muted/20 hover:bg-accent/40 ${className}`}
-    >
-      {children}
-    </tr>
+      data-slot="table-row"
+      className={cn(
+        "border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+        className,
+      )}
+      {...props}
+    />
   );
 }
 
-export function Td({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   return (
-    <td className={`px-4 py-3 align-top ${className}`}>{children}</td>
+    <th
+      data-slot="table-head"
+      className={cn(
+        "h-10 px-4 text-left align-middle font-medium text-xs text-muted-foreground whitespace-nowrap",
+        "[&:has([role=checkbox])]:pr-0",
+        className,
+      )}
+      {...props}
+    />
   );
 }
+
+function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+  return (
+    <td
+      data-slot="table-cell"
+      className={cn(
+        "p-4 align-middle whitespace-nowrap",
+        "[&:has([role=checkbox])]:pr-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function TableCaption({
+  className,
+  ...props
+}: React.ComponentProps<"caption">) {
+  return (
+    <caption
+      data-slot="table-caption"
+      className={cn("mt-4 text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+/** Legacy alias for backward compatibility */
+const THead = TableHeader;
+const Th = TableHead;
+const Tr = TableRow;
+const Td = TableCell;
+
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
+  /** @deprecated Use TableHeader instead */
+  THead,
+  /** @deprecated Use TableHead instead */
+  Th,
+  /** @deprecated Use TableRow instead */
+  Tr,
+  /** @deprecated Use TableCell instead */
+  Td,
+};

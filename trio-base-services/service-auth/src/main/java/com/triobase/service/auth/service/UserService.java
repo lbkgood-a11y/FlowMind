@@ -72,6 +72,7 @@ public class UserService {
         payload.setId(user.getId());
         payload.setUsername(user.getUsername());
         payload.setEmail(user.getEmail());
+        payload.setPhone(user.getPhone());
         payload.setStatus(user.getStatus());
         payload.setRoles(roles);
         payload.setCreatedAt(user.getCreatedAt());

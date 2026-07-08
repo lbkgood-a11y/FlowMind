@@ -51,7 +51,7 @@ class AuthServiceTest {
         when(userMapper.insert(any(SysUser.class))).thenReturn(1);
         when(userMapper.selectRoleCodesByUserId(anyString())).thenReturn(List.of("USER"));
 
-        LoginResponse resp = authService.register("newuser", "Pass1234", "test@triobase.local");
+        LoginResponse resp = authService.register("newuser", "Pass1234", "test@triobase.local", null);
 
         assertNotNull(resp.getAccessToken());
         assertNotNull(resp.getRefreshToken());
@@ -62,7 +62,7 @@ class AuthServiceTest {
     @Test
     void register_shouldThrow_whenPasswordTooWeak() {
         BizException ex = assertThrows(BizException.class,
-                () -> authService.register("user", "123", null));
+                () -> authService.register("user", "123", null, null));
         assertEquals(AuthErrorCode.PASSWORD_TOO_WEAK.getCode(), ex.getCode());
     }
 
