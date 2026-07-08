@@ -1,0 +1,1 @@
+- [TrioBase 核心定位](project_vision.md) — 流程+数据+AI 三核驱动，AI 是编排中枢而非并列模块

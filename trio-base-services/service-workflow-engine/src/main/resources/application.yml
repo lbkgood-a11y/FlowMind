@@ -1,0 +1,20 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: service-workflow-engine
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+
+# Temporal Worker 内嵌配置 — 铁律 5：Task Queue 与 spring.application.name 强绑定
+temporal:
+  namespace: default
+  task-queue: ${spring.application.name}
+  workers:
+    - task-queue: ${spring.application.name}
+      capacity:
+        max-concurrent-activity-execution-size: 20
+        max-concurrent-workflow-execution-size: 10

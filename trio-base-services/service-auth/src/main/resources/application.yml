@@ -1,0 +1,43 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: service-auth
+  config:
+    import: optional:nacos:${spring.application.name}.yml
+  datasource:
+    url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5433/triobase}
+    username: ${AUTH_DB_USERNAME:triobase}
+    password: ${AUTH_DB_PASSWORD:triobase123}
+    driver-class-name: org.postgresql.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+auth:
+  jwt:
+    secret: ${JWT_SECRET:triobase-dev-secret-key-min-32-chars!!}
+    access-token-ttl: 300
+    refresh-token-ttl: 1800
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+# Temporal Worker — 铁律 5：与微服务生命周期共生死
+temporal:
+  namespace: default
+  task-queue: ${spring.application.name}

@@ -1,0 +1,142 @@
+version: "3.9"
+
+services:
+  # ========== 基础设施 ==========
+  nacos:
+    image: nacos/nacos-server:v2.4.0
+    container_name: triobase-nacos
+    environment:
+      - MODE=standalone
+      - PREFER_HOST_MODE=hostname
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    volumes:
+      - nacos-data:/home/nacos/data
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: triobase-postgres
+    environment:
+      POSTGRES_DB: triobase
+      POSTGRES_USER: triobase
+      POSTGRES_PASSWORD: triobase123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  neo4j:
+    image: neo4j:5.25
+    container_name: triobase-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/password
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+
+  kafka:
+    image: bitnami/kafka:3.8
+    container_name: triobase-kafka
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka-data:/bitnami/kafka
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    container_name: triobase-clickhouse
+    environment:
+      CLICKHOUSE_DB: triobase
+      CLICKHOUSE_USER: triobase
+      CLICKHOUSE_PASSWORD: triobase
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ch-data:/var/lib/clickhouse
+
+  temporal:
+    image: temporalio/auto-setup:1.25.0
+    container_name: triobase-temporal
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=triobase
+      - POSTGRES_PWD=triobase123
+      - POSTGRES_SEEDS=postgres
+    ports:
+      - "7233:7233"
+    depends_on:
+      - postgres
+
+  temporal-web:
+    image: temporalio/web:2.33.0
+    container_name: triobase-temporal-web
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    ports:
+      - "8088:8088"
+    depends_on:
+      - temporal
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: triobase-redis
+    ports:
+      - "6379:6379"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.63
+    container_name: triobase-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+
+  # ========== AI 服务 ==========
+  ai-llm-gateway:
+    build:
+      context: ../trio-base-ai/ai-llm-gateway
+      dockerfile: Dockerfile
+    container_name: triobase-ai-llm-gateway
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:-triobase-dev-secret-key-min-32-chars!!}
+    ports:
+      - "8002:8002"
+    depends_on:
+      - postgres
+      - redis
+
+  ai-rag-service:
+    build:
+      context: ../trio-base-ai/ai-rag-service
+      dockerfile: Dockerfile
+    container_name: triobase-ai-rag-service
+    environment:
+      - DATABASE_URL=postgresql://triobase:triobase123@postgres:5432/triobase
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+    ports:
+      - "8003:8003"
+    depends_on:
+      - postgres
+
+volumes:
+  nacos-data:
+  pg-data:
+  neo4j-data:
+  kafka-data:
+  ch-data:

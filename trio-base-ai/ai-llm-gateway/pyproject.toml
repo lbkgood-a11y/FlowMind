@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "ai-llm-gateway"
+version = "0.1.0"
+description = "LLM 抽象网关 — LiteLLM 封装 + GPTCache 语义缓存 + Prompt 追踪（铁律 2 第二道防线）"
+authors = ["TrioBase Team"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.34.0"}
+litellm = "^1.60.0"
+gptcache = "^0.1.44"
+temporalio = "^1.9.0"
+pydantic = "^2.10.0"
+redis = "^5.2.0"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+opentelemetry-api = "^1.29.0"
+opentelemetry-sdk = "^1.29.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.25.0"
+ruff = "^0.9.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

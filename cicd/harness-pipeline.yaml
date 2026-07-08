@@ -1,0 +1,50 @@
+# TrioBase Harness CI Pipeline — 铁律门禁
+pipeline:
+  name: TrioBase CI Gate
+  identifier: triobase_ci_gate
+  stages:
+    - stage:
+        name: Quality Gate
+        identifier: quality_gate
+        type: CI
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Checkstyle
+                  type: Run
+                  spec:
+                    command: mvn checkstyle:check -pl trio-base-services
+              - step:
+                  name: Unit Test + Jacoco Coverage
+                  type: Run
+                  spec:
+                    command: mvn verify -pl trio-base-services,trio-base-data
+                    reports:
+                      - type: JUnit
+                        paths:
+                          - "**/target/surefire-reports/*.xml"
+              - step:
+                  name: ArchUnit Gate
+                  type: Run
+                  spec:
+                    command: mvn test -pl trio-base-common/common-archunit -Dtest=TemporalDeterministicRuleTest,FeignCallScopeRuleTest,ActivityRetryPolicyRuleTest
+              - step:
+                  name: SonarQube Scan
+                  type: Run
+                  spec:
+                    command: mvn sonar:sonar -Dsonar.projectKey=triobase -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.token=${SONAR_TOKEN}
+              - step:
+                  name: Frontend Lint + Type Check
+                  type: Run
+                  spec:
+                    command: cd trio-base-frontend && npm run lint && npm run type-check
+              - step:
+                  name: Frontend Build
+                  type: Run
+                  spec:
+                    command: cd trio-base-frontend && npm run build
+        failure:
+          - type: Pipeline
+            action: Block
+            message: "铁律门禁未通过，部署已阻止。请检查 CI 报告并修复违规项。"

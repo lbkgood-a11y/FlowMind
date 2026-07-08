@@ -1,0 +1,70 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: platform-gateway
+  config:
+    import: optional:nacos:${spring.application.name}.yml
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+      config:
+        server-addr: localhost:8848
+        file-extension: yml
+    gateway:
+      routes:
+        - id: service-auth
+          uri: lb://service-auth
+          predicates:
+            - Path=/api/v1/auth/**
+        - id: service-org
+          uri: lb://service-org
+          predicates:
+            - Path=/api/v1/org/**
+        - id: service-lowcode
+          uri: lb://service-lowcode
+          predicates:
+            - Path=/api/v1/forms/**,/api/v1/form-instances/**
+        - id: ai-llm-gateway
+          uri: ${ai.services.llm-gateway.url}
+          predicates:
+            - Path=/api/v1/ai/**,/api/v1/llm/**
+          metadata:
+            connect-timeout: 30000
+            response-timeout: 120s
+        - id: ai-rag-service
+          uri: ${ai.services.rag-service.url}
+          predicates:
+            - Path=/api/v1/rag/**
+          metadata:
+            connect-timeout: 30000
+            response-timeout: 120s
+        - id: service-auth-users
+          uri: lb://service-auth
+          predicates:
+            - Path=/api/v1/users/**,/api/v1/roles/**,/api/v1/permissions/**
+      httpclient:
+        response-timeout: 120s
+        connect-timeout: 5000
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+auth:
+  service:
+    url: ${AUTH_SERVICE_URL:lb://service-auth}
+  whitelist-paths: /api/v1/auth/**,/health,/actuator/**
+
+ai:
+  services:
+    # Phase 3: 先默认直连本地 Python 服务，后续接入 Nacos 后可改成 lb://ai-llm-gateway
+    llm-gateway:
+      url: ${AI_LLM_GATEWAY_URL:http://localhost:8002}
+    # Phase 3: 先默认直连独立 RAG 服务，后续接入 Nacos 后可改成 lb://ai-rag-service
+    rag-service:
+      url: ${AI_RAG_SERVICE_URL:http://localhost:8003}

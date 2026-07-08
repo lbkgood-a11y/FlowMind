@@ -1,0 +1,34 @@
+package com.triobase.service.auth.controller;
+
+import com.triobase.common.core.result.R;
+import com.triobase.service.auth.dto.CreatePermissionRequest;
+import com.triobase.service.auth.entity.SysPermission;
+import com.triobase.service.auth.service.PermissionService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/v1/permissions")
+@RequiredArgsConstructor
+public class PermissionController {
+
+    private final PermissionService permissionService;
+
+    @GetMapping
+    public R<List<SysPermission>> list() {
+        return R.ok(permissionService.list());
+    }
+
+    @PostMapping
+    public R<SysPermission> create(@RequestBody CreatePermissionRequest request) {
+        return R.ok(permissionService.create(request));
+    }
+
+    @DeleteMapping("/{id}")
+    public R<String> delete(@PathVariable String id) {
+        permissionService.delete(id);
+        return R.ok("权限已删除");
+    }
+}
