@@ -13,6 +13,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Flux;
@@ -74,7 +75,7 @@ public class DataMaskingFilter implements GlobalFilter, Ordered {
 
                     ServerHttpRequestDecorator decoratedRequest = new ServerHttpRequestDecorator(exchange.getRequest()) {
                         @Override
-                        public HttpHeaders getHeaders() {
+                        public @NonNull HttpHeaders getHeaders() {
                             HttpHeaders headers = new HttpHeaders();
                             headers.putAll(super.getHeaders());
                             headers.setContentLength(bodyBytes.length);

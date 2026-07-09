@@ -15,6 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -23,6 +25,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,6 +34,8 @@ class AuthServiceTest {
     @Mock private UserMapper userMapper;
     @Mock private UserRoleMapper userRoleMapper;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private StringRedisTemplate redis;
+    @Mock private ValueOperations<String, String> valueOperations;
 
     @InjectMocks
     private AuthService authService;
@@ -42,6 +47,8 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(authService, "jwtSecret", SECRET);
         ReflectionTestUtils.setField(authService, "accessTokenTtl", 300);
         ReflectionTestUtils.setField(authService, "refreshTokenTtl", 1800);
+        lenient().when(redis.opsForValue()).thenReturn(valueOperations);
+        lenient().when(redis.hasKey(anyString())).thenReturn(false);
     }
 
     @Test
@@ -49,7 +56,6 @@ class AuthServiceTest {
         when(userMapper.selectCount(any())).thenReturn(0L);
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$encoded");
         when(userMapper.insert(any(SysUser.class))).thenReturn(1);
-        when(userMapper.selectRoleCodesByUserId(anyString())).thenReturn(List.of("USER"));
 
         LoginResponse resp = authService.register("newuser", "Pass1234", "test@triobase.local", null);
 

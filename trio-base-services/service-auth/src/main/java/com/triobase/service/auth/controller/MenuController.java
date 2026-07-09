@@ -2,10 +2,19 @@ package com.triobase.service.auth.controller;
 
 import com.triobase.common.core.result.R;
 import com.triobase.service.auth.dto.CreateMenuRequest;
+import com.triobase.service.auth.dto.UpdateMenuRequest;
 import com.triobase.service.auth.entity.SysMenu;
 import com.triobase.service.auth.service.MenuService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -24,6 +33,16 @@ public class MenuController {
     @PostMapping
     public R<SysMenu> create(@RequestBody CreateMenuRequest request) {
         return R.ok(menuService.create(request));
+    }
+
+    @PutMapping("/{id}")
+    public R<SysMenu> update(@PathVariable String id, @RequestBody UpdateMenuRequest request) {
+        return R.ok(menuService.update(id, request));
+    }
+
+    @PutMapping("/{id}/status")
+    public R<SysMenu> updateStatus(@PathVariable String id, @RequestParam Integer status) {
+        return R.ok(menuService.updateStatus(id, status));
     }
 
     @DeleteMapping("/{id}")
