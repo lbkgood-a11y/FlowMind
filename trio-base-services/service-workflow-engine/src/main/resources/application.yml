@@ -18,3 +18,8 @@ temporal:
       capacity:
         max-concurrent-activity-execution-size: 20
         max-concurrent-workflow-execution-size: 10
+
+logging:
+  level:
+    root: DEBUG
+    com.triobase: DEBUG

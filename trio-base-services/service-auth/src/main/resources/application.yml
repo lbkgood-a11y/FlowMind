@@ -7,7 +7,7 @@ spring:
   config:
     import: optional:nacos:${spring.application.name}.yml
   datasource:
-    url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5432/triobase}
+    url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5433/triobase}
     username: ${AUTH_DB_USERNAME:triobase}
     password: ${AUTH_DB_PASSWORD:triobase123}
     driver-class-name: org.postgresql.Driver
@@ -19,12 +19,13 @@ spring:
   cloud:
     nacos:
       discovery:
+        enabled: ${NACOS_ENABLED:false}
         server-addr: localhost:8848
 
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
 auth:
   jwt:
@@ -42,3 +43,8 @@ auth:
 temporal:
   namespace: default
   task-queue: ${spring.application.name}
+
+logging:
+  level:
+    root: DEBUG
+    com.triobase: DEBUG

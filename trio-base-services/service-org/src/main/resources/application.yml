@@ -7,7 +7,7 @@ spring:
   config:
     import: optional:nacos:${spring.application.name}.yml
   datasource:
-    url: ${ORG_DB_URL:jdbc:postgresql://localhost:5432/triobase}
+    url: ${ORG_DB_URL:jdbc:postgresql://localhost:5433/triobase}
     username: ${ORG_DB_USERNAME:triobase}
     password: ${ORG_DB_PASSWORD:triobase123}
     driver-class-name: org.postgresql.Driver
@@ -22,12 +22,19 @@ spring:
   cloud:
     nacos:
       discovery:
+        enabled: ${NACOS_ENABLED:false}
         server-addr: localhost:8848
       config:
+        enabled: ${NACOS_ENABLED:false}
         server-addr: localhost:8848
         file-extension: yml
 
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+logging:
+  level:
+    root: DEBUG
+    com.triobase: DEBUG
