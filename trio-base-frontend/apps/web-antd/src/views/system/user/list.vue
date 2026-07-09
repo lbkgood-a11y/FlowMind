@@ -183,7 +183,7 @@ const keyword = computed(() => {
 });
 
 async function loadRoles() {
-  roles.value = await getRoleList();
+  roles.value = await getRoleList({ status: 1 });
 }
 
 async function loadUsers(page = pagination.current) {

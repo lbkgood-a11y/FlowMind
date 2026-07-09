@@ -2,6 +2,7 @@ package com.triobase.service.auth.controller;
 
 import com.triobase.common.core.result.R;
 import com.triobase.service.auth.dto.CreateMenuRequest;
+import com.triobase.service.auth.dto.MenuRouteResponse;
 import com.triobase.service.auth.dto.UpdateMenuRequest;
 import com.triobase.service.auth.entity.SysMenu;
 import com.triobase.service.auth.service.MenuService;
@@ -26,8 +27,28 @@ public class MenuController {
     private final MenuService menuService;
 
     @GetMapping
-    public R<List<SysMenu>> list() {
-        return R.ok(menuService.list());
+    public R<List<SysMenu>> list(@RequestParam(required = false) String keyword,
+                                 @RequestParam(required = false) String menuGroup,
+                                 @RequestParam(required = false) String menuType,
+                                 @RequestParam(required = false) Integer status) {
+        return R.ok(menuService.list(keyword, menuGroup, menuType, status));
+    }
+
+    @GetMapping("/routes")
+    public R<List<MenuRouteResponse>> routes() {
+        return R.ok(menuService.listRoutes());
+    }
+
+    @GetMapping("/exists/key")
+    public R<Boolean> existsMenuKey(@RequestParam String menuKey,
+                                    @RequestParam(required = false) String excludeId) {
+        return R.ok(menuService.existsMenuKey(menuKey, excludeId));
+    }
+
+    @GetMapping("/exists/path")
+    public R<Boolean> existsPath(@RequestParam String path,
+                                 @RequestParam(required = false) String excludeId) {
+        return R.ok(menuService.existsPath(path, excludeId));
     }
 
     @PostMapping

@@ -20,33 +20,33 @@ spring:
         - id: service-auth
           uri: ${AUTH_SERVICE_URL:http://localhost:8081}
           predicates:
-            - Path=/api/v1/auth/**
+            - Path=/api/v1/auth,/api/v1/auth/**
         - id: service-org
           uri: ${ORG_SERVICE_URL:http://localhost:8082}
           predicates:
-            - Path=/api/v1/org/**
+            - Path=/api/v1/org,/api/v1/org/**
         - id: service-lowcode
           uri: ${LOWCODE_SERVICE_URL:http://localhost:8083}
           predicates:
-            - Path=/api/v1/forms/**,/api/v1/form-instances/**
+            - Path=/api/v1/forms,/api/v1/forms/**,/api/v1/form-instances,/api/v1/form-instances/**
         - id: ai-llm-gateway
           uri: ${ai.services.llm-gateway.url}
           predicates:
-            - Path=/api/v1/ai/**,/api/v1/llm/**
+            - Path=/api/v1/ai,/api/v1/ai/**,/api/v1/llm,/api/v1/llm/**
           metadata:
             connect-timeout: 30000
             response-timeout: 120s
         - id: ai-rag-service
           uri: ${ai.services.rag-service.url}
           predicates:
-            - Path=/api/v1/rag/**
+            - Path=/api/v1/rag,/api/v1/rag/**
           metadata:
             connect-timeout: 30000
             response-timeout: 120s
         - id: service-auth-users
           uri: ${AUTH_SERVICE_URL:http://localhost:8081}
           predicates:
-            - Path=/api/v1/users/**,/api/v1/roles/**,/api/v1/permissions/**
+            - Path=/api/v1/users,/api/v1/users/**,/api/v1/roles,/api/v1/roles/**,/api/v1/permissions,/api/v1/permissions/**,/api/v1/menus,/api/v1/menus/**,/api/v1/menu,/api/v1/menu/**
       httpclient:
         response-timeout: 120s
         connect-timeout: 5000

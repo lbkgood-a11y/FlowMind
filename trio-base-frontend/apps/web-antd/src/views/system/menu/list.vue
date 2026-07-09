@@ -2,12 +2,13 @@
 import type { SystemMenuApi } from '#/api';
 import type { TableProps } from 'ant-design-vue';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 
 import { Page } from '@vben/common-ui';
 import { IconifyIcon, Plus } from '@vben/icons';
 
 import {
+  AutoComplete,
   Button,
   Checkbox,
   Divider,
@@ -33,9 +34,12 @@ import {
   createMenu,
   deleteMenu,
   getMenuList,
+  menuKeyExists,
+  menuPathExists,
   updateMenu,
   updateMenuStatus,
 } from '#/api';
+import { componentKeys } from '#/router/routes';
 
 type MenuFormModel = {
   activeIcon?: string;
@@ -51,6 +55,7 @@ type MenuFormModel = {
   hideInTab: boolean;
   icon?: string;
   keepAlive: boolean;
+  menuGroup: string;
   menuKey: string;
   menuName: string;
   menuType: SystemMenuApi.MenuType;
@@ -61,10 +66,18 @@ type MenuFormModel = {
   status: 0 | 1;
 };
 
+type MenuQueryModel = {
+  keyword?: string;
+  menuGroup?: string;
+  menuType?: SystemMenuApi.MenuType;
+  status?: 0 | 1;
+};
+
 type MenuColumnKey =
   | 'action'
   | 'auth'
   | 'component'
+  | 'group'
   | 'path'
   | 'status'
   | 'title'
@@ -91,6 +104,7 @@ const menuTypeOptions: Array<{
 const defaultColumnSettings: MenuColumnSetting[] = [
   { key: 'title', title: '标题', visible: true },
   { key: 'type', title: '类型', visible: true },
+  { key: 'group', title: '分组', visible: false },
   { key: 'auth', title: '权限标识', visible: true },
   { key: 'path', title: '路由地址', visible: true },
   { key: 'component', title: '页面组件', visible: true },
@@ -109,12 +123,26 @@ const legacyIconMap: Record<string, string> = {
 };
 
 const menus = ref<SystemMenuApi.SystemMenu[]>([]);
+const allMenus = ref<SystemMenuApi.SystemMenu[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const drawerOpen = ref(false);
+const collapsed = ref(true);
+const queryHidden = ref(false);
 const blockFullscreen = ref(false);
 const columnSettingOpen = ref(false);
+const tableKey = ref(0);
+const expandedRowKeys = ref<Array<number | string>>([]);
+const autoExpandRows = ref(true);
 const editingMenu = ref<SystemMenuApi.SystemMenu>();
+const hydratingForm = ref(false);
+
+const queryForm = reactive<MenuQueryModel>({
+  keyword: '',
+  menuGroup: undefined,
+  menuType: undefined,
+  status: undefined,
+});
 
 const columnSettings = reactive<MenuColumnSetting[]>(
   defaultColumnSettings.map((item) => ({ ...item })),
@@ -137,6 +165,7 @@ const formModel = reactive<MenuFormModel>({
   hideInTab: false,
   icon: '',
   keepAlive: false,
+  menuGroup: 'general',
   menuKey: '',
   menuName: '',
   menuType: 'menu',
@@ -148,15 +177,51 @@ const formModel = reactive<MenuFormModel>({
 });
 
 const menuTree = computed(() => buildTree(menus.value));
+const allMenuTree = computed(() => buildTree(allMenus.value));
+const componentOptions = computed(() =>
+  componentKeys
+    .filter((key) => !key.includes('/_core/'))
+    .map((key) => ({
+      label: key,
+      value: key,
+    })),
+);
+const menuGroupOptions = computed(() => {
+  const groups = new Set(['general', 'system', 'admin', 'forms']);
+  allMenus.value.forEach((item) => {
+    if (item.menuGroup) {
+      groups.add(item.menuGroup);
+    }
+  });
+  return [...groups].map((group) => ({ label: group, value: group }));
+});
+const componentPlaceholder = computed(() => {
+  if (formModel.menuType === 'embedded') {
+    return '请输入内嵌页面地址';
+  }
+  if (formModel.menuType === 'link') {
+    return '请输入外链地址';
+  }
+  if (formModel.menuType === 'catalog') {
+    return '目录无需页面组件';
+  }
+  if (formModel.menuType === 'button') {
+    return '按钮无需页面组件';
+  }
+  return '请选择或输入页面组件';
+});
 const parentOptions = computed(() => {
   const excluded = new Set<string>();
   if (editingMenu.value) {
-    collectIds(editingMenu.value, excluded);
+    collectIds(
+      findMenuById(allMenuTree.value, editingMenu.value.id) ?? editingMenu.value,
+      excluded,
+    );
   }
-  return flattenMenus(menuTree.value)
+  return flattenMenus(allMenuTree.value)
     .filter((item) => !excluded.has(item.id) && item.menuType !== 'button')
     .map((item) => ({
-      label: `${'　'.repeat(item.level)}${item.menuName}`,
+      label: `${'　'.repeat(item.level)}${item.menuName} (${getTypeMeta(item.menuType).label})`,
       value: item.id,
     }));
 });
@@ -191,6 +256,13 @@ const baseColumns: Record<MenuColumnKey, NonNullable<TableProps['columns']>[numb
       key: 'component',
       title: '页面组件',
       width: 320,
+    },
+    group: {
+      align: 'center',
+      dataIndex: 'menuGroup',
+      key: 'group',
+      title: '分组',
+      width: 100,
     },
     path: { dataIndex: 'path', key: 'path', title: '路由地址', width: 220 },
     status: { align: 'center', key: 'status', title: '状态', width: 110 },
@@ -258,8 +330,39 @@ function collectIds(menu: SystemMenuApi.SystemMenu, ids: Set<string>) {
   menu.children?.forEach((child) => collectIds(child, ids));
 }
 
+function findMenuById(
+  list: SystemMenuApi.SystemMenu[],
+  id: string,
+): SystemMenuApi.SystemMenu | undefined {
+  for (const item of list) {
+    if (item.id === id) {
+      return item;
+    }
+    const matched = findMenuById(item.children ?? [], id);
+    if (matched) {
+      return matched;
+    }
+  }
+}
+
+function collectExpandedKeys(list: SystemMenuApi.SystemMenu[]) {
+  const keys: string[] = [];
+  list.forEach((item) => {
+    if (item.children?.length) {
+      keys.push(item.id);
+      keys.push(...collectExpandedKeys(item.children));
+    }
+  });
+  return keys;
+}
+
 function boolValue(value?: 0 | 1) {
   return value === 1;
+}
+
+function isExternalUrl(value?: string) {
+  const normalized = value?.trim();
+  return !!normalized && (normalized.startsWith('http://') || normalized.startsWith('https://'));
 }
 
 function getTypeMeta(type?: SystemMenuApi.MenuType) {
@@ -295,10 +398,38 @@ function resolveMenuIcon(record: SystemMenuApi.SystemMenu) {
 async function loadMenus() {
   loading.value = true;
   try {
-    menus.value = await getMenuList();
+    const params: SystemMenuApi.MenuListParams = {
+      keyword: queryForm.keyword?.trim() || undefined,
+      menuGroup: queryForm.menuGroup,
+      menuType: queryForm.menuType,
+      status: queryForm.status,
+    };
+    const hasQuery = Object.values(params).some((value) => value !== undefined);
+    const [filteredMenus, fullMenus] = hasQuery
+      ? await Promise.all([getMenuList(params), getMenuList()])
+      : await getMenuList().then((items) => [items, items] as const);
+    menus.value = filteredMenus;
+    allMenus.value = fullMenus;
+    const tree = buildTree(menus.value);
+    expandedRowKeys.value = autoExpandRows.value ? collectExpandedKeys(tree) : [];
+    tableKey.value += 1;
   } finally {
     loading.value = false;
   }
+}
+
+function resetQuery() {
+  queryForm.keyword = '';
+  queryForm.menuGroup = undefined;
+  queryForm.menuType = undefined;
+  queryForm.status = undefined;
+  autoExpandRows.value = true;
+  loadMenus();
+}
+
+function handleToolbarSearch() {
+  queryHidden.value = true;
+  loadMenus();
 }
 
 function resetForm(parentId?: string) {
@@ -316,6 +447,7 @@ function resetForm(parentId?: string) {
   formModel.hideInTab = false;
   formModel.icon = '';
   formModel.keepAlive = false;
+  formModel.menuGroup = 'general';
   formModel.menuKey = '';
   formModel.menuName = '';
   formModel.menuType = 'menu';
@@ -332,6 +464,7 @@ function openCreate(parent?: SystemMenuApi.SystemMenu) {
 }
 
 function openEdit(record: SystemMenuApi.SystemMenu) {
+  hydratingForm.value = true;
   editingMenu.value = record;
   formModel.activeIcon = record.activeIcon ?? '';
   formModel.activePath = record.activePath ?? '';
@@ -346,6 +479,7 @@ function openEdit(record: SystemMenuApi.SystemMenu) {
   formModel.hideInTab = boolValue(record.hideInTab);
   formModel.icon = record.icon ?? '';
   formModel.keepAlive = boolValue(record.keepAlive);
+  formModel.menuGroup = record.menuGroup ?? 'general';
   formModel.menuKey = record.menuKey;
   formModel.menuName = record.menuName;
   formModel.menuType = record.menuType ?? 'menu';
@@ -355,6 +489,9 @@ function openEdit(record: SystemMenuApi.SystemMenu) {
   formModel.sortOrder = record.sortOrder ?? 100;
   formModel.status = record.status ?? record.visible ?? 1;
   drawerOpen.value = true;
+  void nextTick(() => {
+    hydratingForm.value = false;
+  });
 }
 
 function validateForm() {
@@ -374,6 +511,20 @@ function validateForm() {
     message.warning('请输入页面组件');
     return false;
   }
+  if (
+    (formModel.menuType === 'embedded' || formModel.menuType === 'link') &&
+    !formModel.component?.trim()
+  ) {
+    message.warning('请输入页面地址');
+    return false;
+  }
+  if (
+    (formModel.menuType === 'embedded' || formModel.menuType === 'link') &&
+    !isExternalUrl(formModel.component)
+  ) {
+    message.warning('请输入 http/https 开头的页面地址');
+    return false;
+  }
   if (formModel.menuType === 'button' && !formModel.permissionCode?.trim()) {
     message.warning('请输入按钮权限标识');
     return false;
@@ -382,6 +533,10 @@ function validateForm() {
 }
 
 function buildPayload(): SystemMenuApi.SaveMenuParams {
+  const component =
+    formModel.menuType === 'button' || formModel.menuType === 'catalog'
+      ? undefined
+      : formModel.component?.trim() || undefined;
   return {
     activeIcon: formModel.activeIcon || undefined,
     activePath: formModel.activePath || undefined,
@@ -389,23 +544,40 @@ function buildPayload(): SystemMenuApi.SaveMenuParams {
     badge: formModel.badge || undefined,
     badgeType: formModel.badgeType || undefined,
     badgeVariant: formModel.badgeVariant || undefined,
-    component: formModel.component || undefined,
+    component,
     hideChildrenInMenu: formModel.hideChildrenInMenu,
     hideInBreadcrumb: formModel.hideInBreadcrumb,
-    hideInMenu: formModel.hideInMenu,
+    hideInMenu: formModel.menuType === 'button' ? true : formModel.hideInMenu,
     hideInTab: formModel.hideInTab,
     icon: formModel.icon || undefined,
     keepAlive: formModel.keepAlive,
+    menuGroup: formModel.menuGroup?.trim() || undefined,
     menuKey: formModel.menuKey.trim(),
     menuName: formModel.menuName.trim(),
     menuType: formModel.menuType,
     parentId: formModel.parentId || undefined,
     path: formModel.menuType === 'button' ? undefined : formModel.path?.trim(),
-    permissionCode: formModel.permissionCode || undefined,
+    permissionCode: formModel.permissionCode?.trim() || undefined,
     sortOrder: formModel.sortOrder,
     status: formModel.status,
     visible: formModel.status === 1,
   };
+}
+
+async function validateUniqueFields() {
+  const excludeId = editingMenu.value?.id;
+  const menuKey = formModel.menuKey.trim();
+  if (await menuKeyExists(menuKey, excludeId)) {
+    message.warning('菜单名称已存在');
+    return false;
+  }
+
+  const path = formModel.menuType === 'button' ? '' : formModel.path?.trim();
+  if (path && (await menuPathExists(path, excludeId))) {
+    message.warning('路由地址已存在');
+    return false;
+  }
+  return true;
 }
 
 async function submitForm() {
@@ -414,6 +586,9 @@ async function submitForm() {
   }
   saving.value = true;
   try {
+    if (!(await validateUniqueFields())) {
+      return;
+    }
     const payload = buildPayload();
     if (editingMenu.value) {
       await updateMenu(editingMenu.value.id, payload);
@@ -438,9 +613,8 @@ async function removeMenu(record: SystemMenuApi.SystemMenu) {
 async function toggleStatus(record: SystemMenuApi.SystemMenu) {
   const nextStatus = (record.status ?? record.visible ?? 1) === 1 ? 0 : 1;
   await updateMenuStatus(record.id, nextStatus);
-  record.status = nextStatus;
-  record.visible = nextStatus;
   message.success('状态已更新');
+  await loadMenus();
 }
 
 function toggleFullscreen() {
@@ -468,23 +642,147 @@ function cancelColumnSettings() {
 
 function confirmColumnSettings() {
   columnSettings.splice(0, columnSettings.length, ...cloneColumnSettings(columnDraft.value));
+  tableKey.value += 1;
   columnSettingOpen.value = false;
 }
+
+function expandAll() {
+  autoExpandRows.value = true;
+  expandedRowKeys.value = collectExpandedKeys(menuTree.value);
+}
+
+function collapseAll() {
+  autoExpandRows.value = false;
+  expandedRowKeys.value = [];
+}
+
+function onExpandedRowsChange(keys: Array<number | string>) {
+  expandedRowKeys.value = keys;
+  autoExpandRows.value = keys.length > 0;
+}
+
+watch(
+  () => formModel.menuType,
+  (type, previousType) => {
+    if (hydratingForm.value) {
+      return;
+    }
+    if (type === 'button') {
+      formModel.path = '';
+      formModel.component = '';
+      formModel.hideInMenu = true;
+      return;
+    }
+
+    if (previousType === 'button' && formModel.hideInMenu) {
+      formModel.hideInMenu = false;
+    }
+
+    if (type === 'catalog') {
+      formModel.component = '';
+      return;
+    }
+
+    if (type === 'menu' && (previousType === 'embedded' || previousType === 'link')) {
+      formModel.component = '';
+      return;
+    }
+
+    if ((type === 'embedded' || type === 'link') && !isExternalUrl(formModel.component)) {
+      formModel.component = '';
+    }
+  },
+);
 
 onMounted(loadMenus);
 </script>
 
 <template>
   <Page auto-content-height>
-    <div class="menu-page" :class="{ 'is-block-fullscreen': blockFullscreen }">
-      <section class="menu-panel">
-        <div class="menu-toolbar">
-          <div></div>
+    <div
+      class="menu-page"
+      :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }"
+    >
+      <section v-show="!queryHidden" class="query-panel">
+        <div class="query-grid" :class="{ collapsed }">
+          <FormItem label="关键词">
+            <Input
+              v-model:value="queryForm.keyword"
+              allow-clear
+              placeholder="名称/标题/路径/权限"
+              @press-enter="loadMenus"
+            />
+          </FormItem>
+          <FormItem label="菜单类型">
+            <Select
+              v-model:value="queryForm.menuType"
+              allow-clear
+              placeholder="请选择"
+              :options="menuTypeOptions"
+            />
+          </FormItem>
+          <FormItem label="状态">
+            <Select
+              v-model:value="queryForm.status"
+              allow-clear
+              placeholder="请选择"
+              :options="[
+                { label: '启用', value: 1 },
+                { label: '禁用', value: 0 },
+              ]"
+            />
+          </FormItem>
+          <FormItem v-if="!collapsed" label="分组">
+            <Select
+              v-model:value="queryForm.menuGroup"
+              allow-clear
+              show-search
+              placeholder="请选择"
+              :options="menuGroupOptions"
+            />
+          </FormItem>
+          <div class="query-actions">
+            <Button @click="resetQuery">重置</Button>
+            <Button type="primary" @click="loadMenus">搜索</Button>
+            <Button type="link" @click="collapsed = !collapsed">
+              {{ collapsed ? '展开' : '收起' }}
+              <IconifyIcon
+                :icon="collapsed ? 'lucide:chevron-down' : 'lucide:chevron-up'"
+                class="ml-1 size-4"
+              />
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      <section class="list-panel">
+        <div class="list-header">
+          <div class="list-title">
+            <h2>菜单列表</h2>
+            <Button v-if="queryHidden" type="link" @click="queryHidden = false">
+              展开搜索
+            </Button>
+          </div>
           <Space :size="8">
             <Button type="primary" @click="openCreate()">
               <Plus class="size-4" />
               新增菜单
             </Button>
+            <Tooltip title="查询并隐藏搜索栏">
+              <Button shape="circle" type="primary" @click="handleToolbarSearch">
+                <IconifyIcon icon="lucide:search" class="size-4" />
+              </Button>
+            </Tooltip>
+            <Tooltip title="展开全部">
+              <Button shape="circle" @click="expandAll">
+                <IconifyIcon icon="lucide:unfold-vertical" class="size-4" />
+              </Button>
+            </Tooltip>
+            <Tooltip title="收起全部">
+              <Button shape="circle" @click="collapseAll">
+                <IconifyIcon icon="lucide:fold-vertical" class="size-4" />
+              </Button>
+            </Tooltip>
             <Tooltip title="刷新">
               <Button shape="circle" @click="loadMenus">
                 <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
@@ -543,74 +841,84 @@ onMounted(loadMenus);
           </Space>
         </div>
 
-        <Table
-          :columns="columns"
-          :data-source="menuTree"
-          :loading="loading"
-          :pagination="false"
-          :scroll="{ x: 'max-content' }"
-          bordered
-          row-key="id"
-          size="middle"
-        >
-          <template #emptyText>
-            <Empty description="暂无数据" />
-          </template>
-
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'title'">
-              <div class="title-cell">
-                <IconifyIcon
-                  :icon="resolveMenuIcon(asMenu(record))"
-                  class="size-4"
-                />
-                <span>{{ record.menuName }}</span>
-              </div>
+        <div class="table-frame">
+          <Table
+            :key="tableKey"
+            v-model:expanded-row-keys="expandedRowKeys"
+            :columns="columns"
+            :data-source="menuTree"
+            :loading="loading"
+            :pagination="false"
+            :scroll="{ x: 'max-content' }"
+            bordered
+            row-key="id"
+            size="middle"
+            @expanded-rows-change="onExpandedRowsChange"
+          >
+            <template #emptyText>
+              <Empty description="暂无数据" />
             </template>
 
-            <template v-else-if="column.key === 'type'">
-              <Tag :color="getTypeMeta(asMenu(record).menuType).color">
-                {{ getTypeMeta(asMenu(record).menuType).label }}
-              </Tag>
-            </template>
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'title'">
+                <div class="title-cell">
+                  <IconifyIcon
+                    :icon="resolveMenuIcon(asMenu(record))"
+                    class="size-4"
+                  />
+                  <span>{{ record.menuName }}</span>
+                </div>
+              </template>
 
-            <template v-else-if="column.key === 'auth'">
-              {{ record.permissionCode || record.permissionId || '' }}
-            </template>
+              <template v-else-if="column.key === 'type'">
+                <Tag :color="getTypeMeta(asMenu(record).menuType).color">
+                  {{ getTypeMeta(asMenu(record).menuType).label }}
+                </Tag>
+              </template>
 
-            <template v-else-if="column.key === 'component'">
-              {{ displayComponent(asMenu(record)) }}
-            </template>
+              <template v-else-if="column.key === 'auth'">
+                {{ record.permissionCode || record.permissionId || '-' }}
+              </template>
 
-            <template v-else-if="column.key === 'status'">
-              <Tag :color="(record.status ?? record.visible ?? 1) === 1 ? 'green' : 'red'">
-                {{ (record.status ?? record.visible ?? 1) === 1 ? '已启用' : '已禁用' }}
-              </Tag>
-            </template>
+              <template v-else-if="column.key === 'component'">
+                {{ displayComponent(asMenu(record)) }}
+              </template>
 
-            <template v-else-if="column.key === 'action'">
-              <Space>
-                <Button size="small" type="link" @click="openCreate(asMenu(record))">
-                  新增下级
-                </Button>
-                <Button size="small" type="link" @click="openEdit(asMenu(record))">
-                  修改
-                </Button>
-                <Button size="small" type="link" @click="toggleStatus(asMenu(record))">
-                  {{ (record.status ?? record.visible ?? 1) === 1 ? '禁用' : '启用' }}
-                </Button>
-                <Popconfirm
-                  title="确认删除该菜单？"
-                  ok-text="删除"
-                  cancel-text="取消"
-                  @confirm="removeMenu(asMenu(record))"
-                >
-                  <Button danger size="small" type="link">删除</Button>
-                </Popconfirm>
-              </Space>
+              <template v-else-if="column.key === 'status'">
+                <Tag :color="(record.status ?? record.visible ?? 1) === 1 ? 'green' : 'red'">
+                  {{ (record.status ?? record.visible ?? 1) === 1 ? '已启用' : '已禁用' }}
+                </Tag>
+              </template>
+
+              <template v-else-if="column.key === 'action'">
+                <Space>
+                  <Button
+                    v-if="asMenu(record).menuType !== 'button'"
+                    size="small"
+                    type="link"
+                    @click="openCreate(asMenu(record))"
+                  >
+                    新增下级
+                  </Button>
+                  <Button size="small" type="link" @click="openEdit(asMenu(record))">
+                    修改
+                  </Button>
+                  <Button size="small" type="link" @click="toggleStatus(asMenu(record))">
+                    {{ (record.status ?? record.visible ?? 1) === 1 ? '禁用' : '启用' }}
+                  </Button>
+                  <Popconfirm
+                    title="确认删除该菜单？"
+                    ok-text="删除"
+                    cancel-text="取消"
+                    @confirm="removeMenu(asMenu(record))"
+                  >
+                    <Button danger size="small" type="link">删除</Button>
+                  </Popconfirm>
+                </Space>
+              </template>
             </template>
-          </template>
-        </Table>
+          </Table>
+        </div>
       </section>
 
       <Drawer
@@ -644,6 +952,14 @@ onMounted(loadMenus);
                 :options="parentOptions"
               />
             </FormItem>
+            <FormItem label="菜单分组">
+              <AutoComplete
+                v-model:value="formModel.menuGroup"
+                allow-clear
+                placeholder="请选择或输入"
+                :options="menuGroupOptions"
+              />
+            </FormItem>
             <FormItem label="标题" required>
               <Input v-model:value="formModel.menuName" allow-clear placeholder="请输入" />
             </FormItem>
@@ -664,8 +980,21 @@ onMounted(loadMenus);
             <FormItem label="激活图标">
               <Input v-model:value="formModel.activeIcon" allow-clear placeholder="请选择" />
             </FormItem>
-            <FormItem label="页面组件" :required="formModel.menuType === 'menu'">
-              <Input v-model:value="formModel.component" allow-clear placeholder="请输入" />
+            <FormItem
+              label="页面组件"
+              :required="
+                formModel.menuType === 'menu' ||
+                formModel.menuType === 'embedded' ||
+                formModel.menuType === 'link'
+              "
+            >
+              <AutoComplete
+                v-model:value="formModel.component"
+                allow-clear
+                :disabled="formModel.menuType === 'button' || formModel.menuType === 'catalog'"
+                :options="componentOptions"
+                :placeholder="componentPlaceholder"
+              />
             </FormItem>
             <FormItem label="权限标识" :required="formModel.menuType === 'button'">
               <Input
@@ -723,8 +1052,10 @@ onMounted(loadMenus);
 
 <style scoped>
 .menu-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-height: 100%;
-  padding: 8px;
   background: #f1f3f6;
 }
 
@@ -733,20 +1064,81 @@ onMounted(loadMenus);
   inset: 0;
   z-index: 1000;
   height: 100vh;
+  padding: 12px;
   overflow: auto;
 }
 
-.menu-panel {
-  min-height: 100%;
-  padding: 8px;
+.menu-page.is-block-fullscreen .list-panel {
+  flex: 1;
+}
+
+.query-panel,
+.list-panel {
   background: #fff;
 }
 
-.menu-toolbar {
+.query-panel {
+  padding: 22px 8px 16px;
+}
+
+.query-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
+  column-gap: 52px;
+  row-gap: 10px;
+  align-items: center;
+}
+
+.query-grid.collapsed {
+  grid-template-rows: auto;
+}
+
+.query-grid :deep(.ant-form-item) {
+  margin-bottom: 0;
+}
+
+.query-grid :deep(.ant-form-item-label) {
+  width: 112px;
+  padding-right: 8px;
+  font-weight: 600;
+}
+
+.query-grid :deep(.ant-form-item-control) {
+  min-width: 0;
+}
+
+.query-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.list-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 16px 8px 10px;
+}
+
+.list-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+}
+
+.list-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.list-header h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .column-setting-trigger.is-active {
@@ -760,14 +1152,43 @@ onMounted(loadMenus);
   gap: 6px;
 }
 
-.menu-panel :deep(.ant-table-thead > tr > th) {
+.table-frame {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.table-frame :deep(.ant-table-wrapper),
+.table-frame :deep(.ant-spin-nested-loading),
+.table-frame :deep(.ant-spin-container) {
+  height: 100%;
+}
+
+.table-frame :deep(.ant-table) {
+  height: 100%;
+  border-radius: 4px;
+}
+
+.table-frame :deep(.ant-table-container) {
+  min-height: 660px;
+  border-inline-start: 0 !important;
+}
+
+.table-frame :deep(.ant-table-thead > tr > th) {
   background: #f5f5f5;
   color: #2b3340;
   font-weight: 600;
 }
 
-.menu-panel :deep(.ant-table-container) {
-  min-height: 660px;
+.table-frame :deep(.ant-table-cell) {
+  overflow-wrap: break-word;
+}
+
+.table-frame :deep(.ant-empty) {
+  margin: 120px 0;
 }
 
 .menu-form :deep(.ant-form-item-label) {
@@ -841,6 +1262,11 @@ onMounted(loadMenus);
 }
 
 @media (max-width: 900px) {
+  .query-grid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr));
+    column-gap: 24px;
+  }
+
   .form-grid,
   .setting-grid {
     grid-template-columns: 1fr;
@@ -848,6 +1274,16 @@ onMounted(loadMenus);
 
   .setting-grid {
     padding: 8px 24px;
+  }
+}
+
+@media (max-width: 760px) {
+  .query-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .query-actions {
+    justify-content: flex-start;
   }
 }
 </style>

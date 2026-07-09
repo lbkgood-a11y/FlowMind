@@ -171,6 +171,9 @@ public class UserService {
             if (role == null) {
                 throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
             }
+            if (role.getStatus() != null && role.getStatus() == 0) {
+                throw new BizException(40044, "ROLE_DISABLED");
+            }
             SysUserRole userRole = new SysUserRole();
             userRole.setUserId(userId);
             userRole.setRoleId(roleId);
