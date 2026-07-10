@@ -7,8 +7,8 @@ import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("sys_role_permission")
-public class SysRolePermission extends BaseEntity {
+@TableName("sys_role_menu")
+public class SysRoleMenu extends BaseEntity {
     private String roleId;
-    private String permissionId;
+    private String menuId;
 }

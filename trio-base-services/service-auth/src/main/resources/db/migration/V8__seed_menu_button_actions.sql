@@ -4,15 +4,15 @@ INSERT INTO sys_menu (
     hide_in_menu, hide_children_in_menu, hide_in_breadcrumb, hide_in_tab,
     badge, badge_type, badge_variant, permission_id, permission_code, description
 ) VALUES
-    ('01HK153X100000000000000010', '01HK153X0W000000000000000W', 'SystemMenuCreate', '新增', NULL, NULL, NULL, NULL, NULL,
+    ('01HK153X100000000000000010', 'M006', 'SystemMenuCreate', '新增', NULL, NULL, NULL, NULL, NULL,
      'button', 'system', 10, 1, 1, 0, 0,
      1, 0, 0, 0,
      NULL, NULL, NULL, NULL, 'System:Menu:Create', '菜单管理-新增按钮'),
-    ('01HK153X110000000000000011', '01HK153X0W000000000000000W', 'SystemMenuEdit', '修改', NULL, NULL, NULL, NULL, NULL,
+    ('01HK153X110000000000000011', 'M006', 'SystemMenuEdit', '修改', NULL, NULL, NULL, NULL, NULL,
      'button', 'system', 20, 1, 1, 0, 0,
      1, 0, 0, 0,
      NULL, NULL, NULL, NULL, 'System:Menu:Edit', '菜单管理-修改按钮'),
-    ('01HK153X120000000000000012', '01HK153X0W000000000000000W', 'SystemMenuDelete', '删除', NULL, NULL, NULL, NULL, NULL,
+    ('01HK153X120000000000000012', 'M006', 'SystemMenuDelete', '删除', NULL, NULL, NULL, NULL, NULL,
      'button', 'system', 30, 1, 1, 0, 0,
      1, 0, 0, 0,
      NULL, NULL, NULL, NULL, 'System:Menu:Delete', '菜单管理-删除按钮')

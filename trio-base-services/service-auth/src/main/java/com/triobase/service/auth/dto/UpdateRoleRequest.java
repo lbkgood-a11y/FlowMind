@@ -9,5 +9,5 @@ public class UpdateRoleRequest {
     private String roleName;
     private String description;
     private Integer status;
-    private List<String> permissionIds;
+    private List<String> menuIds;
 }

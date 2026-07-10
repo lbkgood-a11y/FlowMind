@@ -7,10 +7,10 @@ import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.service.auth.dto.CreatePermissionRequest;
+import com.triobase.service.auth.entity.SysMenu;
 import com.triobase.service.auth.entity.SysPermission;
-import com.triobase.service.auth.entity.SysRolePermission;
+import com.triobase.service.auth.mapper.MenuMapper;
 import com.triobase.service.auth.mapper.PermissionMapper;
-import com.triobase.service.auth.mapper.RolePermissionMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +23,7 @@ import java.util.List;
 public class PermissionService {
 
     private final PermissionMapper permissionMapper;
-    private final RolePermissionMapper rolePermissionMapper;
+    private final MenuMapper menuMapper;
 
     public List<SysPermission> list() {
         return permissionMapper.selectList(new LambdaQueryWrapper<SysPermission>()
@@ -67,8 +67,10 @@ public class PermissionService {
         if (permission == null) {
             throw new BizException(40421, "PERMISSION_NOT_FOUND");
         }
-        rolePermissionMapper.delete(new LambdaQueryWrapper<SysRolePermission>()
-                .eq(SysRolePermission::getPermissionId, id));
+        if (menuMapper.selectCount(new LambdaQueryWrapper<SysMenu>()
+                .eq(SysMenu::getPermissionId, id)) > 0) {
+            throw new BizException(40023, "PERMISSION_BOUND_TO_MENU");
+        }
         permissionMapper.deleteById(id);
     }
 }

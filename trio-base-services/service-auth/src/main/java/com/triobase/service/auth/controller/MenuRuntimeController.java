@@ -1,6 +1,7 @@
 package com.triobase.service.auth.controller;
 
 import com.triobase.common.core.result.R;
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.service.auth.dto.MenuRouteResponse;
 import com.triobase.service.auth.service.MenuService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,6 @@ public class MenuRuntimeController {
 
     @GetMapping("/all")
     public R<List<MenuRouteResponse>> all() {
-        return R.ok(menuService.listRoutes());
+        return R.ok(menuService.listRoutesForUser(SecurityContextHolder.getUserId()));
     }
 }

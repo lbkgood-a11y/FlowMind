@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SystemPermissionApi, SystemRoleApi } from '#/api';
+import type { SystemMenuApi, SystemRoleApi } from '#/api';
 import type { TableProps } from 'ant-design-vue';
 import type { Dayjs } from 'dayjs';
 
@@ -38,7 +38,7 @@ import {
 import {
   createRole,
   deleteRole,
-  getPermissionList,
+  getMenuList,
   getRoleDetail,
   getRolePage,
   roleCodeExists,
@@ -51,7 +51,7 @@ const Textarea = Input.TextArea;
 
 type RoleFormModel = {
   description?: string;
-  permissionIds: string[];
+  menuIds: string[];
   roleCode: string;
   roleName: string;
   status: 0 | 1;
@@ -92,9 +92,9 @@ const defaultColumnSettings: RoleColumnSetting[] = [
 ];
 
 const roles = ref<SystemRoleApi.SystemRole[]>([]);
-const permissions = ref<SystemPermissionApi.SystemPermission[]>([]);
+const menus = ref<SystemMenuApi.SystemMenu[]>([]);
 const loading = ref(false);
-const loadingPermissions = ref(false);
+const loadingMenus = ref(false);
 const saving = ref(false);
 const formOpen = ref(false);
 const detailOpen = ref(false);
@@ -123,7 +123,7 @@ const pagination = reactive({
 
 const formModel = reactive<RoleFormModel>({
   description: '',
-  permissionIds: [],
+  menuIds: [],
   roleCode: '',
   roleName: '',
   status: 1,
@@ -136,40 +136,10 @@ const columnDraft = ref<RoleColumnSetting[]>(
   defaultColumnSettings.map((item) => ({ ...item })),
 );
 
-const permissionCheckedKeys = ref<Array<number | string>>([]);
+const menuCheckedKeys = ref<Array<number | string>>([]);
 
-const permissionIds = computed(() => new Set(permissions.value.map((item) => item.id)));
-const permissionTree = computed(() => {
-  const resourceMap = new Map<
-    string,
-    {
-      children: Array<{ key: string; title: string }>;
-      key: string;
-      title: string;
-    }
-  >();
-
-  permissions.value.forEach((permission) => {
-    const resource = permission.resource || '未分组';
-    const resourceKey = `resource:${resource}`;
-    if (!resourceMap.has(resource)) {
-      resourceMap.set(resource, {
-        children: [],
-        key: resourceKey,
-        title: resource,
-      });
-    }
-    resourceMap.get(resource)?.children.push({
-      key: permission.id,
-      title: `${permission.action} ${permission.description || ''}`.trim(),
-    });
-  });
-
-  return [...resourceMap.values()].map((item) => ({
-    ...item,
-    children: item.children.sort((a, b) => a.title.localeCompare(b.title)),
-  }));
-});
+const menuIds = computed(() => new Set(menus.value.map((item) => item.id)));
+const menuTree = computed(() => buildMenuTree(menus.value));
 
 const allDraftChecked = computed({
   get: () => columnDraft.value.every((item) => item.visible),
@@ -235,15 +205,73 @@ function formatDate(value?: string) {
   return value ? value.replace('T', ' ') : '-';
 }
 
-async function loadPermissions(force = false) {
-  if (!force && permissions.value.length > 0) {
+function menuTypeLabel(type?: SystemMenuApi.MenuType) {
+  const labels: Record<SystemMenuApi.MenuType, string> = {
+    button: '权限点',
+    catalog: '目录',
+    embedded: '内嵌',
+    link: '外链',
+    menu: '菜单',
+  };
+  return labels[type ?? 'menu'];
+}
+
+function buildMenuTree(list: SystemMenuApi.SystemMenu[]) {
+  const nodeMap = new Map<
+    string,
+    {
+      children: any[];
+      key: string;
+      sortOrder: number;
+      title: string;
+    }
+  >();
+  list.forEach((menu) => {
+    nodeMap.set(menu.id, {
+      children: [],
+      key: menu.id,
+      sortOrder: menu.sortOrder ?? 100,
+      title: `${menu.menuName || menu.menuKey} (${menuTypeLabel(menu.menuType)})`,
+    });
+  });
+
+  const roots: any[] = [];
+  list.forEach((menu) => {
+    const node = nodeMap.get(menu.id);
+    if (!node) {
+      return;
+    }
+    if (menu.parentId && nodeMap.has(menu.parentId)) {
+      nodeMap.get(menu.parentId)?.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  const sortNodes = (nodes: any[]) => {
+    nodes.sort((a, b) => a.sortOrder - b.sortOrder);
+    nodes.forEach((node) => {
+      if (node.children.length > 0) {
+        sortNodes(node.children);
+      } else {
+        delete node.children;
+      }
+      delete node.sortOrder;
+    });
+  };
+  sortNodes(roots);
+  return roots;
+}
+
+async function loadMenusForAuthorization(force = false) {
+  if (!force && menus.value.length > 0) {
     return;
   }
-  loadingPermissions.value = true;
+  loadingMenus.value = true;
   try {
-    permissions.value = await getPermissionList();
+    menus.value = await getMenuList();
   } finally {
-    loadingPermissions.value = false;
+    loadingMenus.value = false;
   }
 }
 
@@ -290,36 +318,36 @@ function resetForm() {
   editingRole.value = undefined;
   permissionOnly.value = false;
   formModel.description = '';
-  formModel.permissionIds = [];
+  formModel.menuIds = [];
   formModel.roleCode = '';
   formModel.roleName = '';
   formModel.status = 1;
-  permissionCheckedKeys.value = [];
+  menuCheckedKeys.value = [];
 }
 
 async function openCreate() {
   resetForm();
-  await loadPermissions(true);
+  await loadMenusForAuthorization(true);
   formOpen.value = true;
 }
 
 async function openEdit(record: SystemRoleApi.SystemRole, onlyPermissions = false) {
   resetForm();
   permissionOnly.value = onlyPermissions;
-  await loadPermissions(true);
+  await loadMenusForAuthorization(true);
   const detail = await getRoleDetail(record.id);
   editingRole.value = detail;
   formModel.description = detail.description ?? '';
-  formModel.permissionIds = detail.permissionIds ?? [];
+  formModel.menuIds = detail.menuIds ?? [];
   formModel.roleCode = detail.roleCode;
   formModel.roleName = detail.roleName;
   formModel.status = statusValue(detail);
-  permissionCheckedKeys.value = [...formModel.permissionIds];
+  menuCheckedKeys.value = [...formModel.menuIds];
   formOpen.value = true;
 }
 
 async function openDetail(record: SystemRoleApi.SystemRole) {
-  await loadPermissions(true);
+  await loadMenusForAuthorization(true);
   detailRole.value = await getRoleDetail(record.id);
   detailOpen.value = true;
 }
@@ -349,10 +377,10 @@ function confirmColumnSettings() {
   columnSettingOpen.value = false;
 }
 
-function selectedPermissionIds() {
-  return permissionCheckedKeys.value
+function selectedMenuIds() {
+  return menuCheckedKeys.value
     .map((key) => String(key))
-    .filter((key) => permissionIds.value.has(key));
+    .filter((key) => menuIds.value.has(key));
 }
 
 function validateForm() {
@@ -379,7 +407,7 @@ async function submitForm() {
     }
     const payload: SystemRoleApi.SaveRoleParams = {
       description: formModel.description?.trim() || undefined,
-      permissionIds: selectedPermissionIds(),
+      menuIds: selectedMenuIds(),
       roleName: formModel.roleName.trim(),
       status: formModel.status,
     };
@@ -389,7 +417,7 @@ async function submitForm() {
 
     if (editingRole.value) {
       await updateRole(editingRole.value.id, payload);
-      message.success(permissionOnly.value ? '角色权限已更新' : '角色已更新');
+      message.success(permissionOnly.value ? '角色授权已更新' : '角色已更新');
     } else {
       await createRole(payload);
       message.success('角色已创建');
@@ -715,15 +743,15 @@ onMounted(() => {
           </FormItem>
         </div>
 
-        <FormItem class="permission-item" label="权限配置">
+        <FormItem class="permission-item" label="菜单授权">
           <div class="permission-panel">
             <Tree
-              v-model:checkedKeys="permissionCheckedKeys"
-              :tree-data="permissionTree"
+              v-model:checkedKeys="menuCheckedKeys"
+              :tree-data="menuTree"
               block-node
               checkable
               default-expand-all
-              :loading="loadingPermissions"
+              :loading="loadingMenus"
             />
           </div>
         </FormItem>
@@ -749,8 +777,8 @@ onMounted(() => {
         </DescriptionsItem>
         <DescriptionsItem label="描述">{{ detailRole.description || '-' }}</DescriptionsItem>
         <DescriptionsItem label="创建时间">{{ formatDate(detailRole.createdAt) }}</DescriptionsItem>
-        <DescriptionsItem label="权限数量">
-          {{ detailRole.permissionIds?.length ?? 0 }}
+        <DescriptionsItem label="授权菜单数量">
+          {{ detailRole.menuIds?.length ?? 0 }}
         </DescriptionsItem>
       </Descriptions>
     </Drawer>

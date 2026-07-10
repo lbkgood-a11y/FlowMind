@@ -10,6 +10,7 @@ import com.triobase.service.auth.entity.SysMenu;
 import com.triobase.service.auth.entity.SysPermission;
 import com.triobase.service.auth.mapper.MenuMapper;
 import com.triobase.service.auth.mapper.PermissionMapper;
+import com.triobase.service.auth.mapper.RoleMenuMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +43,7 @@ public class MenuService {
 
     private final MenuMapper menuMapper;
     private final PermissionMapper permissionMapper;
+    private final RoleMenuMapper roleMenuMapper;
 
     public List<SysMenu> list() {
         return list(null, null, null, null);
@@ -84,6 +86,25 @@ public class MenuService {
         List<SysMenu> routeMenus = list().stream()
                 .filter(menu -> !TYPE_BUTTON.equals(normalizeMenuType(menu.getMenuType())))
                 .filter(this::isActive)
+                .collect(Collectors.toList());
+        return buildRouteTree(routeMenus);
+    }
+
+    public List<MenuRouteResponse> listRoutesForUser(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return List.of();
+        }
+        List<SysMenu> allMenus = list().stream()
+                .filter(this::isActive)
+                .collect(Collectors.toList());
+        Set<String> authorizedMenuIds = new HashSet<>(roleMenuMapper.selectMenuIdsByUserId(userId));
+        if (authorizedMenuIds.isEmpty()) {
+            return List.of();
+        }
+        includeAncestorMenus(allMenus, authorizedMenuIds);
+        List<SysMenu> routeMenus = allMenus.stream()
+                .filter(menu -> authorizedMenuIds.contains(menu.getId()))
+                .filter(menu -> !TYPE_BUTTON.equals(normalizeMenuType(menu.getMenuType())))
                 .collect(Collectors.toList());
         return buildRouteTree(routeMenus);
     }
@@ -410,6 +431,22 @@ public class MenuService {
 
     private String normalizePathForType(String path, String menuType) {
         return TYPE_BUTTON.equals(menuType) || TYPE_LINK.equals(menuType) ? null : normalizeBlank(path);
+    }
+
+    private void includeAncestorMenus(List<SysMenu> menus, Set<String> menuIds) {
+        Map<String, SysMenu> menuById = menus.stream()
+                .collect(Collectors.toMap(SysMenu::getId, menu -> menu, (left, right) -> left));
+        List<String> selectedIds = new ArrayList<>(menuIds);
+        for (String selectedId : selectedIds) {
+            SysMenu current = menuById.get(selectedId);
+            while (current != null && StringUtils.hasText(current.getParentId())) {
+                String parentId = current.getParentId();
+                if (!menuIds.add(parentId)) {
+                    break;
+                }
+                current = menuById.get(parentId);
+            }
+        }
     }
 
     private String normalizeComponentForType(String component, String menuType) {

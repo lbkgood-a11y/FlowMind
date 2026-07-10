@@ -1,7 +1,13 @@
 # TrioBase 前端页面设计标准
 
-> 版本: v1.0  
-> 适用于: `trio-base-frontend` (Next.js 15 + React 19 + shadcn/ui + Tailwind CSS v4)  
+> **DEPRECATED — 本文档描述的是早期 Next.js + React 架构，已于 2026-07-10 废弃。**
+>
+> 当前前端已迁移至 **Vue Vben Admin v5.7** (Vue 3 + Ant Design Vue 4 + Vite)。
+> 实际开发规范见根目录 [CLAUDE.md](../CLAUDE.md) 中"前端开发规范"章节。
+> RBAC/权限体系设计见 [rbac-design.md](rbac-design.md)。
+
+> 版本: v1.0 (deprecated)
+> 适用于: `trio-base-frontend` (Next.js 15 + React 19 + shadcn/ui + Tailwind CSS v4) — 已废弃
 > 最后更新: 2026-07-09
 
 ---

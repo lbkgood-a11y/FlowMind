@@ -4,7 +4,7 @@ import type { TableProps } from 'ant-design-vue';
 
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 
-import { Page } from '@vben/common-ui';
+import { IconPicker, Page } from '@vben/common-ui';
 import { IconifyIcon, Plus } from '@vben/icons';
 
 import {
@@ -12,16 +12,15 @@ import {
   Button,
   Checkbox,
   Divider,
-  Drawer,
   Empty,
   Form,
   FormItem,
   Input,
   InputNumber,
   message,
+  Modal,
   Popconfirm,
   Popover,
-  Radio,
   RadioGroup,
   Select,
   Space,
@@ -37,7 +36,6 @@ import {
   menuKeyExists,
   menuPathExists,
   updateMenu,
-  updateMenuStatus,
 } from '#/api';
 import { componentKeys } from '#/router/routes';
 
@@ -66,18 +64,10 @@ type MenuFormModel = {
   status: 0 | 1;
 };
 
-type MenuQueryModel = {
-  keyword?: string;
-  menuGroup?: string;
-  menuType?: SystemMenuApi.MenuType;
-  status?: 0 | 1;
-};
-
 type MenuColumnKey =
   | 'action'
   | 'auth'
   | 'component'
-  | 'group'
   | 'path'
   | 'status'
   | 'title'
@@ -89,22 +79,44 @@ type MenuColumnSetting = {
   visible: boolean;
 };
 
-const menuTypeOptions: Array<{
+type FieldKey =
+  | 'activeIcon'
+  | 'activePath'
+  | 'affixTab'
+  | 'badge'
+  | 'badgeType'
+  | 'badgeVariant'
+  | 'component'
+  | 'hideChildrenInMenu'
+  | 'hideInBreadcrumb'
+  | 'hideInMenu'
+  | 'hideInTab'
+  | 'icon'
+  | 'keepAlive'
+  | 'link'
+  | 'path'
+  | 'permissionCode';
+
+const typeOptions: Array<{
   color: string;
   label: string;
   value: SystemMenuApi.MenuType;
 }> = [
-  { color: 'blue', label: '目录', value: 'catalog' },
+  { color: 'processing', label: '目录', value: 'catalog' },
   { color: 'default', label: '菜单', value: 'menu' },
-  { color: 'pink', label: '按钮', value: 'button' },
-  { color: 'green', label: '内嵌', value: 'embedded' },
-  { color: 'orange', label: '外链', value: 'link' },
+  { color: 'error', label: '按钮', value: 'button' },
+  { color: 'success', label: '内嵌', value: 'embedded' },
+  { color: 'warning', label: '外链', value: 'link' },
 ];
+
+const menuTypeRadioOptions = typeOptions.map(({ label, value }) => ({
+  label,
+  value,
+}));
 
 const defaultColumnSettings: MenuColumnSetting[] = [
   { key: 'title', title: '标题', visible: true },
   { key: 'type', title: '类型', visible: true },
-  { key: 'group', title: '分组', visible: false },
   { key: 'auth', title: '权限标识', visible: true },
   { key: 'path', title: '路由地址', visible: true },
   { key: 'component', title: '页面组件', visible: true },
@@ -122,13 +134,68 @@ const legacyIconMap: Record<string, string> = {
   Users: 'lucide:users',
 };
 
+const fieldVisibility: Record<SystemMenuApi.MenuType, FieldKey[]> = {
+  button: ['permissionCode'],
+  catalog: [
+    'path',
+    'icon',
+    'activeIcon',
+    'permissionCode',
+    'badgeType',
+    'badge',
+    'badgeVariant',
+    'hideInMenu',
+    'hideChildrenInMenu',
+    'hideInBreadcrumb',
+    'hideInTab',
+  ],
+  embedded: [
+    'path',
+    'activePath',
+    'icon',
+    'activeIcon',
+    'link',
+    'permissionCode',
+    'badgeType',
+    'badge',
+    'badgeVariant',
+    'affixTab',
+    'hideInMenu',
+    'hideInBreadcrumb',
+    'hideInTab',
+  ],
+  link: [
+    'icon',
+    'link',
+    'badgeType',
+    'badge',
+    'badgeVariant',
+    'hideInMenu',
+  ],
+  menu: [
+    'path',
+    'activePath',
+    'icon',
+    'activeIcon',
+    'component',
+    'permissionCode',
+    'badgeType',
+    'badge',
+    'badgeVariant',
+    'keepAlive',
+    'affixTab',
+    'hideInMenu',
+    'hideChildrenInMenu',
+    'hideInBreadcrumb',
+    'hideInTab',
+  ],
+};
+
 const menus = ref<SystemMenuApi.SystemMenu[]>([]);
 const allMenus = ref<SystemMenuApi.SystemMenu[]>([]);
 const loading = ref(false);
 const saving = ref(false);
-const drawerOpen = ref(false);
-const collapsed = ref(true);
-const queryHidden = ref(false);
+const formOpen = ref(false);
 const blockFullscreen = ref(false);
 const columnSettingOpen = ref(false);
 const tableKey = ref(0);
@@ -136,13 +203,6 @@ const expandedRowKeys = ref<Array<number | string>>([]);
 const autoExpandRows = ref(true);
 const editingMenu = ref<SystemMenuApi.SystemMenu>();
 const hydratingForm = ref(false);
-
-const queryForm = reactive<MenuQueryModel>({
-  keyword: '',
-  menuGroup: undefined,
-  menuType: undefined,
-  status: undefined,
-});
 
 const columnSettings = reactive<MenuColumnSetting[]>(
   defaultColumnSettings.map((item) => ({ ...item })),
@@ -165,7 +225,7 @@ const formModel = reactive<MenuFormModel>({
   hideInTab: false,
   icon: '',
   keepAlive: false,
-  menuGroup: 'general',
+  menuGroup: 'system',
   menuKey: '',
   menuName: '',
   menuType: 'menu',
@@ -178,6 +238,14 @@ const formModel = reactive<MenuFormModel>({
 
 const menuTree = computed(() => buildTree(menus.value));
 const allMenuTree = computed(() => buildTree(allMenus.value));
+const isEditing = computed(() => !!editingMenu.value);
+const formTitle = computed(() => (isEditing.value ? '修改菜单' : '新增菜单'));
+const visibleFields = computed(() => new Set(fieldVisibility[formModel.menuType]));
+const hasAdvancedSettings = computed(() =>
+  ['affixTab', 'hideChildrenInMenu', 'hideInBreadcrumb', 'hideInMenu', 'hideInTab', 'keepAlive'].some(
+    (key) => showField(key as FieldKey),
+  ),
+);
 const componentOptions = computed(() =>
   componentKeys
     .filter((key) => !key.includes('/_core/'))
@@ -195,21 +263,6 @@ const menuGroupOptions = computed(() => {
   });
   return [...groups].map((group) => ({ label: group, value: group }));
 });
-const componentPlaceholder = computed(() => {
-  if (formModel.menuType === 'embedded') {
-    return '请输入内嵌页面地址';
-  }
-  if (formModel.menuType === 'link') {
-    return '请输入外链地址';
-  }
-  if (formModel.menuType === 'catalog') {
-    return '目录无需页面组件';
-  }
-  if (formModel.menuType === 'button') {
-    return '按钮无需页面组件';
-  }
-  return '请选择或输入页面组件';
-});
 const parentOptions = computed(() => {
   const excluded = new Set<string>();
   if (editingMenu.value) {
@@ -221,7 +274,7 @@ const parentOptions = computed(() => {
   return flattenMenus(allMenuTree.value)
     .filter((item) => !excluded.has(item.id) && item.menuType !== 'button')
     .map((item) => ({
-      label: `${'　'.repeat(item.level)}${item.menuName} (${getTypeMeta(item.menuType).label})`,
+      label: `${'  '.repeat(item.level)}${item.menuName} (${getTypeMeta(item.menuType).label})`,
       value: item.id,
     }));
 });
@@ -242,36 +295,28 @@ const baseColumns: Record<MenuColumnKey, NonNullable<TableProps['columns']>[numb
       fixed: 'right',
       key: 'action',
       title: '操作',
-      width: 210,
+      width: 190,
     },
     auth: {
-      align: 'center',
       dataIndex: 'permissionCode',
       key: 'auth',
       title: '权限标识',
-      width: 180,
+      width: 190,
     },
     component: {
       dataIndex: 'component',
       key: 'component',
       title: '页面组件',
-      width: 320,
+      width: 360,
     },
-    group: {
-      align: 'center',
-      dataIndex: 'menuGroup',
-      key: 'group',
-      title: '分组',
-      width: 100,
-    },
-    path: { dataIndex: 'path', key: 'path', title: '路由地址', width: 220 },
-    status: { align: 'center', key: 'status', title: '状态', width: 110 },
+    path: { dataIndex: 'path', key: 'path', title: '路由地址', width: 200 },
+    status: { align: 'center', key: 'status', title: '状态', width: 100 },
     title: {
       dataIndex: 'menuName',
       fixed: 'left',
       key: 'title',
       title: '标题',
-      width: 280,
+      width: 260,
     },
     type: { align: 'center', key: 'type', title: '类型', width: 100 },
   };
@@ -281,6 +326,10 @@ const columns = computed<TableProps['columns']>(() =>
     .filter((item) => item.visible)
     .map((item) => baseColumns[item.key]),
 );
+
+function showField(key: FieldKey) {
+  return visibleFields.value.has(key);
+}
 
 function asMenu(record: Record<string, any>) {
   return record as SystemMenuApi.SystemMenu;
@@ -367,7 +416,7 @@ function isExternalUrl(value?: string) {
 
 function getTypeMeta(type?: SystemMenuApi.MenuType) {
   return (
-    menuTypeOptions.find((item) => item.value === type) ?? {
+    typeOptions.find((item) => item.value === type) ?? {
       color: 'default',
       label: '菜单',
       value: 'menu',
@@ -382,12 +431,16 @@ function displayComponent(record: SystemMenuApi.SystemMenu) {
   return record.component || '-';
 }
 
+function displayTitle(record: SystemMenuApi.SystemMenu) {
+  return record.menuName || record.menuKey || '-';
+}
+
 function resolveMenuIcon(record: SystemMenuApi.SystemMenu) {
   if (record.menuType === 'button') {
     return 'lucide:shield-check';
   }
   if (!record.icon) {
-    return 'lucide:menu';
+    return record.menuType === 'catalog' ? 'lucide:folder' : 'lucide:menu';
   }
   if (record.icon.includes(':')) {
     return record.icon;
@@ -398,38 +451,15 @@ function resolveMenuIcon(record: SystemMenuApi.SystemMenu) {
 async function loadMenus() {
   loading.value = true;
   try {
-    const params: SystemMenuApi.MenuListParams = {
-      keyword: queryForm.keyword?.trim() || undefined,
-      menuGroup: queryForm.menuGroup,
-      menuType: queryForm.menuType,
-      status: queryForm.status,
-    };
-    const hasQuery = Object.values(params).some((value) => value !== undefined);
-    const [filteredMenus, fullMenus] = hasQuery
-      ? await Promise.all([getMenuList(params), getMenuList()])
-      : await getMenuList().then((items) => [items, items] as const);
-    menus.value = filteredMenus;
-    allMenus.value = fullMenus;
-    const tree = buildTree(menus.value);
+    const items = await getMenuList();
+    menus.value = items;
+    allMenus.value = items;
+    const tree = buildTree(items);
     expandedRowKeys.value = autoExpandRows.value ? collectExpandedKeys(tree) : [];
     tableKey.value += 1;
   } finally {
     loading.value = false;
   }
-}
-
-function resetQuery() {
-  queryForm.keyword = '';
-  queryForm.menuGroup = undefined;
-  queryForm.menuType = undefined;
-  queryForm.status = undefined;
-  autoExpandRows.value = true;
-  loadMenus();
-}
-
-function handleToolbarSearch() {
-  queryHidden.value = true;
-  loadMenus();
 }
 
 function resetForm(parentId?: string) {
@@ -447,7 +477,7 @@ function resetForm(parentId?: string) {
   formModel.hideInTab = false;
   formModel.icon = '';
   formModel.keepAlive = false;
-  formModel.menuGroup = 'general';
+  formModel.menuGroup = 'system';
   formModel.menuKey = '';
   formModel.menuName = '';
   formModel.menuType = 'menu';
@@ -460,7 +490,7 @@ function resetForm(parentId?: string) {
 
 function openCreate(parent?: SystemMenuApi.SystemMenu) {
   resetForm(parent?.id);
-  drawerOpen.value = true;
+  formOpen.value = true;
 }
 
 function openEdit(record: SystemMenuApi.SystemMenu) {
@@ -479,7 +509,7 @@ function openEdit(record: SystemMenuApi.SystemMenu) {
   formModel.hideInTab = boolValue(record.hideInTab);
   formModel.icon = record.icon ?? '';
   formModel.keepAlive = boolValue(record.keepAlive);
-  formModel.menuGroup = record.menuGroup ?? 'general';
+  formModel.menuGroup = record.menuGroup ?? 'system';
   formModel.menuKey = record.menuKey;
   formModel.menuName = record.menuName;
   formModel.menuType = record.menuType ?? 'menu';
@@ -488,7 +518,7 @@ function openEdit(record: SystemMenuApi.SystemMenu) {
   formModel.permissionCode = record.permissionCode ?? '';
   formModel.sortOrder = record.sortOrder ?? 100;
   formModel.status = record.status ?? record.visible ?? 1;
-  drawerOpen.value = true;
+  formOpen.value = true;
   void nextTick(() => {
     hydratingForm.value = false;
   });
@@ -503,7 +533,7 @@ function validateForm() {
     message.warning('请输入标题');
     return false;
   }
-  if (formModel.menuType !== 'button' && !formModel.path?.trim()) {
+  if (showField('path') && !formModel.path?.trim()) {
     message.warning('请输入路由地址');
     return false;
   }
@@ -511,53 +541,46 @@ function validateForm() {
     message.warning('请输入页面组件');
     return false;
   }
-  if (
-    (formModel.menuType === 'embedded' || formModel.menuType === 'link') &&
-    !formModel.component?.trim()
-  ) {
-    message.warning('请输入页面地址');
+  if (showField('link') && !formModel.component?.trim()) {
+    message.warning('请输入链接地址');
     return false;
   }
-  if (
-    (formModel.menuType === 'embedded' || formModel.menuType === 'link') &&
-    !isExternalUrl(formModel.component)
-  ) {
-    message.warning('请输入 http/https 开头的页面地址');
+  if (showField('link') && !isExternalUrl(formModel.component)) {
+    message.warning('链接地址必须以 http:// 或 https:// 开头');
     return false;
   }
-  if (formModel.menuType === 'button' && !formModel.permissionCode?.trim()) {
-    message.warning('请输入按钮权限标识');
+  if (showField('permissionCode') && formModel.menuType === 'button' && !formModel.permissionCode?.trim()) {
+    message.warning('请输入权限标识');
     return false;
   }
   return true;
 }
 
 function buildPayload(): SystemMenuApi.SaveMenuParams {
-  const component =
-    formModel.menuType === 'button' || formModel.menuType === 'catalog'
-      ? undefined
-      : formModel.component?.trim() || undefined;
+  const isComponentVisible = showField('component') || showField('link');
   return {
-    activeIcon: formModel.activeIcon || undefined,
-    activePath: formModel.activePath || undefined,
-    affixTab: formModel.affixTab,
-    badge: formModel.badge || undefined,
-    badgeType: formModel.badgeType || undefined,
-    badgeVariant: formModel.badgeVariant || undefined,
-    component,
-    hideChildrenInMenu: formModel.hideChildrenInMenu,
-    hideInBreadcrumb: formModel.hideInBreadcrumb,
-    hideInMenu: formModel.menuType === 'button' ? true : formModel.hideInMenu,
-    hideInTab: formModel.hideInTab,
-    icon: formModel.icon || undefined,
-    keepAlive: formModel.keepAlive,
+    activeIcon: showField('activeIcon') ? formModel.activeIcon || undefined : undefined,
+    activePath: showField('activePath') ? formModel.activePath || undefined : undefined,
+    affixTab: showField('affixTab') ? formModel.affixTab : false,
+    badge: showField('badge') ? formModel.badge || undefined : undefined,
+    badgeType: showField('badgeType') ? formModel.badgeType || undefined : undefined,
+    badgeVariant: showField('badgeVariant') ? formModel.badgeVariant || undefined : undefined,
+    component: isComponentVisible ? formModel.component?.trim() || undefined : undefined,
+    hideChildrenInMenu: showField('hideChildrenInMenu') ? formModel.hideChildrenInMenu : false,
+    hideInBreadcrumb: showField('hideInBreadcrumb') ? formModel.hideInBreadcrumb : false,
+    hideInMenu: formModel.menuType === 'button' ? true : showField('hideInMenu') && formModel.hideInMenu,
+    hideInTab: showField('hideInTab') ? formModel.hideInTab : false,
+    icon: showField('icon') ? formModel.icon || undefined : undefined,
+    keepAlive: showField('keepAlive') ? formModel.keepAlive : false,
     menuGroup: formModel.menuGroup?.trim() || undefined,
     menuKey: formModel.menuKey.trim(),
     menuName: formModel.menuName.trim(),
     menuType: formModel.menuType,
     parentId: formModel.parentId || undefined,
-    path: formModel.menuType === 'button' ? undefined : formModel.path?.trim(),
-    permissionCode: formModel.permissionCode?.trim() || undefined,
+    path: showField('path') ? formModel.path?.trim() : undefined,
+    permissionCode: showField('permissionCode')
+      ? formModel.permissionCode?.trim() || undefined
+      : undefined,
     sortOrder: formModel.sortOrder,
     status: formModel.status,
     visible: formModel.status === 1,
@@ -572,7 +595,7 @@ async function validateUniqueFields() {
     return false;
   }
 
-  const path = formModel.menuType === 'button' ? '' : formModel.path?.trim();
+  const path = showField('path') ? formModel.path?.trim() : '';
   if (path && (await menuPathExists(path, excludeId))) {
     message.warning('路由地址已存在');
     return false;
@@ -597,7 +620,7 @@ async function submitForm() {
       await createMenu(payload);
       message.success('菜单已创建');
     }
-    drawerOpen.value = false;
+    formOpen.value = false;
     await loadMenus();
   } finally {
     saving.value = false;
@@ -607,13 +630,6 @@ async function submitForm() {
 async function removeMenu(record: SystemMenuApi.SystemMenu) {
   await deleteMenu(record.id);
   message.success('菜单已删除');
-  await loadMenus();
-}
-
-async function toggleStatus(record: SystemMenuApi.SystemMenu) {
-  const nextStatus = (record.status ?? record.visible ?? 1) === 1 ? 0 : 1;
-  await updateMenuStatus(record.id, nextStatus);
-  message.success('状态已更新');
   await loadMenus();
 }
 
@@ -651,11 +667,6 @@ function expandAll() {
   expandedRowKeys.value = collectExpandedKeys(menuTree.value);
 }
 
-function collapseAll() {
-  autoExpandRows.value = false;
-  expandedRowKeys.value = [];
-}
-
 function onExpandedRowsChange(keys: Array<number | string>) {
   expandedRowKeys.value = keys;
   autoExpandRows.value = keys.length > 0;
@@ -667,29 +678,30 @@ watch(
     if (hydratingForm.value) {
       return;
     }
+
+    formModel.activeIcon = '';
+    formModel.activePath = '';
+    formModel.badge = '';
+    formModel.badgeType = undefined;
+    formModel.badgeVariant = undefined;
+    formModel.component = '';
+    formModel.icon = '';
+    formModel.permissionCode = '';
+
+    formModel.affixTab = false;
+    formModel.hideChildrenInMenu = false;
+    formModel.hideInBreadcrumb = false;
+    formModel.hideInTab = false;
+    formModel.keepAlive = false;
+
     if (type === 'button') {
       formModel.path = '';
-      formModel.component = '';
       formModel.hideInMenu = true;
       return;
     }
 
-    if (previousType === 'button' && formModel.hideInMenu) {
+    if (previousType === 'button') {
       formModel.hideInMenu = false;
-    }
-
-    if (type === 'catalog') {
-      formModel.component = '';
-      return;
-    }
-
-    if (type === 'menu' && (previousType === 'embedded' || previousType === 'link')) {
-      formModel.component = '';
-      return;
-    }
-
-    if ((type === 'embedded' || type === 'link') && !isExternalUrl(formModel.component)) {
-      formModel.component = '';
     }
   },
 );
@@ -699,93 +711,23 @@ onMounted(loadMenus);
 
 <template>
   <Page auto-content-height>
-    <div
-      class="menu-page"
-      :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }"
-    >
-      <section v-show="!queryHidden" class="query-panel">
-        <div class="query-grid" :class="{ collapsed }">
-          <FormItem label="关键词">
-            <Input
-              v-model:value="queryForm.keyword"
-              allow-clear
-              placeholder="名称/标题/路径/权限"
-              @press-enter="loadMenus"
-            />
-          </FormItem>
-          <FormItem label="菜单类型">
-            <Select
-              v-model:value="queryForm.menuType"
-              allow-clear
-              placeholder="请选择"
-              :options="menuTypeOptions"
-            />
-          </FormItem>
-          <FormItem label="状态">
-            <Select
-              v-model:value="queryForm.status"
-              allow-clear
-              placeholder="请选择"
-              :options="[
-                { label: '启用', value: 1 },
-                { label: '禁用', value: 0 },
-              ]"
-            />
-          </FormItem>
-          <FormItem v-if="!collapsed" label="分组">
-            <Select
-              v-model:value="queryForm.menuGroup"
-              allow-clear
-              show-search
-              placeholder="请选择"
-              :options="menuGroupOptions"
-            />
-          </FormItem>
-          <div class="query-actions">
-            <Button @click="resetQuery">重置</Button>
-            <Button type="primary" @click="loadMenus">搜索</Button>
-            <Button type="link" @click="collapsed = !collapsed">
-              {{ collapsed ? '展开' : '收起' }}
-              <IconifyIcon
-                :icon="collapsed ? 'lucide:chevron-down' : 'lucide:chevron-up'"
-                class="ml-1 size-4"
-              />
-            </Button>
-          </div>
-        </div>
-      </section>
-
+    <div class="menu-page" :class="{ 'is-block-fullscreen': blockFullscreen }">
       <section class="list-panel">
         <div class="list-header">
-          <div class="list-title">
-            <h2>菜单列表</h2>
-            <Button v-if="queryHidden" type="link" @click="queryHidden = false">
-              展开搜索
-            </Button>
-          </div>
-          <Space :size="8">
+          <div></div>
+          <Space :size="10">
             <Button type="primary" @click="openCreate()">
               <Plus class="size-4" />
               新增菜单
             </Button>
-            <Tooltip title="查询并隐藏搜索栏">
-              <Button shape="circle" type="primary" @click="handleToolbarSearch">
-                <IconifyIcon icon="lucide:search" class="size-4" />
+            <Tooltip title="刷新">
+              <Button shape="circle" @click="loadMenus">
+                <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
               </Button>
             </Tooltip>
             <Tooltip title="展开全部">
               <Button shape="circle" @click="expandAll">
-                <IconifyIcon icon="lucide:unfold-vertical" class="size-4" />
-              </Button>
-            </Tooltip>
-            <Tooltip title="收起全部">
-              <Button shape="circle" @click="collapseAll">
-                <IconifyIcon icon="lucide:fold-vertical" class="size-4" />
-              </Button>
-            </Tooltip>
-            <Tooltip title="刷新">
-              <Button shape="circle" @click="loadMenus">
-                <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
+                <IconifyIcon icon="lucide:scan-line" class="size-4" />
               </Button>
             </Tooltip>
             <Tooltip :title="blockFullscreen ? '还原' : '全屏'">
@@ -834,7 +776,7 @@ onMounted(loadMenus);
                   class="column-setting-trigger"
                   shape="circle"
                 >
-                  <IconifyIcon icon="lucide:columns-3" class="size-4" />
+                  <IconifyIcon icon="lucide:layout-grid" class="size-4" />
                 </Button>
               </Tooltip>
             </Popover>
@@ -849,8 +791,7 @@ onMounted(loadMenus);
             :data-source="menuTree"
             :loading="loading"
             :pagination="false"
-            :scroll="{ x: 'max-content' }"
-            bordered
+            :scroll="{ x: 1280 }"
             row-key="id"
             size="middle"
             @expanded-rows-change="onExpandedRowsChange"
@@ -864,14 +805,14 @@ onMounted(loadMenus);
                 <div class="title-cell">
                   <IconifyIcon
                     :icon="resolveMenuIcon(asMenu(record))"
-                    class="size-4"
+                    class="title-icon"
                   />
-                  <span>{{ record.menuName }}</span>
+                  <span>{{ displayTitle(asMenu(record)) }}</span>
                 </div>
               </template>
 
               <template v-else-if="column.key === 'type'">
-                <Tag :color="getTypeMeta(asMenu(record).menuType).color">
+                <Tag :color="getTypeMeta(asMenu(record).menuType).color" class="type-tag">
                   {{ getTypeMeta(asMenu(record).menuType).label }}
                 </Tag>
               </template>
@@ -885,13 +826,13 @@ onMounted(loadMenus);
               </template>
 
               <template v-else-if="column.key === 'status'">
-                <Tag :color="(record.status ?? record.visible ?? 1) === 1 ? 'green' : 'red'">
+                <Tag :color="(record.status ?? record.visible ?? 1) === 1 ? 'success' : 'error'">
                   {{ (record.status ?? record.visible ?? 1) === 1 ? '已启用' : '已禁用' }}
                 </Tag>
               </template>
 
               <template v-else-if="column.key === 'action'">
-                <Space>
+                <Space :size="12">
                   <Button
                     v-if="asMenu(record).menuType !== 'button'"
                     size="small"
@@ -902,9 +843,6 @@ onMounted(loadMenus);
                   </Button>
                   <Button size="small" type="link" @click="openEdit(asMenu(record))">
                     修改
-                  </Button>
-                  <Button size="small" type="link" @click="toggleStatus(asMenu(record))">
-                    {{ (record.status ?? record.visible ?? 1) === 1 ? '禁用' : '启用' }}
                   </Button>
                   <Popconfirm
                     title="确认删除该菜单？"
@@ -921,95 +859,99 @@ onMounted(loadMenus);
         </div>
       </section>
 
-      <Drawer
-        v-model:open="drawerOpen"
-        :title="editingMenu ? '修改菜单' : '新增菜单'"
-        width="860"
+      <Modal
+        v-model:open="formOpen"
+        :body-style="{ padding: '14px 26px 0' }"
+        :confirm-loading="saving"
         :destroy-on-close="false"
+        :mask-closable="false"
+        :title="formTitle"
+        centered
+        class="menu-edit-modal"
+        width="790px"
+        @ok="submitForm"
       >
         <Form :model="formModel" class="menu-form" layout="horizontal">
           <FormItem class="type-row" label="类型">
-            <RadioGroup v-model:value="formModel.menuType" button-style="solid">
-              <Radio
-                v-for="item in menuTypeOptions"
-                :key="item.value"
-                :value="item.value"
-              >
-                {{ item.label }}
-              </Radio>
-            </RadioGroup>
+            <RadioGroup
+              v-model:value="formModel.menuType"
+              button-style="solid"
+              option-type="button"
+              :options="menuTypeRadioOptions"
+            />
           </FormItem>
 
           <div class="form-grid">
             <FormItem label="菜单名称" required>
-              <Input v-model:value="formModel.menuKey" allow-clear placeholder="请输入" />
+              <Input v-model:value="formModel.menuKey" placeholder="请输入" />
             </FormItem>
             <FormItem label="上级菜单">
               <Select
                 v-model:value="formModel.parentId"
                 allow-clear
                 placeholder="请选择"
+                show-search
                 :options="parentOptions"
               />
             </FormItem>
-            <FormItem label="菜单分组">
-              <AutoComplete
-                v-model:value="formModel.menuGroup"
-                allow-clear
-                placeholder="请选择或输入"
-                :options="menuGroupOptions"
-              />
-            </FormItem>
+
             <FormItem label="标题" required>
-              <Input v-model:value="formModel.menuName" allow-clear placeholder="请输入" />
+              <Input v-model:value="formModel.menuName" placeholder="请输入">
+                <template #addonAfter>
+                  <span class="title-addon">新增</span>
+                </template>
+              </Input>
             </FormItem>
-            <FormItem label="路由地址" :required="formModel.menuType !== 'button'">
-              <Input
-                v-model:value="formModel.path"
-                allow-clear
-                :disabled="formModel.menuType === 'button'"
-                placeholder="请输入"
-              />
+            <FormItem v-if="showField('path')" label="路由地址" required>
+              <Input v-model:value="formModel.path" placeholder="请输入" />
             </FormItem>
-            <FormItem label="激活路径">
-              <Input v-model:value="formModel.activePath" allow-clear placeholder="请输入" />
+
+            <FormItem v-if="showField('activePath')" label="激活路径">
+              <Input v-model:value="formModel.activePath" placeholder="请输入" />
             </FormItem>
-            <FormItem label="图标">
-              <Input v-model:value="formModel.icon" allow-clear placeholder="请选择" />
+            <FormItem v-if="showField('icon')" label="图标">
+              <IconPicker v-model="formModel.icon" prefix="lucide" />
             </FormItem>
-            <FormItem label="激活图标">
-              <Input v-model:value="formModel.activeIcon" allow-clear placeholder="请选择" />
+
+            <FormItem v-if="showField('activeIcon')" label="激活图标">
+              <IconPicker v-model="formModel.activeIcon" prefix="lucide" />
             </FormItem>
             <FormItem
+              v-if="showField('component')"
               label="页面组件"
-              :required="
-                formModel.menuType === 'menu' ||
-                formModel.menuType === 'embedded' ||
-                formModel.menuType === 'link'
-              "
+              :required="formModel.menuType === 'menu'"
             >
               <AutoComplete
                 v-model:value="formModel.component"
                 allow-clear
-                :disabled="formModel.menuType === 'button' || formModel.menuType === 'catalog'"
                 :options="componentOptions"
-                :placeholder="componentPlaceholder"
-              />
-            </FormItem>
-            <FormItem label="权限标识" :required="formModel.menuType === 'button'">
-              <Input
-                v-model:value="formModel.permissionCode"
-                allow-clear
                 placeholder="请输入"
               />
             </FormItem>
-            <FormItem label="状态">
-              <RadioGroup v-model:value="formModel.status" button-style="solid">
-                <Radio :value="1">已启用</Radio>
-                <Radio :value="0">已禁用</Radio>
-              </RadioGroup>
+
+            <FormItem v-if="showField('link')" label="链接地址" required>
+              <Input v-model:value="formModel.component" placeholder="请输入" />
             </FormItem>
-            <FormItem label="徽标类型">
+            <FormItem
+              v-if="showField('permissionCode')"
+              label="权限标识"
+              :required="formModel.menuType === 'button'"
+            >
+              <Input v-model:value="formModel.permissionCode" placeholder="请输入" />
+            </FormItem>
+
+            <FormItem label="状态">
+              <RadioGroup
+                v-model:value="formModel.status"
+                button-style="solid"
+                option-type="button"
+                :options="[
+                  { label: '已启用', value: 1 },
+                  { label: '已禁用', value: 0 },
+                ]"
+              />
+            </FormItem>
+            <FormItem v-if="showField('badgeType')" label="徽标类型">
               <Select
                 v-model:value="formModel.badgeType"
                 allow-clear
@@ -1020,43 +962,82 @@ onMounted(loadMenus);
                 ]"
               />
             </FormItem>
-            <FormItem label="徽章内容">
-              <Input v-model:value="formModel.badge" allow-clear placeholder="请输入" />
+
+            <FormItem v-if="showField('badge')" label="徽章内容">
+              <Input
+                v-model:value="formModel.badge"
+                :disabled="formModel.badgeType !== 'normal'"
+                placeholder="请输入"
+              />
             </FormItem>
-            <FormItem label="排序">
-              <InputNumber v-model:value="formModel.sortOrder" class="w-full" :min="0" />
+            <FormItem v-if="showField('badgeVariant')" label="徽标样式">
+              <Select
+                v-model:value="formModel.badgeVariant"
+                allow-clear
+                placeholder="请选择"
+                :options="[
+                  { label: 'default', value: 'default' },
+                  { label: 'destructive', value: 'destructive' },
+                  { label: 'primary', value: 'primary' },
+                  { label: 'success', value: 'success' },
+                  { label: 'warning', value: 'warning' },
+                ]"
+              />
+            </FormItem>
+
+            <FormItem class="compact-only" label="排序">
+              <InputNumber v-model:value="formModel.sortOrder" :min="0" />
+            </FormItem>
+            <FormItem class="compact-only" label="分组">
+              <AutoComplete
+                v-model:value="formModel.menuGroup"
+                allow-clear
+                :options="menuGroupOptions"
+                placeholder="请选择"
+              />
             </FormItem>
           </div>
 
-          <Divider>其它设置</Divider>
-          <div class="setting-grid">
-            <Checkbox v-model:checked="formModel.keepAlive">缓存标签页</Checkbox>
-            <Checkbox v-model:checked="formModel.affixTab">固定在标签</Checkbox>
-            <Checkbox v-model:checked="formModel.hideInMenu">隐藏菜单</Checkbox>
-            <Checkbox v-model:checked="formModel.hideChildrenInMenu">隐藏子菜单</Checkbox>
-            <Checkbox v-model:checked="formModel.hideInBreadcrumb">在面包屑中隐藏</Checkbox>
-            <Checkbox v-model:checked="formModel.hideInTab">在标签栏中隐藏</Checkbox>
-          </div>
+          <template v-if="hasAdvancedSettings">
+            <Divider class="settings-divider">其它设置</Divider>
+            <div class="setting-grid">
+              <Checkbox v-if="showField('keepAlive')" v-model:checked="formModel.keepAlive">
+                缓存标签页
+              </Checkbox>
+              <Checkbox v-if="showField('affixTab')" v-model:checked="formModel.affixTab">
+                固定在标签
+              </Checkbox>
+              <Checkbox v-if="showField('hideInMenu')" v-model:checked="formModel.hideInMenu">
+                隐藏菜单
+              </Checkbox>
+              <Checkbox
+                v-if="showField('hideChildrenInMenu')"
+                v-model:checked="formModel.hideChildrenInMenu"
+              >
+                隐藏子菜单
+              </Checkbox>
+              <Checkbox
+                v-if="showField('hideInBreadcrumb')"
+                v-model:checked="formModel.hideInBreadcrumb"
+              >
+                在面包屑中隐藏
+              </Checkbox>
+              <Checkbox v-if="showField('hideInTab')" v-model:checked="formModel.hideInTab">
+                在标签栏中隐藏
+              </Checkbox>
+            </div>
+          </template>
         </Form>
-
-        <template #footer>
-          <Space>
-            <Button @click="drawerOpen = false">取消</Button>
-            <Button :loading="saving" type="primary" @click="submitForm">确认</Button>
-          </Space>
-        </template>
-      </Drawer>
+      </Modal>
     </div>
   </Page>
 </template>
 
 <style scoped>
 .menu-page {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
   min-height: 100%;
-  background: #f1f3f6;
+  padding: 12px;
+  background: #f1f4f8;
 }
 
 .menu-page.is-block-fullscreen {
@@ -1064,92 +1045,32 @@ onMounted(loadMenus);
   inset: 0;
   z-index: 1000;
   height: 100vh;
-  padding: 12px;
-  overflow: auto;
-}
-
-.menu-page.is-block-fullscreen .list-panel {
-  flex: 1;
-}
-
-.query-panel,
-.list-panel {
-  background: #fff;
-}
-
-.query-panel {
-  padding: 22px 8px 16px;
-}
-
-.query-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(260px, 1fr));
-  column-gap: 52px;
-  row-gap: 10px;
-  align-items: center;
-}
-
-.query-grid.collapsed {
-  grid-template-rows: auto;
-}
-
-.query-grid :deep(.ant-form-item) {
-  margin-bottom: 0;
-}
-
-.query-grid :deep(.ant-form-item-label) {
-  width: 112px;
-  padding-right: 8px;
-  font-weight: 600;
-}
-
-.query-grid :deep(.ant-form-item-control) {
-  min-width: 0;
-}
-
-.query-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
 }
 
 .list-panel {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  padding: 16px 8px 10px;
+  min-height: calc(100vh - 120px);
+  padding: 8px;
+  background: #fff;
+  border-radius: 6px;
+}
+
+.menu-page.is-block-fullscreen .list-panel {
+  min-height: calc(100vh - 24px);
 }
 
 .list-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  height: 40px;
   margin-bottom: 8px;
-}
-
-.list-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.list-header h2 {
-  margin: 0;
-  color: #111827;
-  font-size: 16px;
-  font-weight: 700;
 }
 
 .column-setting-trigger.is-active {
   color: #3164f4;
   border-color: #3164f4;
-}
-
-.title-cell {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .table-frame {
@@ -1158,7 +1079,7 @@ onMounted(loadMenus);
   overflow: hidden;
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 .table-frame :deep(.ant-table-wrapper),
@@ -1167,33 +1088,122 @@ onMounted(loadMenus);
   height: 100%;
 }
 
-.table-frame :deep(.ant-table) {
-  height: 100%;
-  border-radius: 4px;
-}
-
 .table-frame :deep(.ant-table-container) {
   min-height: 660px;
-  border-inline-start: 0 !important;
 }
 
 .table-frame :deep(.ant-table-thead > tr > th) {
-  background: #f5f5f5;
-  color: #2b3340;
+  height: 38px;
+  padding: 8px 8px;
+  color: #303645;
   font-weight: 600;
+  background: #f6f6f7;
+  border-bottom-color: #e5e7eb;
 }
 
-.table-frame :deep(.ant-table-cell) {
-  overflow-wrap: break-word;
+.table-frame :deep(.ant-table-tbody > tr > td) {
+  height: 40px;
+  padding: 6px 8px;
+  color: #111827;
+  border-bottom-color: #e5e7eb;
+}
+
+.table-frame :deep(.ant-table-cell)::before {
+  background-color: #e5e7eb !important;
+}
+
+.table-frame :deep(.ant-btn-link) {
+  height: 24px;
+  padding: 0;
 }
 
 .table-frame :deep(.ant-empty) {
   margin: 120px 0;
 }
 
-.menu-form :deep(.ant-form-item-label) {
-  width: 112px;
+.title-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.title-icon {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  color: #26313f;
+}
+
+.type-tag {
+  min-width: 40px;
+  text-align: center;
+}
+
+:global(.menu-edit-modal .ant-modal-content) {
+  height: 940px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+:global(.menu-edit-modal .ant-modal-header) {
+  height: 54px;
+  padding: 16px 14px;
+  margin: 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+:global(.menu-edit-modal .ant-modal-title) {
+  color: #1f2937;
+  font-size: 16px;
   font-weight: 600;
+}
+
+:global(.menu-edit-modal .ant-modal-close) {
+  top: 12px;
+}
+
+:global(.menu-edit-modal .ant-modal-body) {
+  height: 838px;
+  overflow: hidden;
+}
+
+:global(.menu-edit-modal .ant-modal-footer) {
+  height: 48px;
+  padding: 8px 12px;
+  margin: 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.menu-form :deep(.ant-form-item) {
+  margin-bottom: 18px;
+}
+
+.menu-form :deep(.ant-form-item-label) {
+  width: 108px;
+  padding-right: 8px;
+  font-weight: 600;
+}
+
+.menu-form :deep(.ant-form-item-label > label) {
+  color: #2d3440;
+}
+
+.menu-form :deep(.ant-form-item-label > label::after) {
+  margin-inline: 6px 0;
+}
+
+.menu-form :deep(.ant-input),
+.menu-form :deep(.ant-input-number),
+.menu-form :deep(.ant-select-selector) {
+  height: 32px;
+  border-radius: 8px;
+}
+
+.menu-form :deep(.ant-radio-button-wrapper) {
+  min-width: 58px;
+  text-align: center;
 }
 
 .type-row {
@@ -1202,15 +1212,35 @@ onMounted(loadMenus);
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(260px, 1fr));
-  column-gap: 28px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 34px;
+}
+
+.title-addon {
+  display: inline-block;
+  min-width: 34px;
+  text-align: center;
+}
+
+.compact-only {
+  display: none;
+}
+
+.settings-divider {
+  margin: 24px 0 24px;
+  color: #303645;
+  font-weight: 600;
+}
+
+.settings-divider :deep(.ant-divider-inner-text) {
+  padding-inline: 14px;
 }
 
 .setting-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(180px, 1fr));
   row-gap: 18px;
-  padding: 8px 108px;
+  padding: 0 108px;
 }
 
 :global(.menu-column-popover .ant-popover-inner) {
@@ -1262,9 +1292,8 @@ onMounted(loadMenus);
 }
 
 @media (max-width: 900px) {
-  .query-grid {
-    grid-template-columns: repeat(2, minmax(240px, 1fr));
-    column-gap: 24px;
+  :global(.menu-edit-modal .ant-modal) {
+    max-width: calc(100vw - 24px);
   }
 
   .form-grid,
@@ -1273,17 +1302,7 @@ onMounted(loadMenus);
   }
 
   .setting-grid {
-    padding: 8px 24px;
-  }
-}
-
-@media (max-width: 760px) {
-  .query-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .query-actions {
-    justify-content: flex-start;
+    padding: 0 24px;
   }
 }
 </style>

@@ -8,6 +8,7 @@ import com.triobase.service.auth.entity.SysMenu;
 import com.triobase.service.auth.entity.SysPermission;
 import com.triobase.service.auth.mapper.MenuMapper;
 import com.triobase.service.auth.mapper.PermissionMapper;
+import com.triobase.service.auth.mapper.RoleMenuMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,6 +29,9 @@ class MenuServiceTest {
 
     @Mock
     private PermissionMapper permissionMapper;
+
+    @Mock
+    private RoleMenuMapper roleMenuMapper;
 
     @InjectMocks
     private MenuService menuService;

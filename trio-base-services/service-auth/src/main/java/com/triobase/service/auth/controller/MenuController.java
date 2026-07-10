@@ -1,5 +1,6 @@
 package com.triobase.service.auth.controller;
 
+import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.R;
 import com.triobase.service.auth.dto.CreateMenuRequest;
 import com.triobase.service.auth.dto.MenuRouteResponse;
@@ -27,6 +28,7 @@ public class MenuController {
     private final MenuService menuService;
 
     @GetMapping
+    @RequirePermission("/api/v1/menus:GET")
     public R<List<SysMenu>> list(@RequestParam(required = false) String keyword,
                                  @RequestParam(required = false) String menuGroup,
                                  @RequestParam(required = false) String menuType,
@@ -35,38 +37,45 @@ public class MenuController {
     }
 
     @GetMapping("/routes")
+    @RequirePermission("/api/v1/menus:GET")
     public R<List<MenuRouteResponse>> routes() {
         return R.ok(menuService.listRoutes());
     }
 
     @GetMapping("/exists/key")
+    @RequirePermission("/api/v1/menus:GET")
     public R<Boolean> existsMenuKey(@RequestParam String menuKey,
                                     @RequestParam(required = false) String excludeId) {
         return R.ok(menuService.existsMenuKey(menuKey, excludeId));
     }
 
     @GetMapping("/exists/path")
+    @RequirePermission("/api/v1/menus:GET")
     public R<Boolean> existsPath(@RequestParam String path,
                                  @RequestParam(required = false) String excludeId) {
         return R.ok(menuService.existsPath(path, excludeId));
     }
 
     @PostMapping
+    @RequirePermission("/api/v1/menus:POST")
     public R<SysMenu> create(@RequestBody CreateMenuRequest request) {
         return R.ok(menuService.create(request));
     }
 
     @PutMapping("/{id}")
+    @RequirePermission("/api/v1/menus/*:PUT")
     public R<SysMenu> update(@PathVariable String id, @RequestBody UpdateMenuRequest request) {
         return R.ok(menuService.update(id, request));
     }
 
     @PutMapping("/{id}/status")
+    @RequirePermission("/api/v1/menus/*:PUT")
     public R<SysMenu> updateStatus(@PathVariable String id, @RequestParam Integer status) {
         return R.ok(menuService.updateStatus(id, status));
     }
 
     @DeleteMapping("/{id}")
+    @RequirePermission("/api/v1/menus/*:DELETE")
     public R<String> delete(@PathVariable String id) {
         menuService.delete(id);
         return R.ok("菜单已删除");

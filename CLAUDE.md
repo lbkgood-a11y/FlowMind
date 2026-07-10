@@ -409,3 +409,285 @@ cd trio-base-frontend && pnpm -F @vben/web-antd run dev
 | Nacos | 8848 |
 | PostgreSQL | 5433 |
 | Redis | 6379 |
+
+---
+
+## 后端开发规范
+
+### 分层架构
+
+每个微服务遵循 Controller → Service → Mapper 三层：
+
+```
+controller/     @RestController, @RequirePermission, 参数校验, 调用 Service, 返回 R<T>
+service/        @Service, @Transactional, 业务逻辑, 跨 Mapper 协调, 抛 BizException
+mapper/         extends BaseMapper<T>, @Select 自定义 SQL, 只做数据访问
+entity/         extends BaseEntity, @TableName, 纯 POJO
+dto/            请求/响应 DTO, 不含业务逻辑
+```
+
+### Controller 规范
+
+```java
+@RestController
+@RequestMapping("/api/v1/users")
+@RequiredArgsConstructor  // ← 构造器注入，不用 @Autowired
+public class UserController {
+
+    private final UserService userService;
+
+    @GetMapping
+    @RequirePermission("/api/v1/users:GET")
+    public R<PageResult<UserInfoPayload>> list(@RequestParam(defaultValue = "1") int page,
+                                                @RequestParam(defaultValue = "20") int size,
+                                                @RequestParam(required = false) String keyword) {
+        return R.ok(userService.list(page, size, keyword));
+    }
+}
+```
+
+**铁律：**
+- 所有需要权限控制的方法必须加 `@RequirePermission`
+- 返回值统一用 `R<T>` 包裹（`R.ok(data)`, `R.fail(code, msg)`）
+- 分页查询返回 `PageResult<T>`
+- 公开端点（login/register/validate）不加注解
+- `@RequiredArgsConstructor` + `private final` 依赖注入
+
+### Service 规范
+
+```java
+@Service
+@RequiredArgsConstructor
+public class RoleService {
+
+    private final RoleMapper roleMapper;
+    private final RoleMenuMapper roleMenuMapper;
+
+    @Transactional
+    public SysRole create(CreateRoleRequest request) {
+        // 1. 校验
+        validateRequired(request.getRoleCode(), request.getRoleName());
+        validateUniqueRoleCode(request.getRoleCode(), null);
+        // 2. 构建实体
+        SysRole role = new SysRole();
+        role.setId(UlidGenerator.nextUlid());
+        role.setRoleCode(request.getRoleCode().trim());
+        // 3. 写入
+        roleMapper.insert(role);
+        replaceMenus(role.getId(), request.getMenuIds());
+        return role;
+    }
+}
+```
+
+**铁律：**
+- 写操作加 `@Transactional`
+- 先校验（参数合法性 + 业务唯一性），再写入
+- 多对多关联用 delete + insert 模式（`delete by roleId → batch insert`）
+- 运行时 ID 使用 `UlidGenerator.nextUlid()`
+- 业务异常统一抛 `BizException(code, message)` 或 `BizException(ErrorCode)`
+
+### Entity 规范
+
+```java
+@Data
+@EqualsAndHashCode(callSuper = true)
+@TableName("sys_role")
+public class SysRole extends BaseEntity {
+    private String roleCode;
+    private String roleName;
+    private String description;
+    private Short status;
+}
+```
+
+- 所有实体**必须**继承 `BaseEntity`（自动获得 `id`, `createdBy`, `createdAt`, `updatedBy`, `updatedAt`）
+- `BaseEntity.id` 默认 `IdType.ASSIGN_UUID` → UlidGenerator 自动生成
+- `AuditMetaObjectHandler` 自动填充审计字段（从 SecurityContextHolder 获取当前用户）
+- 种子数据使用有意义的短 ID（P001, R001, M004, BP001），运行时使用 ULID
+
+### 权限码格式
+
+全部使用 `resource:action` 格式，唯一标识一个权限：
+
+| 用途 | 格式 | 示例 |
+|------|------|------|
+| API 权限 | `/api/v1/{path}:{HTTP_METHOD}` | `/api/v1/users:GET` |
+| 按钮权限 | `{Module}:{Entity}:{Action}` | `System:Menu:Create` |
+
+`sys_permission` 表是权限码注册表的唯一来源。注解、前端指令、JWT 中的 permissions 列表全部使用此格式。
+
+---
+
+## 前端开发规范
+
+### 技术栈（实际）
+
+基于 **Vue Vben Admin v5.7** monorepo：
+- Vue 3.5 + Vite 8 + TypeScript
+- Ant Design Vue 4（UI 组件）
+- Pinia 3（状态管理，加密持久化）
+- Vue Router 5（动态路由生成）
+- Axios（@vben/request 封装，自动 JWT 注入 + 401 拦截 + token 刷新）
+- vue-i18n（国际化）
+- Tailwind CSS 4 + CSS Variables（主题）
+
+### 页面开发模式
+
+每个管理页面遵循 **查询面板 + 数据表格 + 分页 + 抽屉表单** 模式：
+
+```vue
+<script setup lang="ts">
+// 状态
+const items = ref<Item[]>([]);
+const loading = ref(false);
+const formOpen = ref(false);
+
+// 查询面板 → 调用 API → 填充表格
+async function loadData(page = 1) {
+  loading.value = true;
+  try {
+    const result = await getPage({ page, size: 20, keyword: queryForm.keyword });
+    items.value = result.items;
+  } finally { loading.value = false; }
+}
+
+// 抽屉表单：新建/编辑
+function openCreate() { resetForm(); formOpen.value = true; }
+async function openEdit(record) { /* 加载详情 → 填充表单 → 打开抽屉 */ }
+async function submitForm() { /* 校验 → 调用 create/update API → 关闭抽屉 → 刷新列表 */ }
+</script>
+
+<template>
+  <Page auto-content-height>
+    <!-- 查询面板 -->
+    <section class="query-panel">
+      <Form ... />
+    </section>
+    <!-- 数据表格 -->
+    <section class="list-panel">
+      <div class="list-header">
+        <h2>列表标题</h2>
+        <Button type="primary" @click="openCreate"><Plus /> 新增</Button>
+      </div>
+      <Table :columns :data-source :loading :pagination="false" />
+      <Pagination :total @change="loadData" />
+    </section>
+    <!-- 抽屉表单 -->
+    <Drawer v-model:open="formOpen" :title="editing ? '编辑' : '新增'" width="760">
+      <Form :model="formModel">
+        <!-- 表单字段 -->
+      </Form>
+      <template #footer>
+        <Button @click="formOpen = false">取消</Button>
+        <Button type="primary" :loading="saving" @click="submitForm">确认</Button>
+      </template>
+    </Drawer>
+  </Page>
+</template>
+```
+
+### API 模块规范
+
+```typescript
+// api/system/role.ts — 命名空间导出 + 函数式 API
+
+export namespace SystemRoleApi {
+  export interface RoleDetail extends SystemRole {
+    menuIds: string[];
+  }
+}
+
+async function getRolePage(params: RoleListParams) {
+  return requestClient.get<PageResult<Role>>('/roles/page', { params });
+}
+async function createRole(data: SaveRoleParams) {
+  return requestClient.post<Role>('/roles', data);
+}
+async function updateRole(id: string, data: SaveRoleParams) {
+  return requestClient.put<Role>(`/roles/${id}`, data);
+}
+async function deleteRole(id: string) {
+  return requestClient.delete(`/roles/${id}`);
+}
+
+export { createRole, deleteRole, getRolePage, updateRole };
+```
+
+**铁律：**
+- 所有 API 函数放在 `api/` 目录，按模块分文件（core/, system/）
+- 使用 `requestClient` 发起请求（自动注入 JWT + 处理 401/403）
+- 类型定义使用 `namespace` 放在同文件顶部
+- 函数命名：`get{Entity}` / `create{Entity}` / `update{Entity}` / `delete{Entity}`
+
+### 权限控制
+
+```html
+<!-- 按权限码控制按钮显隐 -->
+<Button v-access:code="'System:User:Create'">新增</Button>
+<Button v-access:code="['System:User:Edit', 'System:User:Delete']">批量操作</Button>
+```
+
+登录后 `GET /auth/codes` 获取权限码 → 存入 `useAccessStore.accessCodes` → `v-access` 指令比对。
+
+### 新页面接入步骤
+
+1. 在 `views/` 下新建 `.vue` 文件
+2. 在 `router/routes/modules/` 下添加路由定义
+3. 在 `api/` 下添加 API 函数
+4. 后端：迁移文件添加菜单 + 权限 → Controller 添加 `@RequirePermission`
+5. 后端：迁移文件 ADMIN 角色自动授权
+
+---
+
+## 数据库迁移规范
+
+### Flyway 文件命名
+
+```
+V{序号}__{描述性名称_小写下划线}.sql
+
+V1__auth_schema.sql
+V9__fix_permissions_and_seed_button_permissions.sql
+```
+
+### 幂等性模式
+
+```sql
+-- DDL: 始终使用 IF NOT EXISTS
+CREATE TABLE IF NOT EXISTS sys_menu (...);
+ALTER TABLE sys_user ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
+
+-- 种子数据: 冲突时忽略
+INSERT INTO sys_permission(id, resource, action, description) VALUES (...)
+ON CONFLICT DO NOTHING;
+
+-- 种子数据: 冲突时更新（菜单等需要覆盖的）
+INSERT INTO sys_menu (...) VALUES (...)
+ON CONFLICT (id) DO UPDATE SET
+    parent_id = EXCLUDED.parent_id,
+    menu_name = EXCLUDED.menu_name,
+    ...;
+
+-- 唯一约束冲突忽略
+INSERT INTO sys_role_menu(id, role_id, menu_id, ...) VALUES (...)
+ON CONFLICT (role_id, menu_id) DO NOTHING;
+```
+
+### 铁律
+
+1. **绝不修改已提交的迁移文件** — 始终新建迁移
+2. 种子数据 ID 使用有意义的短前缀（P/BPM/U/R），不裸用 ULID
+3. 每个迁移文件开头写注释说明目的
+4. migration 序号连续递增，不跳号
+
+### 种子数据 ID 约定
+
+| 前缀 | 用途 | 示例 |
+|------|------|------|
+| `U` | 用户 | `U001` = admin |
+| `R` | 角色 | `R001` = ADMIN |
+| `P` | API 权限 | `P001` = `/api/v1/users:GET` |
+| `BP` | 按钮权限 | `BP001` = `System:Menu:Create` |
+| `M` | 菜单路由 | `M004` = 用户管理页 |
+| `01HK...` | 按钮菜单子节点 | `01HK153X100000000000000010` |

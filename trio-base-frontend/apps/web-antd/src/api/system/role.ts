@@ -2,7 +2,7 @@ import { requestClient } from '#/api/request';
 
 export namespace SystemRoleApi {
   export interface RoleDetail extends SystemRole {
-    permissionIds: string[];
+    menuIds: string[];
   }
 
   export interface RoleListParams {
@@ -23,7 +23,7 @@ export namespace SystemRoleApi {
 
   export interface SaveRoleParams {
     description?: string;
-    permissionIds?: string[];
+    menuIds?: string[];
     roleCode?: string;
     roleName: string;
     status?: 0 | 1;

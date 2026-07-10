@@ -10,13 +10,12 @@ import com.triobase.common.core.result.PageResult;
 import com.triobase.service.auth.dto.CreateRoleRequest;
 import com.triobase.service.auth.dto.RoleDetailResponse;
 import com.triobase.service.auth.dto.UpdateRoleRequest;
-import com.triobase.service.auth.entity.SysPermission;
 import com.triobase.service.auth.entity.SysRole;
-import com.triobase.service.auth.entity.SysRolePermission;
+import com.triobase.service.auth.entity.SysRoleMenu;
 import com.triobase.service.auth.entity.SysUserRole;
-import com.triobase.service.auth.mapper.PermissionMapper;
+import com.triobase.service.auth.mapper.MenuMapper;
 import com.triobase.service.auth.mapper.RoleMapper;
-import com.triobase.service.auth.mapper.RolePermissionMapper;
+import com.triobase.service.auth.mapper.RoleMenuMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,8 +32,8 @@ import java.util.stream.Collectors;
 public class RoleService {
 
     private final RoleMapper roleMapper;
-    private final RolePermissionMapper rolePermissionMapper;
-    private final PermissionMapper permissionMapper;
+    private final RoleMenuMapper roleMenuMapper;
+    private final MenuMapper menuMapper;
     private final UserRoleMapper userRoleMapper;
 
     public List<SysRole> list() {
@@ -105,12 +104,8 @@ public class RoleService {
         if (role == null) {
             throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
         }
-        List<String> permissionIds = rolePermissionMapper.selectList(new LambdaQueryWrapper<SysRolePermission>()
-                        .eq(SysRolePermission::getRoleId, id))
-                .stream()
-                .map(SysRolePermission::getPermissionId)
-                .collect(Collectors.toList());
-        return RoleDetailResponse.from(role, permissionIds);
+        List<String> menuIds = roleMenuMapper.selectMenuIdsByRoleId(id);
+        return RoleDetailResponse.from(role, menuIds);
     }
 
     public boolean existsRoleCode(String roleCode, String excludeId) {
@@ -125,7 +120,7 @@ public class RoleService {
     public SysRole create(CreateRoleRequest request) {
         validateRequired(request.getRoleCode(), request.getRoleName());
         validateUniqueRoleCode(request.getRoleCode(), null);
-        List<String> normalizedPermissionIds = normalizePermissionIds(request.getPermissionIds());
+        List<String> normalizedMenuIds = normalizeMenuIds(request.getMenuIds());
 
         SysRole role = new SysRole();
         role.setId(UlidGenerator.nextUlid());
@@ -134,7 +129,7 @@ public class RoleService {
         role.setDescription(normalizeBlank(request.getDescription()));
         role.setStatus(toStatus(request.getStatus()));
         roleMapper.insert(role);
-        replacePermissions(role.getId(), normalizedPermissionIds);
+        replaceMenus(role.getId(), normalizedMenuIds);
         return role;
     }
 
@@ -147,8 +142,8 @@ public class RoleService {
                 .eq(SysUserRole::getRoleId, id)) > 0) {
             throw new BizException(40043, "ROLE_HAS_USERS");
         }
-        rolePermissionMapper.delete(new LambdaQueryWrapper<SysRolePermission>()
-                .eq(SysRolePermission::getRoleId, id));
+        roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>()
+                .eq(SysRoleMenu::getRoleId, id));
         roleMapper.deleteById(id);
     }
 
@@ -159,14 +154,14 @@ public class RoleService {
             throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
         }
         validateRequired(role.getRoleCode(), request.getRoleName());
-        List<String> normalizedPermissionIds = normalizePermissionIds(request.getPermissionIds());
+        List<String> normalizedMenuIds = normalizeMenuIds(request.getMenuIds());
         role.setRoleName(request.getRoleName().trim());
         role.setDescription(normalizeBlank(request.getDescription()));
         if (request.getStatus() != null) {
             role.setStatus(toStatus(request.getStatus()));
         }
         roleMapper.updateById(role);
-        replacePermissions(id, normalizedPermissionIds);
+        replaceMenus(id, normalizedMenuIds);
         return role;
     }
 
@@ -181,32 +176,31 @@ public class RoleService {
         return role;
     }
 
-    private void replacePermissions(String roleId, List<String> normalizedPermissionIds) {
-        rolePermissionMapper.delete(new LambdaQueryWrapper<SysRolePermission>()
-                .eq(SysRolePermission::getRoleId, roleId));
-        for (String normalizedPermissionId : normalizedPermissionIds) {
-            SysRolePermission relation = new SysRolePermission();
+    private void replaceMenus(String roleId, List<String> normalizedMenuIds) {
+        roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>()
+                .eq(SysRoleMenu::getRoleId, roleId));
+        for (String normalizedMenuId : normalizedMenuIds) {
+            SysRoleMenu relation = new SysRoleMenu();
             relation.setRoleId(roleId);
-            relation.setPermissionId(normalizedPermissionId);
-            rolePermissionMapper.insert(relation);
+            relation.setMenuId(normalizedMenuId);
+            roleMenuMapper.insert(relation);
         }
     }
 
-    private List<String> normalizePermissionIds(List<String> permissionIds) {
-        if (permissionIds == null || permissionIds.isEmpty()) {
+    private List<String> normalizeMenuIds(List<String> menuIds) {
+        if (menuIds == null || menuIds.isEmpty()) {
             return List.of();
         }
-        List<String> normalizedPermissionIds = new LinkedHashSet<>(permissionIds).stream()
+        List<String> normalizedMenuIds = new LinkedHashSet<>(menuIds).stream()
                 .map(this::normalizeBlank)
                 .filter(StringUtils::hasText)
                 .collect(Collectors.toList());
-        for (String permissionId : normalizedPermissionIds) {
-            SysPermission permission = permissionMapper.selectById(permissionId);
-            if (permission == null) {
-                throw new BizException(40421, "PERMISSION_NOT_FOUND");
+        for (String menuId : normalizedMenuIds) {
+            if (menuMapper.selectById(menuId) == null) {
+                throw new BizException(40433, "MENU_NOT_FOUND");
             }
         }
-        return normalizedPermissionIds;
+        return normalizedMenuIds;
     }
 
     private void validateRequired(String roleCode, String roleName) {

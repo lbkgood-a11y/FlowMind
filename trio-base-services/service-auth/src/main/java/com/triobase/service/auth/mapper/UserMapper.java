@@ -10,11 +10,15 @@ import java.util.List;
 @Mapper
 public interface UserMapper extends BaseMapper<SysUser> {
 
-    @Select("SELECT p.resource || ':' || p.action FROM sys_permission p " +
-            "JOIN sys_role_permission rp ON p.id = rp.permission_id " +
-            "JOIN sys_user_role ur ON rp.role_id = ur.role_id " +
+    @Select("SELECT DISTINCT code FROM (" +
+            "SELECT COALESCE(NULLIF(m.permission_code, ''), p.resource || ':' || p.action) AS code " +
+            "FROM sys_role_menu rm " +
+            "JOIN sys_menu m ON m.id = rm.menu_id " +
+            "LEFT JOIN sys_permission p ON p.id = m.permission_id " +
+            "JOIN sys_user_role ur ON rm.role_id = ur.role_id " +
             "JOIN sys_role r ON r.id = ur.role_id " +
-            "WHERE ur.user_id = #{userId} AND r.status = 1")
+            "WHERE ur.user_id = #{userId} AND r.status = 1" +
+            ") permissions WHERE code IS NOT NULL AND code <> ''")
     List<String> selectPermissionsByUserId(String userId);
 
     @Select("SELECT r.role_code FROM sys_role r " +

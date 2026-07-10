@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
-import uuid
 
 from ..db.init_db import get_connection
+from ..ids import new_ulid
 from .embedding_service import embed_batch
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ def ingest_document(title: str, content: str, source_path: str = "") -> dict:
     if not chunks:
         raise ValueError("EMPTY_DOCUMENT")
 
-    doc_id = "D" + uuid.uuid4().hex[:10].upper()
+    doc_id = new_ulid()
     vectors = embed_batch(chunks)
 
     conn = get_connection()
@@ -43,7 +43,7 @@ def ingest_document(title: str, content: str, source_path: str = "") -> dict:
             (doc_id, title, source_path, len(chunks)),
         )
         for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
-            chunk_id = f"{doc_id}C{i:04d}"
+            chunk_id = new_ulid()
             vector_str = "[" + ",".join(str(v) for v in vector) + "]"
             cur.execute(
                 "INSERT INTO rag_document_chunks (id, document_id, chunk_index, content, embedding) "

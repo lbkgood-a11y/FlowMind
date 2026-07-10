@@ -1,5 +1,6 @@
 package com.triobase.service.auth.controller;
 
+import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.core.result.R;
 import com.triobase.service.auth.dto.CreateRoleRequest;
@@ -22,12 +23,14 @@ public class RoleController {
     private final RoleService roleService;
 
     @GetMapping
+    @RequirePermission("/api/v1/roles:GET")
     public R<List<SysRole>> list(@RequestParam(required = false) String keyword,
                                   @RequestParam(required = false) Integer status) {
         return R.ok(roleService.list(keyword, status));
     }
 
     @GetMapping("/page")
+    @RequirePermission("/api/v1/roles:GET")
     public R<PageResult<SysRole>> page(@RequestParam(defaultValue = "1") int page,
                                        @RequestParam(defaultValue = "20") int size,
                                        @RequestParam(required = false) String keyword,
@@ -44,32 +47,38 @@ public class RoleController {
     }
 
     @GetMapping("/exists/code")
+    @RequirePermission("/api/v1/roles:GET")
     public R<Boolean> existsRoleCode(@RequestParam String roleCode,
                                      @RequestParam(required = false) String excludeId) {
         return R.ok(roleService.existsRoleCode(roleCode, excludeId));
     }
 
     @GetMapping("/{id}")
+    @RequirePermission("/api/v1/roles:GET")
     public R<RoleDetailResponse> detail(@PathVariable String id) {
         return R.ok(roleService.findById(id));
     }
 
     @PostMapping
+    @RequirePermission("/api/v1/roles:POST")
     public R<SysRole> create(@RequestBody CreateRoleRequest request) {
         return R.ok(roleService.create(request));
     }
 
     @PutMapping("/{id}")
+    @RequirePermission("/api/v1/roles/*:PUT")
     public R<SysRole> update(@PathVariable String id, @RequestBody UpdateRoleRequest request) {
         return R.ok(roleService.update(id, request));
     }
 
     @PutMapping("/{id}/status")
+    @RequirePermission("/api/v1/roles/*:PUT")
     public R<SysRole> updateStatus(@PathVariable String id, @RequestParam Integer status) {
         return R.ok(roleService.updateStatus(id, status));
     }
 
     @DeleteMapping("/{id}")
+    @RequirePermission("/api/v1/roles/*:DELETE")
     public R<String> delete(@PathVariable String id) {
         roleService.delete(id);
         return R.ok("角色已删除");

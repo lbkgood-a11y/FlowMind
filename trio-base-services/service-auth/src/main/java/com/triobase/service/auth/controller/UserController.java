@@ -1,5 +1,6 @@
 package com.triobase.service.auth.controller;
 
+import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.core.result.R;
 import com.triobase.common.dto.auth.UserInfoPayload;
@@ -21,6 +22,7 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping
+    @RequirePermission("/api/v1/users:GET")
     public R<PageResult<UserInfoPayload>> list(@RequestParam(defaultValue = "1") int page,
                                                 @RequestParam(defaultValue = "20") int size,
                                                 @RequestParam(required = false) String keyword,
@@ -37,33 +39,39 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
+    @RequirePermission("/api/v1/users:GET")
     public R<UserInfoPayload> getById(@PathVariable String id) {
         return R.ok(userService.findById(id));
     }
 
     @PostMapping
+    @RequirePermission("/api/v1/users:POST")
     public R<UserInfoPayload> create(@RequestBody CreateUserRequest request) {
         return R.ok(userService.create(request));
     }
 
     @PutMapping("/{id}")
+    @RequirePermission("/api/v1/users/*:PUT")
     public R<UserInfoPayload> update(@PathVariable String id, @RequestBody UpdateUserRequest request) {
         return R.ok(userService.update(id, request));
     }
 
     @DeleteMapping("/{id}")
+    @RequirePermission("/api/v1/users/*:DELETE")
     public R<Void> delete(@PathVariable String id) {
         userService.delete(id);
         return R.ok();
     }
 
     @PostMapping("/{id}/roles")
+    @RequirePermission("/api/v1/users/*:PUT")
     public R<Void> assignRoles(@PathVariable String id, @RequestBody List<String> roleIds) {
         userService.assignRoles(id, roleIds);
         return R.ok();
     }
 
     @PutMapping("/{id}/status")
+    @RequirePermission("/api/v1/users/*:PUT")
     public R<Void> updateStatus(@PathVariable String id, @RequestParam Integer status) {
         userService.updateStatus(id, status);
         return R.ok();

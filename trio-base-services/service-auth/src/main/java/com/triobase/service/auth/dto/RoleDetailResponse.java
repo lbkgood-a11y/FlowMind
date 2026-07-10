@@ -14,9 +14,9 @@ public class RoleDetailResponse {
     private String description;
     private Short status;
     private LocalDateTime createdAt;
-    private List<String> permissionIds;
+    private List<String> menuIds;
 
-    public static RoleDetailResponse from(SysRole role, List<String> permissionIds) {
+    public static RoleDetailResponse from(SysRole role, List<String> menuIds) {
         RoleDetailResponse response = new RoleDetailResponse();
         response.setId(role.getId());
         response.setRoleCode(role.getRoleCode());
@@ -24,7 +24,7 @@ public class RoleDetailResponse {
         response.setDescription(role.getDescription());
         response.setStatus(role.getStatus());
         response.setCreatedAt(role.getCreatedAt());
-        response.setPermissionIds(permissionIds);
+        response.setMenuIds(menuIds);
         return response;
     }
 }

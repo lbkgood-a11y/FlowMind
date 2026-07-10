@@ -1,1 +1,3 @@
 com.triobase.common.core.config.AuditAutoConfiguration
+com.triobase.common.core.config.PermissionAutoConfiguration
+com.triobase.common.core.config.WebMvcAutoConfiguration
