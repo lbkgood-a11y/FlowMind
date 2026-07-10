@@ -1,16 +1,14 @@
 package com.triobase.service.lowcode.entity;
 
-import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.triobase.common.core.entity.BaseEntity;
 import lombok.Data;
-
-import java.time.LocalDateTime;
+import lombok.EqualsAndHashCode;
 
 @Data
+@EqualsAndHashCode(callSuper = true)
 @TableName("lc_form_field_definition")
-public class LcFormFieldDefinition {
-    @TableId
-    private String id;
+public class LcFormFieldDefinition extends BaseEntity {
     private String formDefinitionId;
     private String fieldKey;
     private String label;
@@ -20,5 +18,4 @@ public class LcFormFieldDefinition {
     private String placeholder;
     private String optionsJson;
     private Integer sortOrder;
-    private LocalDateTime createdAt;
 }

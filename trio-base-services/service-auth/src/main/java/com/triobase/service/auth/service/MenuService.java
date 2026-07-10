@@ -2,6 +2,7 @@ package com.triobase.service.auth.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.auth.dto.CreateMenuRequest;
 import com.triobase.service.auth.dto.MenuRouteResponse;
 import com.triobase.service.auth.dto.UpdateMenuRequest;
@@ -20,9 +21,9 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,6 +37,7 @@ public class MenuService {
     private static final String TYPE_LINK = "link";
     private static final String TYPE_MENU = "menu";
     private static final Set<String> MENU_TYPES = Set.of(TYPE_BUTTON, TYPE_CATALOG, TYPE_EMBEDDED, TYPE_LINK, TYPE_MENU);
+    private static final Set<String> PATH_REQUIRED_TYPES = Set.of(TYPE_CATALOG, TYPE_EMBEDDED, TYPE_MENU);
     private static final Set<String> ROUTE_COMPONENT_TYPES = Set.of(TYPE_EMBEDDED, TYPE_LINK);
 
     private final MenuMapper menuMapper;
@@ -113,7 +115,7 @@ public class MenuService {
         validateUniquePath(normalizePathForType(request.getPath(), menuType), null);
 
         SysMenu menu = new SysMenu();
-        menu.setId("M" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase());
+        menu.setId(UlidGenerator.nextUlid());
         applyCreateRequest(menu, request);
         menuMapper.insert(menu);
         return menu;
@@ -233,7 +235,7 @@ public class MenuService {
         if (!MENU_TYPES.contains(normalizedType)) {
             throw new BizException(40038, "MENU_TYPE_INVALID");
         }
-        if (!TYPE_BUTTON.equals(normalizedType) && !StringUtils.hasText(path)) {
+        if (PATH_REQUIRED_TYPES.contains(normalizedType) && !StringUtils.hasText(path)) {
             throw new BizException(40035, "MENU_PATH_REQUIRED");
         }
         if (TYPE_MENU.equals(normalizedType) && !StringUtils.hasText(component)) {
@@ -342,7 +344,7 @@ public class MenuService {
         MenuRouteResponse route = new MenuRouteResponse();
         String menuType = normalizeMenuType(menu.getMenuType());
         route.setName(normalizeRouteName(menu));
-        route.setPath(normalizeBlank(menu.getPath()));
+        route.setPath(resolveRoutePath(menu, menuType));
         route.setType(menuType);
         route.setAuthCode(normalizeBlank(menu.getPermissionCode()));
         route.setComponent(resolveRouteComponent(menu, menuType));
@@ -407,7 +409,7 @@ public class MenuService {
     }
 
     private String normalizePathForType(String path, String menuType) {
-        return TYPE_BUTTON.equals(menuType) ? null : normalizeBlank(path);
+        return TYPE_BUTTON.equals(menuType) || TYPE_LINK.equals(menuType) ? null : normalizeBlank(path);
     }
 
     private String normalizeComponentForType(String component, String menuType) {
@@ -429,6 +431,28 @@ public class MenuService {
             return "IFrameView";
         }
         return normalizeBlank(menu.getComponent());
+    }
+
+    private String resolveRoutePath(SysMenu menu, String menuType) {
+        String path = normalizeBlank(menu.getPath());
+        if (StringUtils.hasText(path)) {
+            return path;
+        }
+        if (TYPE_LINK.equals(menuType)) {
+            return "/external/" + toRoutePathSegment(normalizeRouteName(menu));
+        }
+        return null;
+    }
+
+    private String toRoutePathSegment(String value) {
+        String normalized = normalizeBlank(value);
+        if (normalized == null) {
+            return "link";
+        }
+        String segment = normalized.replaceAll("[^A-Za-z0-9_-]+", "-")
+                .replaceAll("^-+|-+$", "")
+                .toLowerCase(Locale.ROOT);
+        return StringUtils.hasText(segment) ? segment : "link";
     }
 
     private String resolveRedirect(String parentPath, String firstChildPath) {

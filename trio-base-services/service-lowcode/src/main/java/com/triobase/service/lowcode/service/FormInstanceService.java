@@ -3,6 +3,7 @@ package com.triobase.service.lowcode.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.lowcode.dto.FormInstanceResponse;
 import com.triobase.service.lowcode.dto.SubmitFormInstanceRequest;
 import com.triobase.service.lowcode.entity.LcFormDefinition;
@@ -14,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -28,7 +28,7 @@ public class FormInstanceService {
     public FormInstanceResponse submit(String formKey, SubmitFormInstanceRequest request) {
         LcFormDefinition definition = formDefinitionService.findLatestByFormKey(formKey);
         LcFormInstance instance = new LcFormInstance();
-        instance.setId(nextId("FI"));
+        instance.setId(UlidGenerator.nextUlid());
         instance.setFormDefinitionId(definition.getId());
         instance.setFormKey(definition.getFormKey());
         instance.setStatus("SUBMITTED");
@@ -68,7 +68,4 @@ public class FormInstanceService {
         return response;
     }
 
-    private String nextId(String prefix) {
-        return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
-    }
 }

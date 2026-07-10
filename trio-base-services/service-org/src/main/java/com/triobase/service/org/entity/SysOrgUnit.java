@@ -1,16 +1,14 @@
 package com.triobase.service.org.entity;
 
-import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.triobase.common.core.entity.BaseEntity;
 import lombok.Data;
-
-import java.time.LocalDateTime;
+import lombok.EqualsAndHashCode;
 
 @Data
+@EqualsAndHashCode(callSuper = true)
 @TableName("sys_org_unit")
-public class SysOrgUnit {
-    @TableId
-    private String id;
+public class SysOrgUnit extends BaseEntity {
     private String parentId;
     private String unitCode;
     private String unitName;
@@ -18,6 +16,4 @@ public class SysOrgUnit {
     private Integer sortOrder;
     private Short status;
     private String description;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
 }

@@ -8,13 +8,13 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.triobase.common.core.id.UlidGenerator;
 
 import java.text.ParseException;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * JWT 工具类 — Nimbus JOSE + JWT，HS256 对称签名。
@@ -44,7 +44,7 @@ public final class JwtUtil {
                     .issuer("triobase")
                     .issueTime(Date.from(now))
                     .expirationTime(Date.from(now.plusSeconds(ttlSeconds)))
-                    .jwtID(UUID.randomUUID().toString())
+                    .jwtID(UlidGenerator.nextUlid())
                     .claim("username", username)
                     .claim("type", type);
 

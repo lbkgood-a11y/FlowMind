@@ -3,12 +3,15 @@ package com.triobase.service.auth.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.jwt.JwtUtil;
 import com.triobase.common.dto.auth.LoginRequest;
 import com.triobase.common.dto.auth.LoginResponse;
 import com.triobase.common.dto.auth.TokenValidateResult;
+import com.triobase.service.auth.entity.SysRole;
 import com.triobase.service.auth.entity.SysUser;
 import com.triobase.service.auth.entity.SysUserRole;
+import com.triobase.service.auth.mapper.RoleMapper;
 import com.triobase.service.auth.mapper.UserMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +24,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -30,9 +32,11 @@ public class AuthService {
 
     private static final String REFRESH_KEY_PREFIX = "refresh:";
     private static final String REVOKED_KEY_PREFIX = "revoked:";
+    private static final String DEFAULT_ROLE_CODE = "USER";
 
     private final UserMapper userMapper;
     private final UserRoleMapper userRoleMapper;
+    private final RoleMapper roleMapper;
     private final PasswordEncoder passwordEncoder;
     private final StringRedisTemplate redis;
 
@@ -58,7 +62,7 @@ public class AuthService {
             throw new BizException(AuthErrorCode.PASSWORD_TOO_WEAK);
         }
         SysUser user = new SysUser();
-        user.setId("U" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase());
+        user.setId(UlidGenerator.nextUlid());
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(password));
         user.setEmail(email);
@@ -68,7 +72,7 @@ public class AuthService {
 
         SysUserRole userRole = new SysUserRole();
         userRole.setUserId(user.getId());
-        userRole.setRoleId("R003");
+        userRole.setRoleId(findDefaultRoleId());
         userRoleMapper.insert(userRole);
 
         log.info("User registered: {} ({})", username, user.getId());
@@ -151,6 +155,15 @@ public class AuthService {
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
         }
+    }
+
+    private String findDefaultRoleId() {
+        SysRole defaultRole = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getRoleCode, DEFAULT_ROLE_CODE));
+        if (defaultRole == null) {
+            throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
+        }
+        return defaultRole.getId();
     }
 
     private LoginResponse buildLoginResponse(SysUser user, List<String> roles) {

@@ -7,7 +7,7 @@ spring:
   config:
     import: optional:nacos:${spring.application.name}.yml
   datasource:
-    url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5432/triobase}
+    url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5433/triobase}
     username: ${AUTH_DB_USERNAME:triobase}
     password: ${AUTH_DB_PASSWORD:triobase123}
     driver-class-name: org.postgresql.Driver

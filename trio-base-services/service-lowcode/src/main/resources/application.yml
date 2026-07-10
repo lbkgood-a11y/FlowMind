@@ -7,7 +7,7 @@ spring:
   config:
     import: optional:nacos:${spring.application.name}.yml
   datasource:
-    url: ${LOWCODE_DB_URL:jdbc:postgresql://localhost:5432/triobase}
+    url: ${LOWCODE_DB_URL:jdbc:postgresql://localhost:5433/triobase}
     username: ${LOWCODE_DB_USERNAME:triobase}
     password: ${LOWCODE_DB_PASSWORD:triobase123}
     driver-class-name: org.postgresql.Driver

@@ -6,7 +6,9 @@ import com.triobase.common.core.jwt.JwtUtil;
 import com.triobase.common.dto.auth.LoginRequest;
 import com.triobase.common.dto.auth.LoginResponse;
 import com.triobase.common.dto.auth.TokenValidateResult;
+import com.triobase.service.auth.entity.SysRole;
 import com.triobase.service.auth.entity.SysUser;
+import com.triobase.service.auth.mapper.RoleMapper;
 import com.triobase.service.auth.mapper.UserMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +35,7 @@ class AuthServiceTest {
 
     @Mock private UserMapper userMapper;
     @Mock private UserRoleMapper userRoleMapper;
+    @Mock private RoleMapper roleMapper;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private StringRedisTemplate redis;
     @Mock private ValueOperations<String, String> valueOperations;
@@ -56,6 +59,9 @@ class AuthServiceTest {
         when(userMapper.selectCount(any())).thenReturn(0L);
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$encoded");
         when(userMapper.insert(any(SysUser.class))).thenReturn(1);
+        SysRole defaultRole = new SysRole();
+        defaultRole.setId("R001");
+        when(roleMapper.selectOne(any())).thenReturn(defaultRole);
 
         LoginResponse resp = authService.register("newuser", "Pass1234", "test@triobase.local", null);
 

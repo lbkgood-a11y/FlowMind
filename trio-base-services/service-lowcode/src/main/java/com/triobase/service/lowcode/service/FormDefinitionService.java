@@ -2,6 +2,7 @@ package com.triobase.service.lowcode.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.service.lowcode.dto.CreateFormDefinitionRequest;
 import com.triobase.service.lowcode.dto.FormDefinitionResponse;
@@ -18,7 +19,6 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,7 +44,7 @@ public class FormDefinitionService {
 
         LocalDateTime now = LocalDateTime.now();
         LcFormDefinition definition = new LcFormDefinition();
-        definition.setId(nextId("FD"));
+        definition.setId(UlidGenerator.nextUlid());
         definition.setFormKey(request.getFormKey());
         definition.setName(request.getName());
         definition.setDescription(request.getDescription());
@@ -60,7 +60,7 @@ public class FormDefinitionService {
         if (request.getFields() != null) {
             for (FormFieldSchemaRequest field : request.getFields()) {
                 LcFormFieldDefinition fieldDefinition = new LcFormFieldDefinition();
-                fieldDefinition.setId(nextId("FF"));
+                fieldDefinition.setId(UlidGenerator.nextUlid());
                 fieldDefinition.setFormDefinitionId(definition.getId());
                 fieldDefinition.setFieldKey(field.getFieldKey());
                 fieldDefinition.setLabel(field.getLabel());
@@ -159,7 +159,4 @@ public class FormDefinitionService {
         return response;
     }
 
-    private String nextId(String prefix) {
-        return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
-    }
 }

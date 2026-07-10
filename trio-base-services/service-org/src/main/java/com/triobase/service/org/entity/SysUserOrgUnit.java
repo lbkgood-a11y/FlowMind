@@ -1,17 +1,14 @@
 package com.triobase.service.org.entity;
 
-import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.triobase.common.core.entity.BaseEntity;
 import lombok.Data;
-
-import java.time.LocalDateTime;
+import lombok.EqualsAndHashCode;
 
 @Data
+@EqualsAndHashCode(callSuper = true)
 @TableName("sys_user_org_unit")
-public class SysUserOrgUnit {
-    @TableId
-    private String id;
+public class SysUserOrgUnit extends BaseEntity {
     private String userId;
     private String orgUnitId;
-    private LocalDateTime createdAt;
 }

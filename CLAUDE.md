@@ -374,3 +374,38 @@ TrioBase/
 | 编码期 | ESLint + Schema Check（前端） | Generative UI 组件未注册、缺少 Schema 校验 |
 | CI 门禁 | Harness Pipeline + SonarQube + Checkstyle | Activity 缺少 RetryPolicy、代码规范不合规 → 拒绝 Merge |
 | CI 门禁 | 前端 Bundle Analysis + Lighthouse | Streaming 降级为阻塞请求、首屏性能不达标 |
+
+## 日常操作
+
+### 后端服务重启
+
+用户说"重启服务"时执行：
+
+```powershell
+# 停旧进程 → 编译 → 启动 (Windows PowerShell)
+Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
+mvn clean package -DskipTests -T 1C -pl trio-base-services/service-auth,trio-base-services/service-org,trio-base-services/service-lowcode,trio-base-services/service-workflow-engine,trio-base-platform/platform-gateway -am
+.\scripts\start-all.ps1
+```
+
+**注意：** 使用 `mvn clean package` 而非 `mvn package`，因为后者在目标文件锁定时会失败。
+
+### 前端启动
+
+```bash
+cd trio-base-frontend && pnpm -F @vben/web-antd run dev
+```
+
+### 端口速查
+
+| 服务 | 端口 |
+|------|------|
+| platform-gateway | 8080 |
+| service-auth | 8081 |
+| service-org | 8082 |
+| service-lowcode | 8085 |
+| service-workflow-engine | 8086 |
+| 前端 Vite | 5173 |
+| Nacos | 8848 |
+| PostgreSQL | 5433 |
+| Redis | 6379 |

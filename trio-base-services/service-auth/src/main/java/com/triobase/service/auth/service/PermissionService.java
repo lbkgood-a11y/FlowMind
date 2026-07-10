@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.service.auth.dto.CreatePermissionRequest;
 import com.triobase.service.auth.entity.SysPermission;
@@ -16,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -53,7 +53,7 @@ public class PermissionService {
         }
 
         SysPermission permission = new SysPermission();
-        permission.setId("P" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase());
+        permission.setId(UlidGenerator.nextUlid());
         permission.setResource(request.getResource());
         permission.setAction(request.getAction());
         permission.setDescription(request.getDescription());

@@ -1,19 +1,16 @@
 package com.triobase.service.auth.entity;
 
-import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.triobase.common.core.entity.BaseEntity;
 import lombok.Data;
-
-import java.time.LocalDateTime;
+import lombok.EqualsAndHashCode;
 
 @Data
+@EqualsAndHashCode(callSuper = true)
 @TableName("sys_role")
-public class SysRole {
-    @TableId
-    private String id;
+public class SysRole extends BaseEntity {
     private String roleCode;
     private String roleName;
     private String description;
     private Short status;
-    private LocalDateTime createdAt;
 }

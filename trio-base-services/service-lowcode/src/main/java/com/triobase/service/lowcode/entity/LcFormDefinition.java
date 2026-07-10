@@ -1,16 +1,14 @@
 package com.triobase.service.lowcode.entity;
 
-import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.triobase.common.core.entity.BaseEntity;
 import lombok.Data;
-
-import java.time.LocalDateTime;
+import lombok.EqualsAndHashCode;
 
 @Data
+@EqualsAndHashCode(callSuper = true)
 @TableName("lc_form_definition")
-public class LcFormDefinition {
-    @TableId
-    private String id;
+public class LcFormDefinition extends BaseEntity {
     private String formKey;
     private String name;
     private String description;
@@ -18,7 +16,4 @@ public class LcFormDefinition {
     private String status;
     private String schemaJson;
     private String uiSchemaJson;
-    private String createdBy;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
 }

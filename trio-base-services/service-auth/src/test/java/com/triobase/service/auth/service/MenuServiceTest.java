@@ -111,6 +111,23 @@ class MenuServiceTest {
     }
 
     @Test
+    void create_shouldAllowLinkWithoutRoutePath() {
+        CreateMenuRequest request = new CreateMenuRequest();
+        request.setMenuKey("docs");
+        request.setMenuName("Docs");
+        request.setMenuType("link");
+        request.setComponent("https://example.com/docs");
+
+        when(menuMapper.selectCount(any())).thenReturn(0L);
+        when(menuMapper.insert(any(SysMenu.class))).thenReturn(1);
+
+        SysMenu menu = menuService.create(request);
+
+        assertNull(menu.getPath());
+        assertEquals("https://example.com/docs", menu.getComponent());
+    }
+
+    @Test
     void create_shouldThrow_whenButtonMissingPermissionCode() {
         CreateMenuRequest request = new CreateMenuRequest();
         request.setMenuKey("menusCreate");
@@ -204,6 +221,26 @@ class MenuServiceTest {
         assertEquals("/system/menu/list", routes.get(0).getChildren().get(0).getComponent());
         assertEquals(Boolean.TRUE, routes.get(0).getChildren().get(0).getMeta().get("affixTab"));
         assertEquals("/api/v1/menus:GET", routes.get(0).getChildren().get(0).getAuthCode());
+    }
+
+    @Test
+    void listRoutes_shouldBuildSyntheticPathForLinkWithoutRoutePath() {
+        SysMenu link = new SysMenu();
+        link.setId("M001");
+        link.setMenuKey("docs");
+        link.setMenuName("Docs");
+        link.setMenuType("link");
+        link.setComponent("https://example.com/docs");
+        link.setStatus((short) 1);
+
+        when(menuMapper.selectList(any())).thenReturn(List.of(link));
+
+        List<MenuRouteResponse> routes = menuService.listRoutes();
+
+        assertEquals(1, routes.size());
+        assertEquals("/external/docs", routes.get(0).getPath());
+        assertEquals("IFrameView", routes.get(0).getComponent());
+        assertEquals("https://example.com/docs", routes.get(0).getMeta().get("link"));
     }
 
     @Test

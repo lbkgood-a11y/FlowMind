@@ -3,6 +3,7 @@ package com.triobase.service.org.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.org.dto.CreateOrgUnitRequest;
 import com.triobase.service.org.dto.UserOrgAssignmentRequest;
 import com.triobase.service.org.entity.SysOrgUnit;
@@ -15,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -56,7 +56,7 @@ public class OrgUnitService {
         }
 
         SysOrgUnit unit = new SysOrgUnit();
-        unit.setId("O" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase());
+        unit.setId(UlidGenerator.nextUlid());
         unit.setParentId(StringUtils.hasText(request.getParentId()) ? request.getParentId() : null);
         unit.setUnitCode(request.getUnitCode());
         unit.setUnitName(request.getUnitName());
@@ -106,7 +106,7 @@ public class OrgUnitService {
 
         for (String orgUnitId : orgUnitIds) {
             SysUserOrgUnit relation = new SysUserOrgUnit();
-            relation.setId("UO" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase());
+            relation.setId(UlidGenerator.nextUlid());
             relation.setUserId(userId);
             relation.setOrgUnitId(orgUnitId);
             userOrgUnitMapper.insert(relation);

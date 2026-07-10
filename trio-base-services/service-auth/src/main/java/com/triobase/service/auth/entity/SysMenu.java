@@ -1,16 +1,14 @@
 package com.triobase.service.auth.entity;
 
-import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.triobase.common.core.entity.BaseEntity;
 import lombok.Data;
-
-import java.time.LocalDateTime;
+import lombok.EqualsAndHashCode;
 
 @Data
+@EqualsAndHashCode(callSuper = true)
 @TableName("sys_menu")
-public class SysMenu {
-    @TableId
-    private String id;
+public class SysMenu extends BaseEntity {
     private String parentId;
     private String menuKey;
     private String menuName;
@@ -36,6 +34,4 @@ public class SysMenu {
     private String permissionId;
     private String permissionCode;
     private String description;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
 }

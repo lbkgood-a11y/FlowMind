@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.service.auth.dto.CreateRoleRequest;
 import com.triobase.service.auth.dto.RoleDetailResponse;
@@ -25,7 +26,6 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -128,7 +128,7 @@ public class RoleService {
         List<String> normalizedPermissionIds = normalizePermissionIds(request.getPermissionIds());
 
         SysRole role = new SysRole();
-        role.setId("R" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase());
+        role.setId(UlidGenerator.nextUlid());
         role.setRoleCode(request.getRoleCode().trim());
         role.setRoleName(request.getRoleName().trim());
         role.setDescription(normalizeBlank(request.getDescription()));

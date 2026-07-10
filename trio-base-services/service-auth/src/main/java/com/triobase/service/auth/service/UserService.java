@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.dto.auth.UserInfoPayload;
 import com.triobase.service.auth.dto.CreateUserRequest;
@@ -23,7 +24,6 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -99,7 +99,7 @@ public class UserService {
         validatePassword(request.getPassword());
 
         SysUser user = new SysUser();
-        user.setId("U" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase());
+        user.setId(UlidGenerator.nextUlid());
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setEmail(request.getEmail());
