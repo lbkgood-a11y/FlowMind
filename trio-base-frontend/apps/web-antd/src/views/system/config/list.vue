@@ -10,11 +10,11 @@ import { IconifyIcon } from '@vben/icons';
 
 import {
   Button,
+  Drawer,
   FormItem,
   Input,
   InputNumber,
   message,
-  Modal,
   Select,
   Space,
   Switch,
@@ -24,6 +24,7 @@ import {
 } from 'ant-design-vue';
 
 import { getSystemConfigs, updateSystemConfig } from '#/api';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
 
 const Textarea = Input.TextArea;
 
@@ -173,7 +174,7 @@ onMounted(loadConfigs);
 
 <template>
   <Page auto-content-height>
-    <div class="config-page">
+    <div class="erp-compact-page config-page">
       <section class="toolbar">
         <Space wrap>
           <Select
@@ -196,11 +197,11 @@ onMounted(loadConfigs);
           />
           <Button v-if="canQuery" type="primary" @click="loadConfigs">查询</Button>
           <Button v-if="canQuery" @click="resetQuery">重置</Button>
-          <Tooltip v-if="canQuery" title="刷新">
-            <Button shape="circle" @click="loadConfigs">
-              <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
-            </Button>
-          </Tooltip>
+        <Tooltip v-if="canQuery" title="刷新">
+          <Button shape="circle" @click="loadConfigs">
+            <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+          </Button>
+        </Tooltip>
         </Space>
       </section>
 
@@ -212,6 +213,7 @@ onMounted(loadConfigs);
           :loading="loading"
           :pagination="false"
           :scroll="{ x: 1570 }"
+          size="small"
           :sticky="{ offsetScroll: 0 }"
         >
           <template #bodyCell="{ column, record }">
@@ -235,13 +237,11 @@ onMounted(loadConfigs);
       </section>
     </div>
 
-    <Modal
+    <Drawer
       v-model:open="formOpen"
-      :confirm-loading="saving"
       title="编辑系统参数"
-      ok-text="保存"
-      width="760px"
-      @ok="submitForm"
+      placement="right"
+      width="760"
     >
       <div class="form-grid">
         <FormItem label="参数键">
@@ -284,7 +284,14 @@ onMounted(loadConfigs);
           <Textarea v-model:value="formModel.description" :rows="3" placeholder="请输入描述" />
         </FormItem>
       </div>
-    </Modal>
+
+      <template #footer>
+        <Space>
+          <Button @click="formOpen = false">取消</Button>
+          <Button :loading="saving" type="primary" @click="submitForm">保存</Button>
+        </Space>
+      </template>
+    </Drawer>
   </Page>
 </template>
 
@@ -293,7 +300,7 @@ onMounted(loadConfigs);
   display: flex;
   min-height: 100%;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .toolbar,
@@ -320,7 +327,7 @@ onMounted(loadConfigs);
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 16px;
+  gap: 8px 12px;
 }
 
 .form-wide {

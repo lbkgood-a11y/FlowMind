@@ -13,13 +13,13 @@ import {
   Button,
   Checkbox,
   Divider,
+  Drawer,
   Empty,
   Form,
   FormItem,
   Input,
   InputNumber,
   message,
-  Modal,
   Popconfirm,
   Popover,
   RadioGroup,
@@ -38,6 +38,7 @@ import {
   menuPathExists,
   updateMenu,
 } from '#/api';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
 import { componentKeys } from '#/router/routes';
 
 const MENU_PERMISSIONS = {
@@ -751,7 +752,7 @@ onMounted(loadMenus);
 
 <template>
   <Page auto-content-height>
-    <div class="menu-page" :class="{ 'is-block-fullscreen': blockFullscreen }">
+    <div class="erp-compact-page menu-page" :class="{ 'is-block-fullscreen': blockFullscreen }">
       <section class="list-panel">
         <div class="list-header">
           <div></div>
@@ -762,18 +763,22 @@ onMounted(loadMenus);
             </Button>
             <Tooltip v-if="canQuery" title="刷新">
               <Button shape="circle" @click="loadMenus">
-                <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
+                <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
               </Button>
             </Tooltip>
             <Tooltip v-if="canQuery" title="展开全部">
               <Button shape="circle" @click="expandAll">
-                <IconifyIcon icon="lucide:scan-line" class="size-4" />
+                <IconifyIcon :icon="ERP_TOOLBAR_ICONS.expandAll" class="size-4" />
               </Button>
             </Tooltip>
             <Tooltip :title="blockFullscreen ? '还原' : '全屏'">
               <Button shape="circle" @click="toggleFullscreen">
                 <IconifyIcon
-                  :icon="blockFullscreen ? 'lucide:minimize' : 'lucide:expand'"
+                  :icon="
+                    blockFullscreen
+                      ? ERP_TOOLBAR_ICONS.fullscreenExit
+                      : ERP_TOOLBAR_ICONS.fullscreen
+                  "
                   class="size-4"
                 />
               </Button>
@@ -797,7 +802,7 @@ onMounted(loadMenus);
                       class="column-setting-item"
                     >
                       <Checkbox v-model:checked="item.visible" />
-                      <IconifyIcon icon="lucide:grip-vertical" class="drag-icon" />
+                      <IconifyIcon :icon="ERP_TOOLBAR_ICONS.drag" class="drag-icon" />
                       <span>{{ item.title }}</span>
                     </div>
                   </div>
@@ -816,7 +821,7 @@ onMounted(loadMenus);
                   class="column-setting-trigger"
                   shape="circle"
                 >
-                  <IconifyIcon icon="lucide:layout-grid" class="size-4" />
+                  <IconifyIcon :icon="ERP_TOOLBAR_ICONS.columnSettings" class="size-4" />
                 </Button>
               </Tooltip>
             </Popover>
@@ -834,7 +839,7 @@ onMounted(loadMenus);
             :scroll="{ x: 1280 }"
             :sticky="{ offsetScroll: 0 }"
             row-key="id"
-            size="middle"
+            size="small"
             @expanded-rows-change="onExpandedRowsChange"
           >
             <template #emptyText>
@@ -906,19 +911,15 @@ onMounted(loadMenus);
         </div>
       </section>
 
-      <Modal
+      <Drawer
         v-model:open="formOpen"
         :body-style="{ padding: '14px 26px 0' }"
-        :confirm-loading="saving"
         :destroy-on-close="false"
         :mask-closable="false"
-        :ok-button-props="{ disabled: !canSaveMenu }"
-        ok-text="保存"
+        placement="right"
         :title="formTitle"
-        centered
-        class="menu-edit-modal"
-        width="790px"
-        @ok="submitForm"
+        class="menu-edit-drawer"
+        width="790"
       >
         <Form :model="formModel" class="menu-form" layout="horizontal">
           <FormItem class="type-row" label="类型">
@@ -1077,7 +1078,21 @@ onMounted(loadMenus);
             </div>
           </template>
         </Form>
-      </Modal>
+
+        <template #footer>
+          <Space>
+            <Button @click="formOpen = false">取消</Button>
+            <Button
+              :disabled="!canSaveMenu"
+              :loading="saving"
+              type="primary"
+              @click="submitForm"
+            >
+              保存
+            </Button>
+          </Space>
+        </template>
+      </Drawer>
     </div>
   </Page>
 </template>
@@ -1085,8 +1100,7 @@ onMounted(loadMenus);
 <style scoped>
 .menu-page {
   min-height: 100%;
-  padding: 12px;
-  background: #f1f4f8;
+  padding: 8px;
 }
 
 .menu-page.is-block-fullscreen {
@@ -1102,7 +1116,7 @@ onMounted(loadMenus);
   min-height: calc(100vh - 120px);
   padding: 8px;
   background: #fff;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 .menu-page.is-block-fullscreen .list-panel {
@@ -1113,7 +1127,7 @@ onMounted(loadMenus);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 40px;
+  height: 34px;
   margin-bottom: 8px;
 }
 
@@ -1138,7 +1152,7 @@ onMounted(loadMenus);
 }
 
 .table-frame :deep(.ant-table-container) {
-  min-height: 660px;
+  min-height: 560px;
 }
 
 .table-frame :deep(.ant-table-thead > tr > th) {
@@ -1189,44 +1203,32 @@ onMounted(loadMenus);
   text-align: center;
 }
 
-:global(.menu-edit-modal .ant-modal-content) {
-  height: 940px;
-  padding: 0;
-  overflow: hidden;
-  border-radius: 2px;
-}
-
-:global(.menu-edit-modal .ant-modal-header) {
-  height: 54px;
-  padding: 16px 14px;
-  margin: 0;
+:global(.menu-edit-drawer .ant-drawer-header) {
+  padding: 12px 14px;
   border-bottom: 1px solid #e5e7eb;
 }
 
-:global(.menu-edit-modal .ant-modal-title) {
+:global(.menu-edit-drawer .ant-drawer-title) {
   color: #1f2937;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
 }
 
-:global(.menu-edit-modal .ant-modal-close) {
+:global(.menu-edit-drawer .ant-drawer-close) {
   top: 12px;
 }
 
-:global(.menu-edit-modal .ant-modal-body) {
-  height: 838px;
-  overflow: hidden;
+:global(.menu-edit-drawer .ant-drawer-body) {
+  overflow: auto;
 }
 
-:global(.menu-edit-modal .ant-modal-footer) {
-  height: 48px;
+:global(.menu-edit-drawer .ant-drawer-footer) {
   padding: 8px 12px;
-  margin: 0;
   border-top: 1px solid #e5e7eb;
 }
 
 .menu-form :deep(.ant-form-item) {
-  margin-bottom: 18px;
+  margin-bottom: 10px;
 }
 
 .menu-form :deep(.ant-form-item-label) {
@@ -1256,13 +1258,13 @@ onMounted(loadMenus);
 }
 
 .type-row {
-  margin-bottom: 18px;
+  margin-bottom: 10px;
 }
 
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 34px;
+  column-gap: 12px;
 }
 
 .title-addon {
@@ -1276,7 +1278,7 @@ onMounted(loadMenus);
 }
 
 .settings-divider {
-  margin: 24px 0 24px;
+  margin: 14px 0;
   color: #303645;
   font-weight: 600;
 }
@@ -1288,7 +1290,7 @@ onMounted(loadMenus);
 .setting-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(180px, 1fr));
-  row-gap: 18px;
+  row-gap: 10px;
   padding: 0 108px;
 }
 
@@ -1341,8 +1343,8 @@ onMounted(loadMenus);
 }
 
 @media (max-width: 900px) {
-  :global(.menu-edit-modal .ant-modal) {
-    max-width: calc(100vw - 24px);
+  :global(.menu-edit-drawer .ant-drawer-content-wrapper) {
+    width: calc(100vw - 24px) !important;
   }
 
   .form-grid,

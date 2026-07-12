@@ -1,0 +1,18 @@
+{
+  "title": "运营支撑",
+  "announcement": {
+    "title": "通知公告"
+  },
+  "message": {
+    "title": "站内消息"
+  },
+  "file": {
+    "title": "文件中心"
+  },
+  "importExport": {
+    "title": "导入导出"
+  },
+  "job": {
+    "title": "后台任务"
+  }
+}

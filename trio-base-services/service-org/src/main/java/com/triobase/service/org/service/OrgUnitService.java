@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.org.dto.CreateOrgUnitRequest;
+import com.triobase.service.org.dto.OrgUnitUserResponse;
 import com.triobase.service.org.dto.OrgTreeNodeResponse;
 import com.triobase.service.org.dto.SaveOrgRelationRequest;
 import com.triobase.service.org.dto.UpdateOrgUnitRequest;
@@ -15,10 +16,12 @@ import com.triobase.service.org.entity.SysOrgDimension;
 import com.triobase.service.org.entity.SysOrgRelation;
 import com.triobase.service.org.entity.SysOrgUnit;
 import com.triobase.service.org.entity.SysUserOrgUnit;
+import com.triobase.service.org.entity.SysUserView;
 import com.triobase.service.org.mapper.OrgDimensionMapper;
 import com.triobase.service.org.mapper.OrgRelationMapper;
 import com.triobase.service.org.mapper.OrgUnitMapper;
 import com.triobase.service.org.mapper.UserOrgUnitMapper;
+import com.triobase.service.org.mapper.UserViewMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +48,7 @@ public class OrgUnitService {
     private final OrgDimensionMapper orgDimensionMapper;
     private final OrgRelationMapper orgRelationMapper;
     private final UserOrgUnitMapper userOrgUnitMapper;
+    private final UserViewMapper userViewMapper;
 
     public List<SysOrgDimension> listDimensions() {
         return orgDimensionMapper.selectList(new LambdaQueryWrapper<SysOrgDimension>()
@@ -319,6 +323,46 @@ public class OrgUnitService {
                             unit != null ? unit.getUnitName() : null
                     );
                 })
+                .toList();
+    }
+
+    public List<OrgUnitUserResponse> listOrgUnitUsers(String orgUnitId, String dimensionCode) {
+        if (!StringUtils.hasText(orgUnitId)) {
+            return List.of();
+        }
+        SysOrgDimension dimension = findDimensionByCode(dimensionCode);
+        SysOrgUnit orgUnit = orgUnitMapper.selectById(orgUnitId);
+        if (orgUnit == null) {
+            throw new BizException(40442, "ORG_UNIT_NOT_FOUND");
+        }
+        if (findRelation(dimension.getId(), orgUnitId) == null) {
+            throw new BizException(40445, "ORG_RELATION_NOT_FOUND");
+        }
+
+        List<SysUserOrgUnit> relations = userOrgUnitMapper.selectList(new LambdaQueryWrapper<SysUserOrgUnit>()
+                .eq(SysUserOrgUnit::getTenantId, DEFAULT_TENANT)
+                .eq(SysUserOrgUnit::getDimensionId, dimension.getId())
+                .eq(SysUserOrgUnit::getOrgUnitId, orgUnitId)
+                .orderByDesc(SysUserOrgUnit::getIsPrimary)
+                .orderByAsc(SysUserOrgUnit::getCreatedAt)
+                .orderByAsc(SysUserOrgUnit::getUserId));
+        if (relations.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> userIds = relations.stream()
+                .map(SysUserOrgUnit::getUserId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<String, SysUserView> users = userViewMapper.selectBatchIds(userIds).stream()
+                .collect(Collectors.toMap(SysUserView::getId, Function.identity()));
+
+        return relations.stream()
+                .map(relation -> OrgUnitUserResponse.from(
+                        relation,
+                        dimension.getDimensionCode(),
+                        orgUnit,
+                        users.get(relation.getUserId())
+                ))
                 .toList();
     }
 

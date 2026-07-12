@@ -1,0 +1,18 @@
+{
+  "title": "Operations",
+  "announcement": {
+    "title": "Announcements"
+  },
+  "message": {
+    "title": "Messages"
+  },
+  "file": {
+    "title": "Files"
+  },
+  "importExport": {
+    "title": "Import / Export"
+  },
+  "job": {
+    "title": "Jobs"
+  }
+}

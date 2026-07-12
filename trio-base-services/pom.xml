@@ -17,6 +17,7 @@
 
     <modules>
         <module>service-auth</module>
+        <module>service-ops</module>
         <module>service-org</module>
         <module>service-tenant</module>
         <module>service-billing</module>

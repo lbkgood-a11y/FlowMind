@@ -73,6 +73,26 @@ export namespace SystemOrgApi {
     orgUnitName?: string;
     userId: string;
   }
+
+  export interface OrgUnitUser {
+    assignmentId: string;
+    dimensionCode?: string;
+    dimensionId: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    email?: string;
+    leader?: boolean;
+    orgUnitId: string;
+    orgUnitName?: string;
+    phone?: string;
+    positionId?: string;
+    positionName?: string;
+    primary?: boolean;
+    status?: 0 | 1;
+    userId: string;
+    username?: string;
+    userStatus?: 0 | 1;
+  }
 }
 
 async function getOrgDimensions() {
@@ -132,6 +152,13 @@ async function getUserOrgAssignments(userId: string, dimensionCode?: string) {
   );
 }
 
+async function getOrgUnitUsers(orgUnitId: string, dimensionCode?: string) {
+  return requestClient.get<SystemOrgApi.OrgUnitUser[]>(
+    `/org/units/${orgUnitId}/users`,
+    { params: { dimensionCode } },
+  );
+}
+
 async function assignUserOrgUnits(
   userId: string,
   data: {
@@ -150,6 +177,7 @@ export {
   deleteOrgUnit,
   getOrgDimensions,
   getOrgTree,
+  getOrgUnitUsers,
   getOrgUnits,
   getUserOrgAssignments,
   saveOrgRelation,

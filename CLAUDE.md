@@ -534,6 +534,8 @@ public class SysRole extends BaseEntity {
 
 ### 页面开发模式
 
+> 企业级高密度页面布局、单表/多表/树表联动规范见 [docs/vben-erp-layout-standard.md](docs/vben-erp-layout-standard.md)。后续 `web-antd` 管理页默认挂载 `erp-compact-page`，表格使用 small/mini 密度，主子孙和树表通过状态与 Grid/Table API 联动。
+
 每个管理页面遵循 **查询面板 + 数据表格 + 分页 + 抽屉表单** 模式：
 
 ```vue

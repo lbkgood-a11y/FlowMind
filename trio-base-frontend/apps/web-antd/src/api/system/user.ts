@@ -53,6 +53,10 @@ async function getUserList(params: Recordable<any>) {
   } satisfies SystemUserApi.UserListResult;
 }
 
+async function getUserById(id: string) {
+  return requestClient.get<SystemUserApi.SystemUser>(`/users/${id}`);
+}
+
 async function createUser(data: SystemUserApi.SaveUserParams) {
   return requestClient.post<SystemUserApi.SystemUser>('/users', data);
 }
@@ -79,6 +83,7 @@ export {
   assignUserRoles,
   createUser,
   deleteUser,
+  getUserById,
   getUserList,
   updateUser,
   updateUserStatus,

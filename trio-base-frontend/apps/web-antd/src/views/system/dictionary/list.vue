@@ -10,12 +10,12 @@ import { IconifyIcon, Plus } from '@vben/icons';
 
 import {
   Button,
+  Drawer,
   Empty,
   FormItem,
   Input,
   InputNumber,
   message,
-  Modal,
   Popconfirm,
   Select,
   Space,
@@ -35,6 +35,7 @@ import {
   updateDictItem,
   updateDictType,
 } from '#/api';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
 
 const Textarea = Input.TextArea;
 
@@ -112,6 +113,24 @@ const itemForm = reactive<DictItemFormModel>({
 const selectedType = computed(() =>
   types.value.find((item) => item.id === selectedTypeId.value),
 );
+
+const typeRowSelection = computed<TableProps['rowSelection']>(() => ({
+  columnWidth: 38,
+  hideSelectAll: true,
+  selectedRowKeys: selectedTypeId.value ? [selectedTypeId.value] : [],
+  type: 'checkbox',
+  onSelect: (record, selected) => {
+    const row = record as SystemGovernanceApi.DictType;
+    if (selected) {
+      selectType(row);
+      return;
+    }
+    if (selectedTypeId.value === row.id) {
+      selectedTypeId.value = undefined;
+      items.value = [];
+    }
+  },
+}));
 
 const typeColumns = computed<TableProps['columns']>(() => [
   { dataIndex: 'dictName', fixed: 'left', key: 'dictName', title: '字典名称', width: 150 },
@@ -348,10 +367,18 @@ function typeRowClassName(record: SystemGovernanceApi.DictType) {
   return record.id === selectedTypeId.value ? 'selected-row' : '';
 }
 
+function selectType(record: SystemGovernanceApi.DictType) {
+  if (selectedTypeId.value === record.id) {
+    loadItems();
+    return;
+  }
+  selectedTypeId.value = record.id;
+}
+
 function typeRow(record: SystemGovernanceApi.DictType) {
   return {
     onClick: () => {
-      selectedTypeId.value = record.id;
+      selectType(record);
     },
   };
 }
@@ -368,7 +395,7 @@ onMounted(async () => {
 
 <template>
   <Page auto-content-height>
-    <div class="dictionary-page">
+    <div class="erp-compact-page dictionary-page">
       <section class="toolbar">
         <Space wrap>
           <Input v-model:value="typeQuery.keyword" class="query-input" placeholder="字典编码/名称" allow-clear />
@@ -386,7 +413,7 @@ onMounted(async () => {
           <Button v-if="canQuery" @click="resetTypeQuery">重置</Button>
           <Tooltip v-if="canQuery" title="刷新">
             <Button shape="circle" @click="loadTypes">
-              <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
+              <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
             </Button>
           </Tooltip>
           <Button v-if="canCreate" type="primary" @click="openCreateType">
@@ -397,17 +424,23 @@ onMounted(async () => {
       </section>
 
       <div class="dictionary-layout">
-        <section class="type-panel">
+        <section class="data-panel type-panel">
+          <div class="panel-header">
+            <div class="panel-title">字典列表</div>
+            <div class="panel-meta">点击字典行查看下方字典项</div>
+          </div>
           <Table
             row-key="id"
             :columns="typeColumns"
             :data-source="types"
             :loading="typeLoading"
             :pagination="false"
+            :custom-row="typeRow"
+            :row-selection="typeRowSelection"
             :row-class-name="typeRowClassName"
             :scroll="{ x: 960 }"
+            size="small"
             :sticky="{ offsetScroll: 0 }"
-            @row="typeRow"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'status'">
@@ -438,9 +471,10 @@ onMounted(async () => {
           </Table>
         </section>
 
-        <section class="item-panel">
-          <div class="item-toolbar">
+        <section class="data-panel item-panel">
+          <div class="panel-header item-toolbar">
             <Space wrap>
+              <span class="panel-title">字典项列表</span>
               <span class="current-type">{{ selectedType?.dictName || '未选择字典类型' }}</span>
               <Select
                 v-model:value="itemQuery.status"
@@ -461,7 +495,7 @@ onMounted(async () => {
             </Space>
           </div>
 
-          <Empty v-if="!selectedType" description="请选择左侧字典类型" />
+          <Empty v-if="!selectedType" description="请选择上方字典类型" />
           <Table
             v-else
             row-key="id"
@@ -470,6 +504,7 @@ onMounted(async () => {
             :loading="itemLoading"
             :pagination="false"
             :scroll="{ x: 960 }"
+            size="small"
             :sticky="{ offsetScroll: 0 }"
           >
             <template #bodyCell="{ column, record }">
@@ -503,13 +538,11 @@ onMounted(async () => {
       </div>
     </div>
 
-    <Modal
+    <Drawer
       v-model:open="typeFormOpen"
-      :confirm-loading="saving"
       :title="editingType ? '编辑字典类型' : '新增字典类型'"
-      ok-text="保存"
-      width="680px"
-      @ok="submitType"
+      placement="right"
+      width="680"
     >
       <div class="form-grid">
         <FormItem label="字典编码" required>
@@ -534,15 +567,20 @@ onMounted(async () => {
           <Textarea v-model:value="typeForm.description" :rows="3" placeholder="请输入描述" />
         </FormItem>
       </div>
-    </Modal>
 
-    <Modal
+      <template #footer>
+        <Space>
+          <Button @click="typeFormOpen = false">取消</Button>
+          <Button :loading="saving" type="primary" @click="submitType">保存</Button>
+        </Space>
+      </template>
+    </Drawer>
+
+    <Drawer
       v-model:open="itemFormOpen"
-      :confirm-loading="saving"
       :title="editingItem ? '编辑字典项' : '新增字典项'"
-      ok-text="保存"
-      width="760px"
-      @ok="submitItem"
+      placement="right"
+      width="760"
     >
       <div class="form-grid">
         <FormItem label="所属字典">
@@ -579,7 +617,14 @@ onMounted(async () => {
           <Textarea v-model:value="itemForm.metadata" :rows="3" placeholder='例如：{"color":"green"}' />
         </FormItem>
       </div>
-    </Modal>
+
+      <template #footer>
+        <Space>
+          <Button @click="itemFormOpen = false">取消</Button>
+          <Button :loading="saving" type="primary" @click="submitItem">保存</Button>
+        </Space>
+      </template>
+    </Drawer>
   </Page>
 </template>
 
@@ -588,7 +633,7 @@ onMounted(async () => {
   display: flex;
   min-height: 100%;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .toolbar {
@@ -596,20 +641,54 @@ onMounted(async () => {
 }
 
 .dictionary-layout {
-  display: grid;
+  display: flex;
+  flex: 1;
   min-height: 0;
-  grid-template-columns: minmax(420px, 1fr) minmax(480px, 1.15fr);
-  gap: 16px;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.type-panel,
-.item-panel {
+.data-panel {
+  display: flex;
   min-width: 0;
-  overflow: hidden;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.type-panel {
+  flex: 0 0 42%;
+}
+
+.type-panel :deep(.ant-table-tbody > tr) {
+  cursor: pointer;
+}
+
+.item-panel {
+  flex: 1 1 0;
+}
+
+.panel-header {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panel-title {
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.panel-meta {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
 }
 
 .item-toolbar {
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .query-input {
@@ -626,15 +705,20 @@ onMounted(async () => {
   align-items: center;
   overflow: hidden;
   color: hsl(var(--foreground));
+  font-size: 13px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.data-panel :deep(.ant-table-wrapper) {
+  min-height: 0;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 16px;
+  gap: 8px 12px;
 }
 
 .form-wide {
@@ -646,9 +730,12 @@ onMounted(async () => {
 }
 
 @media (max-width: 1080px) {
-  .dictionary-layout,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .type-panel {
+    flex-basis: auto;
   }
 }
 </style>

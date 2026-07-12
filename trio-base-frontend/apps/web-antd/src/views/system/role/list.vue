@@ -46,6 +46,7 @@ import {
   updateRole,
   updateRoleStatus,
 } from '#/api';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
 
 const RangePicker = DatePicker.RangePicker;
 const Textarea = Input.TextArea;
@@ -100,6 +101,30 @@ type RoleColumnSetting = {
   width: number;
 };
 
+type RoleViewKey =
+  | 'all'
+  | 'disabled'
+  | 'enabled'
+  | 'system'
+  | 'tenant'
+  | 'user';
+
+type RoleViewPreset = {
+  description: string;
+  label: string;
+  query: {
+    roleCode?: string;
+    status?: 0 | 1;
+  };
+};
+
+type RoleViewTreeNode = {
+  children?: RoleViewTreeNode[];
+  key: RoleViewKey | string;
+  selectable?: boolean;
+  title: string;
+};
+
 const defaultColumnSettings: RoleColumnSetting[] = [
   { key: 'roleName', title: '角色名称', visible: true, width: 180 },
   { key: 'roleCode', title: '角色编码', visible: true, width: 160 },
@@ -108,6 +133,62 @@ const defaultColumnSettings: RoleColumnSetting[] = [
   { key: 'description', title: '描述', visible: true, width: 260 },
   { key: 'createdAt', title: '创建时间', visible: true, width: 210 },
   { key: 'action', title: '操作', visible: true, width: 230 },
+];
+
+const roleViewPresets: Record<RoleViewKey, RoleViewPreset> = {
+  all: {
+    description: '展示全部角色，右侧查询条件作为精确筛选。',
+    label: '全部角色',
+    query: {},
+  },
+  disabled: {
+    description: '仅查看禁用角色，便于批量核查历史权限。',
+    label: '已停用角色',
+    query: { status: 0 },
+  },
+  enabled: {
+    description: '仅查看当前启用角色，适合日常授权维护。',
+    label: '启用角色',
+    query: { status: 1 },
+  },
+  system: {
+    description: '按 ADMIN 编码域筛选系统管理类角色。',
+    label: '系统管理角色',
+    query: { roleCode: 'ADMIN' },
+  },
+  tenant: {
+    description: '按 TENANT 编码域筛选租户管理类角色。',
+    label: '租户角色',
+    query: { roleCode: 'TENANT' },
+  },
+  user: {
+    description: '按 USER 编码域筛选普通访问类角色。',
+    label: '普通用户角色',
+    query: { roleCode: 'USER' },
+  },
+};
+
+const roleViewTree: RoleViewTreeNode[] = [
+  { key: 'all', title: roleViewPresets.all.label },
+  {
+    children: [
+      { key: 'enabled', title: roleViewPresets.enabled.label },
+      { key: 'disabled', title: roleViewPresets.disabled.label },
+    ],
+    key: 'status-group',
+    selectable: false,
+    title: '状态分组',
+  },
+  {
+    children: [
+      { key: 'system', title: roleViewPresets.system.label },
+      { key: 'tenant', title: roleViewPresets.tenant.label },
+      { key: 'user', title: roleViewPresets.user.label },
+    ],
+    key: 'domain-group',
+    selectable: false,
+    title: '角色域',
+  },
 ];
 
 const roles = ref<SystemRoleApi.SystemRole[]>([]);
@@ -125,6 +206,7 @@ const columnSettingOpen = ref(false);
 const tableKey = ref(0);
 const editingRole = ref<SystemRoleApi.RoleDetail>();
 const detailRole = ref<SystemRoleApi.RoleDetail>();
+const selectedRoleViewKey = ref<RoleViewKey>('all');
 const { hasAccessByCodes } = useAccess();
 
 const canQuery = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.query]));
@@ -169,6 +251,10 @@ const menuCheckedKeys = ref<MenuCheckedKeys>([]);
 
 const menuIds = computed(() => new Set(menus.value.map((item) => item.id)));
 const menuTree = computed(() => buildMenuTree(menus.value));
+const selectedRoleView = computed(
+  () => roleViewPresets[selectedRoleViewKey.value],
+);
+const selectedRoleViewKeys = computed(() => [selectedRoleViewKey.value]);
 
 const allDraftChecked = computed({
   get: () => columnDraft.value.every((item) => item.visible),
@@ -315,6 +401,7 @@ async function loadRoles(page = pagination.current) {
   }
   loading.value = true;
   try {
+    const roleViewQuery = selectedRoleView.value.query;
     const result = await getRolePage({
       createdEnd: queryForm.createdRange?.[1]
         ?.endOf('day')
@@ -324,10 +411,10 @@ async function loadRoles(page = pagination.current) {
         .format('YYYY-MM-DDTHH:mm:ss'),
       keyword: queryForm.keyword?.trim() || undefined,
       page,
-      roleCode: queryForm.roleCode?.trim() || undefined,
+      roleCode: roleViewQuery.roleCode || queryForm.roleCode?.trim() || undefined,
       roleName: queryForm.roleName?.trim() || undefined,
       size: pagination.pageSize,
-      status: queryForm.status,
+      status: roleViewQuery.status ?? queryForm.status,
     });
     roles.value = result.items;
     pagination.current = page;
@@ -343,12 +430,22 @@ function resetQuery() {
   queryForm.roleCode = '';
   queryForm.roleName = '';
   queryForm.status = undefined;
+  selectedRoleViewKey.value = 'all';
   loadRoles(1);
 }
 
 async function handleToolbarSearch() {
   await loadRoles(1);
   queryHidden.value = true;
+}
+
+function selectRoleView(keys: Array<number | string>) {
+  const key = keys[0];
+  if (!key || !(key in roleViewPresets)) {
+    return;
+  }
+  selectedRoleViewKey.value = key as RoleViewKey;
+  loadRoles(1);
 }
 
 function resetForm() {
@@ -522,7 +619,7 @@ onMounted(() => {
 <template>
   <Page auto-content-height>
     <div
-      class="role-page"
+      class="erp-compact-page role-page"
       :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }"
     >
       <section v-show="!queryHidden" class="query-panel">
@@ -543,7 +640,7 @@ onMounted(() => {
               @press-enter="loadRoles(1)"
             />
           </FormItem>
-          <FormItem label="状态">
+          <FormItem v-if="!collapsed" label="状态">
             <Select
               v-model:value="queryForm.status"
               allow-clear
@@ -575,7 +672,7 @@ onMounted(() => {
             <Button type="link" @click="collapsed = !collapsed">
               {{ collapsed ? '展开' : '收起' }}
               <IconifyIcon
-                :icon="collapsed ? 'lucide:chevron-down' : 'lucide:chevron-up'"
+                :icon="collapsed ? ERP_TOOLBAR_ICONS.expand : ERP_TOOLBAR_ICONS.collapse"
                 class="ml-1 size-4"
               />
             </Button>
@@ -583,178 +680,217 @@ onMounted(() => {
         </div>
       </section>
 
-      <section class="list-panel">
-        <div class="list-header">
-          <div class="list-title">
-            <h2>角色列表</h2>
-            <Button v-if="queryHidden" type="link" @click="queryHidden = false">
-              展开搜索
-            </Button>
+      <section class="role-workbench">
+        <aside class="role-tree-panel">
+          <div class="role-tree-header">
+            <div>
+              <h3>角色视图</h3>
+              <span>{{ selectedRoleView.label }}</span>
+            </div>
+            <Tooltip title="重置为全部角色">
+              <Button
+                :disabled="selectedRoleViewKey === 'all'"
+                shape="circle"
+                size="small"
+                @click="selectRoleView(['all'])"
+              >
+                <IconifyIcon :icon="ERP_TOOLBAR_ICONS.reset" class="size-3.5" />
+              </Button>
+            </Tooltip>
           </div>
-          <Space :size="8">
-            <Button v-if="canCreate" type="primary" @click="openCreate">
-              <Plus class="size-4" />
-              新增角色
-            </Button>
-            <Tooltip v-if="canQuery" title="查询并隐藏搜索栏">
-              <Button shape="circle" type="primary" @click="handleToolbarSearch">
-                <IconifyIcon icon="lucide:search" class="size-4" />
+
+          <Tree
+            :selected-keys="selectedRoleViewKeys"
+            :tree-data="roleViewTree"
+            block-node
+            default-expand-all
+            @select="selectRoleView"
+          />
+
+          <div class="role-tree-hint">
+            {{ selectedRoleView.description }}
+          </div>
+        </aside>
+
+        <section class="list-panel">
+          <div class="list-header">
+            <div class="list-title">
+              <h2>角色列表</h2>
+              <Tag color="blue">{{ selectedRoleView.label }}</Tag>
+              <Button v-if="queryHidden" type="link" @click="queryHidden = false">
+                展开搜索
               </Button>
-            </Tooltip>
-            <Tooltip v-if="canQuery" title="刷新">
-              <Button shape="circle" @click="loadRoles()">
-                <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
+            </div>
+            <Space :size="8">
+              <Button v-if="canCreate" type="primary" @click="openCreate">
+                <Plus class="size-4" />
+                新增角色
               </Button>
-            </Tooltip>
-            <Tooltip :title="blockFullscreen ? '还原' : '全屏'">
-              <Button shape="circle" @click="toggleFullscreen">
-                <IconifyIcon
-                  :icon="blockFullscreen ? 'lucide:minimize' : 'lucide:expand'"
-                  class="size-4"
-                />
-              </Button>
-            </Tooltip>
-            <Popover
-              :open="columnSettingOpen"
-              overlay-class-name="role-column-popover"
-              placement="bottomRight"
-              trigger="click"
-              @open-change="syncColumnDraft"
-            >
-              <template #content>
-                <div class="column-settings">
-                  <Checkbox v-model:checked="allDraftChecked" class="column-check-all">
-                    全部
-                  </Checkbox>
-                  <div class="column-setting-list">
-                    <div
-                      v-for="item in columnDraft"
-                      :key="item.key"
-                      class="column-setting-item"
-                    >
-                      <Checkbox v-model:checked="item.visible" />
-                      <IconifyIcon icon="lucide:grip-vertical" class="drag-icon" />
-                      <span class="column-setting-title">{{ item.title }}</span>
-                    </div>
-                  </div>
-                  <div class="column-setting-footer">
-                    <Button type="link" @click="restoreColumnSettings">恢复默认</Button>
-                    <Space>
-                      <Button type="text" @click="cancelColumnSettings">取消</Button>
-                      <Button type="link" @click="confirmColumnSettings">确认</Button>
-                    </Space>
-                  </div>
-                </div>
-              </template>
-              <Tooltip title="列设置">
-                <Button
-                  :class="{ 'is-active': columnSettingOpen }"
-                  class="column-setting-trigger"
-                  shape="circle"
-                >
-                  <IconifyIcon icon="lucide:columns-3" class="size-4" />
+              <Tooltip v-if="canQuery" title="查询并隐藏搜索栏">
+                <Button shape="circle" type="primary" @click="handleToolbarSearch">
+                  <IconifyIcon :icon="ERP_TOOLBAR_ICONS.search" class="size-4" />
                 </Button>
               </Tooltip>
-            </Popover>
-          </Space>
-        </div>
-
-        <div class="table-frame">
-          <Table
-            :key="tableKey"
-            :columns="columns"
-            :data-source="roles"
-            :loading="loading"
-            :pagination="false"
-            :scroll="{ x: 'max-content' }"
-            :sticky="{ offsetScroll: 0 }"
-            bordered
-            row-key="id"
-            table-layout="fixed"
-            size="middle"
-          >
-            <template #emptyText>
-              <Empty description="暂无数据" />
-            </template>
-
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'roleName'">
-                <div class="role-name-cell">
-                  <IconifyIcon icon="lucide:shield-user" class="size-4" />
-                  <span>{{ record.roleName }}</span>
-                </div>
-              </template>
-
-              <template v-else-if="column.key === 'status'">
-                <Switch
-                  v-if="canUpdate"
-                  :checked="statusValue(asRole(record)) === 1"
-                  checked-children="启用"
-                  un-checked-children="禁用"
-                  @change="(checked) => changeStatus(asRole(record), checked as boolean)"
-                />
-                <Tag v-else :color="statusValue(asRole(record)) === 1 ? 'success' : 'error'">
-                  {{ statusValue(asRole(record)) === 1 ? '启用' : '禁用' }}
-                </Tag>
-              </template>
-
-              <template v-else-if="column.key === 'description'">
-                {{ record.description || '-' }}
-              </template>
-
-              <template v-else-if="column.key === 'createdAt'">
-                {{ formatDate(record.createdAt) }}
-              </template>
-
-              <template v-else-if="column.key === 'action'">
-                <Space>
-                  <Button size="small" type="link" @click="openDetail(asRole(record))">
-                    详情
-                  </Button>
+              <Tooltip v-if="canQuery" title="刷新">
+                <Button shape="circle" @click="loadRoles()">
+                  <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+                </Button>
+              </Tooltip>
+              <Tooltip :title="blockFullscreen ? '还原' : '全屏'">
+                <Button shape="circle" @click="toggleFullscreen">
+                  <IconifyIcon
+                    :icon="
+                      blockFullscreen
+                        ? ERP_TOOLBAR_ICONS.fullscreenExit
+                        : ERP_TOOLBAR_ICONS.fullscreen
+                    "
+                    class="size-4"
+                  />
+                </Button>
+              </Tooltip>
+              <Popover
+                :open="columnSettingOpen"
+                overlay-class-name="role-column-popover"
+                placement="bottomRight"
+                trigger="click"
+                @open-change="syncColumnDraft"
+              >
+                <template #content>
+                  <div class="column-settings">
+                    <Checkbox v-model:checked="allDraftChecked" class="column-check-all">
+                      全部
+                    </Checkbox>
+                    <div class="column-setting-list">
+                      <div
+                        v-for="item in columnDraft"
+                        :key="item.key"
+                        class="column-setting-item"
+                      >
+                        <Checkbox v-model:checked="item.visible" />
+                        <IconifyIcon :icon="ERP_TOOLBAR_ICONS.drag" class="drag-icon" />
+                        <span class="column-setting-title">{{ item.title }}</span>
+                      </div>
+                    </div>
+                    <div class="column-setting-footer">
+                      <Button type="link" @click="restoreColumnSettings">恢复默认</Button>
+                      <Space>
+                        <Button type="text" @click="cancelColumnSettings">取消</Button>
+                        <Button type="link" @click="confirmColumnSettings">确认</Button>
+                      </Space>
+                    </div>
+                  </div>
+                </template>
+                <Tooltip title="列设置">
                   <Button
+                    :class="{ 'is-active': columnSettingOpen }"
+                    class="column-setting-trigger"
+                    shape="circle"
+                  >
+                    <IconifyIcon :icon="ERP_TOOLBAR_ICONS.columnSettings" class="size-4" />
+                  </Button>
+                </Tooltip>
+              </Popover>
+            </Space>
+          </div>
+
+          <div class="table-frame">
+            <Table
+              :key="tableKey"
+              :columns="columns"
+              :data-source="roles"
+              :loading="loading"
+              :pagination="false"
+              :scroll="{ x: 'max-content' }"
+              :sticky="{ offsetScroll: 0 }"
+              bordered
+              row-key="id"
+              table-layout="fixed"
+              size="small"
+            >
+              <template #emptyText>
+                <Empty description="暂无数据" />
+              </template>
+
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'roleName'">
+                  <div class="role-name-cell">
+                    <IconifyIcon icon="lucide:shield-user" class="size-4" />
+                    <span>{{ record.roleName }}</span>
+                  </div>
+                </template>
+
+                <template v-else-if="column.key === 'status'">
+                  <Switch
                     v-if="canUpdate"
-                    size="small"
-                    type="link"
-                    @click="openEdit(asRole(record))"
-                  >
-                    编辑
-                  </Button>
-                  <Button
-                    v-if="canUpdate && canQueryMenus"
-                    size="small"
-                    type="link"
-                    @click="openEdit(asRole(record), true)"
-                  >
-                    授权
-                  </Button>
-                  <Popconfirm
-                    v-if="canDelete"
-                    title="确认删除该角色？"
-                    ok-text="删除"
-                    cancel-text="取消"
-                    @confirm="removeRole(asRole(record))"
-                  >
-                    <Button danger size="small" type="link">删除</Button>
-                  </Popconfirm>
-                </Space>
-              </template>
-            </template>
-          </Table>
-        </div>
+                    :checked="statusValue(asRole(record)) === 1"
+                    checked-children="启用"
+                    un-checked-children="禁用"
+                    @change="(checked) => changeStatus(asRole(record), checked as boolean)"
+                  />
+                  <Tag v-else :color="statusValue(asRole(record)) === 1 ? 'success' : 'error'">
+                    {{ statusValue(asRole(record)) === 1 ? '启用' : '禁用' }}
+                  </Tag>
+                </template>
 
-        <div class="table-footer">
-          <div class="table-total">共 {{ pagination.total }} 条记录</div>
-          <Pagination
-            v-model:current="pagination.current"
-            v-model:page-size="pagination.pageSize"
-            :page-size-options="['10', '20', '50', '100']"
-            :total="pagination.total"
-            show-less-items
-            show-size-changer
-            @change="onPageChange"
-            @show-size-change="onPageSizeChange"
-          />
-        </div>
+                <template v-else-if="column.key === 'description'">
+                  {{ record.description || '-' }}
+                </template>
+
+                <template v-else-if="column.key === 'createdAt'">
+                  {{ formatDate(record.createdAt) }}
+                </template>
+
+                <template v-else-if="column.key === 'action'">
+                  <Space>
+                    <Button size="small" type="link" @click="openDetail(asRole(record))">
+                      详情
+                    </Button>
+                    <Button
+                      v-if="canUpdate"
+                      size="small"
+                      type="link"
+                      @click="openEdit(asRole(record))"
+                    >
+                      编辑
+                    </Button>
+                    <Button
+                      v-if="canUpdate && canQueryMenus"
+                      size="small"
+                      type="link"
+                      @click="openEdit(asRole(record), true)"
+                    >
+                      授权
+                    </Button>
+                    <Popconfirm
+                      v-if="canDelete"
+                      title="确认删除该角色？"
+                      ok-text="删除"
+                      cancel-text="取消"
+                      @confirm="removeRole(asRole(record))"
+                    >
+                      <Button danger size="small" type="link">删除</Button>
+                    </Popconfirm>
+                  </Space>
+                </template>
+              </template>
+            </Table>
+          </div>
+
+          <div class="table-footer">
+            <div class="table-total">共 {{ pagination.total }} 条记录</div>
+            <Pagination
+              v-model:current="pagination.current"
+              v-model:page-size="pagination.pageSize"
+              :page-size-options="['10', '20', '50', '100']"
+              size="small"
+              :total="pagination.total"
+              show-less-items
+              show-size-changer
+              @change="onPageChange"
+              @show-size-change="onPageSizeChange"
+            />
+          </div>
+        </section>
       </section>
     </div>
 
@@ -857,9 +993,8 @@ onMounted(() => {
 .role-page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 100%;
-  background: #f1f3f6;
 }
 
 .role-page.is-block-fullscreen {
@@ -867,33 +1002,112 @@ onMounted(() => {
   inset: 0;
   z-index: 1000;
   height: 100vh;
-  padding: 12px;
+  padding: 8px;
   overflow: auto;
 }
 
+.role-page.is-block-fullscreen .role-workbench,
 .role-page.is-block-fullscreen .list-panel {
   flex: 1;
 }
 
 .query-panel,
+.role-tree-panel,
 .list-panel {
   background: #fff;
 }
 
 .query-panel {
-  padding: 22px 8px 16px;
+  padding: 8px;
 }
 
 .query-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(260px, 1fr));
-  column-gap: 52px;
-  row-gap: 10px;
+  column-gap: 12px;
+  row-gap: 8px;
   align-items: center;
 }
 
 .query-grid :deep(.ant-form-item) {
   margin-bottom: 0;
+}
+
+.role-workbench {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  min-height: 0;
+}
+
+.role-tree-panel {
+  display: flex;
+  flex: 0 0 238px;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+}
+
+.role-tree-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.role-tree-header h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.role-tree-header span {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.role-tree-panel :deep(.ant-tree) {
+  flex: 1;
+  min-height: 0;
+  margin-top: 6px;
+  overflow: auto;
+  background: transparent;
+  font-size: 13px;
+}
+
+.role-tree-panel :deep(.ant-tree-treenode) {
+  align-items: center;
+  width: 100%;
+  padding-bottom: 2px;
+}
+
+.role-tree-panel :deep(.ant-tree-node-content-wrapper) {
+  min-height: 26px;
+  line-height: 26px;
+  border-radius: 4px;
+}
+
+.role-tree-panel :deep(.ant-tree-node-selected) {
+  font-weight: 600;
+}
+
+.role-tree-hint {
+  flex: 0 0 auto;
+  margin-top: 6px;
+  padding-top: 6px;
+  color: #6b7280;
+  border-top: 1px solid #edf0f5;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .query-grid :deep(.ant-form-item-label) {
@@ -909,15 +1123,16 @@ onMounted(() => {
 .query-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 8px;
 }
 
 .list-panel {
   display: flex;
   flex-direction: column;
   flex: 1;
+  width: 0;
   min-height: 0;
-  padding: 16px 8px 10px;
+  padding: 8px;
 }
 
 .list-header {
@@ -936,7 +1151,7 @@ onMounted(() => {
 .list-header h2 {
   margin: 0;
   color: #111827;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -980,7 +1195,7 @@ onMounted(() => {
 }
 
 .table-frame :deep(.ant-empty) {
-  margin: 120px 0;
+  margin: 64px 0;
 }
 
 .role-name-cell {
@@ -993,13 +1208,13 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 46px;
-  padding: 10px 2px 0;
+  min-height: 34px;
+  padding: 6px 2px 0;
 }
 
 .table-total {
   color: #111827;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .role-form :deep(.ant-form-item-label) {
@@ -1010,7 +1225,7 @@ onMounted(() => {
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(240px, 1fr));
-  column-gap: 22px;
+  column-gap: 12px;
 }
 
 .form-full,
@@ -1088,6 +1303,20 @@ onMounted(() => {
   .query-grid {
     grid-template-columns: repeat(2, minmax(240px, 1fr));
     column-gap: 24px;
+  }
+
+  .role-workbench {
+    flex-direction: column;
+  }
+
+  .role-tree-panel {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: 220px;
+  }
+
+  .list-panel {
+    width: 100%;
   }
 }
 

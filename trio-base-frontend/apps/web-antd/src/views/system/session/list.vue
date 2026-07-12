@@ -23,6 +23,7 @@ import {
 } from 'ant-design-vue';
 
 import { getLoginLogPage, getSessionPage, revokeSession } from '#/api';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
 
 const TabPane = Tabs.TabPane;
 
@@ -132,7 +133,7 @@ onMounted(loadData);
 
 <template>
   <Page auto-content-height>
-    <div class="session-page">
+    <div class="erp-compact-page session-page">
       <section class="toolbar">
         <Space wrap>
           <Input v-model:value="query.username" class="query-input" placeholder="用户" allow-clear />
@@ -163,13 +164,13 @@ onMounted(loadData);
           <Button v-if="canQuery" @click="resetQuery">重置</Button>
           <Tooltip v-if="canQuery" title="刷新">
             <Button shape="circle" @click="loadData">
-              <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
+              <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
             </Button>
           </Tooltip>
         </Space>
       </section>
 
-      <Tabs :active-key="activeTab" @change="(key) => changeTab(String(key))">
+      <Tabs :active-key="activeTab" size="small" @change="(key) => changeTab(String(key))">
         <TabPane key="sessions" tab="会话">
           <section class="table-shell">
             <Table
@@ -179,6 +180,7 @@ onMounted(loadData);
               :loading="loading"
               :pagination="false"
               :scroll="{ x: 1480 }"
+              size="small"
               :sticky="{ offsetScroll: 0 }"
             >
               <template #bodyCell="{ column, record }">
@@ -209,6 +211,7 @@ onMounted(loadData);
               :loading="loading"
               :pagination="false"
               :scroll="{ x: 1420 }"
+              size="small"
               :sticky="{ offsetScroll: 0 }"
             >
               <template #bodyCell="{ column, record }">
@@ -227,6 +230,7 @@ onMounted(loadData);
         <Pagination
           v-model:current="page"
           v-model:page-size="size"
+          size="small"
           show-size-changer
           :total="total"
           @change="loadData"
@@ -241,7 +245,7 @@ onMounted(loadData);
   display: flex;
   min-height: 100%;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .toolbar,

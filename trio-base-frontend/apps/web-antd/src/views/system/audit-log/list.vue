@@ -23,6 +23,7 @@ import {
 } from 'ant-design-vue';
 
 import { getAuditLogDetail, getAuditLogPage } from '#/api';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
 
 const AUDIT_PERMISSIONS = {
   query: '/api/v1/audit-logs:GET',
@@ -102,7 +103,7 @@ onMounted(loadLogs);
 
 <template>
   <Page auto-content-height>
-    <div class="audit-page">
+    <div class="erp-compact-page audit-page">
       <section class="toolbar">
         <Space wrap>
           <Input v-model:value="query.username" class="query-input" placeholder="用户" allow-clear />
@@ -119,11 +120,11 @@ onMounted(loadLogs);
           />
           <Button v-if="canQuery" type="primary" @click="page = 1; loadLogs()">查询</Button>
           <Button v-if="canQuery" @click="resetQuery">重置</Button>
-          <Tooltip v-if="canQuery" title="刷新">
-            <Button shape="circle" @click="loadLogs">
-              <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
-            </Button>
-          </Tooltip>
+        <Tooltip v-if="canQuery" title="刷新">
+          <Button shape="circle" @click="loadLogs">
+            <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+          </Button>
+        </Tooltip>
         </Space>
       </section>
 
@@ -135,6 +136,7 @@ onMounted(loadLogs);
           :loading="loading"
           :pagination="false"
           :scroll="{ x: 1480 }"
+          size="small"
           :sticky="{ offsetScroll: 0 }"
         >
           <template #bodyCell="{ column, record }">
@@ -154,6 +156,7 @@ onMounted(loadLogs);
         <Pagination
           v-model:current="page"
           v-model:page-size="size"
+          size="small"
           show-size-changer
           :total="total"
           @change="loadLogs"
@@ -181,7 +184,7 @@ onMounted(loadLogs);
   display: flex;
   min-height: 100%;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .toolbar,

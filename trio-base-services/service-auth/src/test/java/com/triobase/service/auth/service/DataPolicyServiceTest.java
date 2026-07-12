@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -100,6 +101,27 @@ class DataPolicyServiceTest {
 
         assertTrue(response.isRestrictive());
         assertEquals(List.of(), response.getPolicies());
+    }
+
+    @Test
+    void resolveEffective_shouldAllowAll_whenUserHasAdminRoleWithoutExplicitPolicy() {
+        SysUserRole userRole = new SysUserRole();
+        userRole.setUserId("U001");
+        userRole.setRoleId("R001");
+        when(userRoleMapper.selectList(any())).thenReturn(List.of(userRole));
+
+        SysRole adminRole = new SysRole();
+        adminRole.setId("R001");
+        adminRole.setRoleCode("ADMIN");
+        adminRole.setStatus((short) 1);
+        when(roleMapper.selectOne(any())).thenReturn(adminRole);
+
+        EffectiveDataPolicyResponse response = dataPolicyService.resolveEffective("U001", "USER", "QUERY");
+
+        assertFalse(response.isRestrictive());
+        assertEquals(List.of("R001"), response.getRoleIds());
+        assertEquals("ALL", response.getPolicies().get(0).getDimensions().get(0).getScopeType());
+        verify(dataPolicyMapper, never()).selectList(any());
     }
 
     @Test

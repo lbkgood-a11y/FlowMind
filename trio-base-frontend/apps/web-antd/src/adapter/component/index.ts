@@ -40,6 +40,7 @@ import type {
 } from '@vben/common-ui';
 import type { Sortable } from '@vben/hooks';
 import type { Recordable } from '@vben/types';
+import type UserSelectSfc from '#/components/business/user-select.vue';
 
 import {
   computed,
@@ -129,6 +130,9 @@ const Upload = defineAsyncComponent(() => import('ant-design-vue/es/upload'));
 const Image = defineAsyncComponent(() => import('ant-design-vue/es/image'));
 const PreviewGroup = defineAsyncComponent(() =>
   import('ant-design-vue/es/image').then((res) => res.ImagePreviewGroup),
+);
+const UserSelect = defineAsyncComponent(
+  () => import('#/components/business/user-select.vue'),
 );
 
 const withDefaultPlaceholder = (
@@ -623,6 +627,7 @@ export type ComponentType =
   | 'Textarea'
   | 'TimePicker'
   | 'TreeSelect'
+  | 'UserSelect'
   | 'Upload'
   | BaseFormComponentType;
 
@@ -657,6 +662,7 @@ export interface ComponentPropsMap {
   TimePicker: TimePickerProps;
   TreeSelect: TreeSelectProps;
   Upload: AdapterUploadProps;
+  UserSelect: InstanceType<typeof UserSelectSfc>['$props'];
 }
 
 async function initComponentAdapter() {
@@ -721,6 +727,7 @@ async function initComponentAdapter() {
     Textarea: withDefaultPlaceholder(Textarea, 'input'),
     TimePicker,
     TreeSelect: withDefaultPlaceholder(TreeSelect, 'select'),
+    UserSelect: withDefaultPlaceholder(UserSelect, 'select'),
     Upload: withPreviewUpload(),
   };
 

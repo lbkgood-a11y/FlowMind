@@ -6,6 +6,7 @@ import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.auth.dto.DataPolicyDimensionRequest;
+import com.triobase.service.auth.dto.DataPolicyDimensionResponse;
 import com.triobase.service.auth.dto.DataPolicyResponse;
 import com.triobase.service.auth.dto.EffectiveDataPolicyResponse;
 import com.triobase.service.auth.dto.SaveDataPolicyRequest;
@@ -36,6 +37,9 @@ public class DataPolicyService {
 
     private static final String DEFAULT_TENANT = "default";
     private static final String SUBJECT_TYPE_ROLE = "ROLE";
+    private static final String ADMIN_ROLE_CODE = "ADMIN";
+    private static final String ADMIN_ALL_POLICY_ID = "SYSTEM_ADMIN_ALL";
+    private static final String DEFAULT_DIMENSION_CODE = "ADMIN";
     private static final Set<String> EFFECTS = Set.of("ALLOW", "DENY");
     private static final Set<String> COMBINE_MODES = Set.of("AND", "OR");
     private static final Set<String> SCOPE_TYPES = Set.of(
@@ -114,6 +118,10 @@ public class DataPolicyService {
                 .stream()
                 .map(SysUserRole::getRoleId)
                 .toList();
+        String adminRoleId = findAdminRoleId(roleIds);
+        if (StringUtils.hasText(adminRoleId)) {
+            return adminAllResponse(userId, resourceCode, actionCode, roleIds, adminRoleId);
+        }
 
         List<SysDataPolicy> policies = roleIds.isEmpty()
                 ? List.of()
@@ -137,6 +145,52 @@ public class DataPolicyService {
         response.setPolicies(policyResponses);
         response.setRestrictive(policies.isEmpty());
         response.setOrgContextResolved(orgContextResolved);
+        return response;
+    }
+
+    private String findAdminRoleId(List<String> roleIds) {
+        if (roleIds.isEmpty()) {
+            return null;
+        }
+        SysRole adminRole = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
+                .in(SysRole::getId, roleIds)
+                .eq(SysRole::getRoleCode, ADMIN_ROLE_CODE)
+                .eq(SysRole::getStatus, (short) 1)
+                .last("LIMIT 1"));
+        return adminRole != null ? adminRole.getId() : null;
+    }
+
+    private EffectiveDataPolicyResponse adminAllResponse(String userId,
+                                                         String resourceCode,
+                                                         String actionCode,
+                                                         List<String> roleIds,
+                                                         String adminRoleId) {
+        DataPolicyDimensionResponse dimension = new DataPolicyDimensionResponse();
+        dimension.setId(ADMIN_ALL_POLICY_ID + "_DIMENSION");
+        dimension.setDimensionCode(DEFAULT_DIMENSION_CODE);
+        dimension.setScopeType("ALL");
+        dimension.setOrgUnitIds(List.of());
+        dimension.setSortOrder(0);
+
+        DataPolicyResponse policy = new DataPolicyResponse();
+        policy.setId(ADMIN_ALL_POLICY_ID);
+        policy.setRoleId(adminRoleId);
+        policy.setResourceCode(resourceCode);
+        policy.setActionCode(actionCode);
+        policy.setEffect("ALLOW");
+        policy.setCombineMode("AND");
+        policy.setStatus((short) 1);
+        policy.setDescription("超级管理员运行时全量数据范围");
+        policy.setDimensions(List.of(dimension));
+
+        EffectiveDataPolicyResponse response = new EffectiveDataPolicyResponse();
+        response.setUserId(userId);
+        response.setResourceCode(resourceCode);
+        response.setActionCode(actionCode);
+        response.setRoleIds(roleIds);
+        response.setPolicies(List.of(policy));
+        response.setRestrictive(false);
+        response.setOrgContextResolved(true);
         return response;
     }
 

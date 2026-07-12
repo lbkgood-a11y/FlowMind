@@ -1,0 +1,189 @@
+.erp-compact-page {
+  --erp-content-gutter: 8px;
+  --erp-panel-border: 1px solid hsl(var(--border) / 78%);
+  --erp-panel-radius: 4px;
+  --erp-panel-gap: 8px;
+
+  min-width: 0;
+  min-height: 100%;
+  padding: 0 !important;
+  background: hsl(var(--background-deep));
+}
+
+.relative.flex.h-full.flex-col
+  > :where(.h-full, .flex-1):has(> .erp-compact-page) {
+  padding: var(--erp-content-gutter) !important;
+  background: hsl(var(--background-deep));
+}
+
+.erp-compact-page.is-block-fullscreen {
+  padding: var(--erp-content-gutter) !important;
+}
+
+.erp-compact-page :where(.query-panel, .toolbar, .list-panel, .data-panel) {
+  background: hsl(var(--card)) !important;
+  border: var(--erp-panel-border) !important;
+  border-radius: var(--erp-panel-radius) !important;
+  box-shadow: none !important;
+}
+
+.erp-compact-page :where(.query-panel, .toolbar) {
+  padding: 6px 8px !important;
+}
+
+.erp-compact-page :where(.list-panel, .data-panel) {
+  padding: 8px !important;
+}
+
+.erp-compact-page :where(.toolbar) {
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+.erp-compact-page :where(.table-shell, .table-frame) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: hsl(var(--card));
+  border: var(--erp-panel-border) !important;
+  border-radius: var(--erp-panel-radius) !important;
+  box-shadow: none !important;
+}
+
+.erp-compact-page :where(.ant-tabs) {
+  min-height: 0;
+}
+
+.erp-compact-page :where(.ant-tabs-nav) {
+  margin-bottom: 8px;
+}
+
+.erp-compact-page :where(.ant-tabs-tab) {
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.erp-compact-page :where(.ant-table-wrapper),
+.erp-compact-page :where(.ant-spin-nested-loading),
+.erp-compact-page :where(.ant-spin-container) {
+  min-height: 0;
+}
+
+.erp-compact-page :where(.ant-table-wrapper) {
+  display: flex;
+  flex-direction: column;
+}
+
+.erp-compact-page
+  :where(.table-shell, .table-frame, .data-panel)
+  > :where(.ant-table-wrapper),
+.erp-compact-page > :where(.ant-table-wrapper) {
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+.erp-compact-page :where(.ant-table-wrapper > .ant-spin-nested-loading) {
+  flex: 1 1 auto;
+}
+
+.erp-compact-page :where(.ant-spin-container) {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.erp-compact-page :where(.ant-table) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  font-size: 13px;
+}
+
+.erp-compact-page :where(.ant-table-container) {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.erp-compact-page :where(.ant-table-content) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto !important;
+}
+
+.erp-compact-page :where(.ant-table-sticky-scroll) {
+  bottom: 0 !important;
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+.erp-compact-page :where(.ant-table-thead > tr > th) {
+  height: 34px;
+  padding: 6px 8px !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.erp-compact-page :where(.ant-table-tbody > tr > td) {
+  height: 34px;
+  padding: 5px 8px !important;
+  font-size: 13px;
+}
+
+.erp-compact-page :where(.ant-table-cell .ant-btn-link) {
+  height: 22px;
+  padding: 0 2px;
+}
+
+.erp-compact-page :where(.ant-tag) {
+  margin-inline-end: 4px;
+  padding-inline: 5px;
+  line-height: 20px;
+}
+
+.erp-compact-page :where(.ant-form-item) {
+  margin-bottom: 8px;
+}
+
+.erp-compact-page :where(.ant-form-item-label) {
+  padding-bottom: 2px;
+}
+
+.erp-compact-page :where(.ant-form-item-label > label) {
+  height: 28px;
+  font-size: 13px;
+}
+
+.erp-compact-page :where(.ant-input, .ant-input-number, .ant-select-selector) {
+  font-size: 13px;
+}
+
+.erp-compact-page :where(.ant-pagination) {
+  margin: 0;
+  font-size: 12px;
+}
+
+.erp-compact-page
+  :where(
+    .ant-pagination-prev,
+    .ant-pagination-next,
+    .ant-pagination-jump-prev,
+    .ant-pagination-jump-next,
+    .ant-pagination-item
+  ) {
+  min-width: 24px;
+  height: 24px;
+  line-height: 22px;
+}
+
+.erp-compact-page :where(.ant-pagination-options) {
+  margin-inline-start: 8px;
+}
+
+.erp-compact-page :where(.ant-empty) {
+  margin-block: 48px;
+}

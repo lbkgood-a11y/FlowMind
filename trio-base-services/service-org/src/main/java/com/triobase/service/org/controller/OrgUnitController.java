@@ -3,6 +3,7 @@ package com.triobase.service.org.controller;
 import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.R;
 import com.triobase.service.org.dto.CreateOrgUnitRequest;
+import com.triobase.service.org.dto.OrgUnitUserResponse;
 import com.triobase.service.org.dto.OrgTreeNodeResponse;
 import com.triobase.service.org.dto.SaveOrgRelationRequest;
 import com.triobase.service.org.dto.UpdateOrgUnitRequest;
@@ -97,6 +98,13 @@ public class OrgUnitController {
     public R<List<UserOrgAssignmentResponse>> listUserAssignments(@PathVariable String userId,
                                                                   @RequestParam(required = false) String dimensionCode) {
         return R.ok(orgUnitService.listUserAssignments(userId, dimensionCode));
+    }
+
+    @GetMapping("/units/{orgUnitId}/users")
+    @RequirePermission("/api/v1/org/units:GET")
+    public R<List<OrgUnitUserResponse>> listOrgUnitUsers(@PathVariable String orgUnitId,
+                                                         @RequestParam(required = false) String dimensionCode) {
+        return R.ok(orgUnitService.listOrgUnitUsers(orgUnitId, dimensionCode));
     }
 
     @PutMapping("/users/{userId}/units")

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { SystemRoleApi, SystemUserApi } from '#/api';
+import type { SystemOrgApi, SystemRoleApi, SystemUserApi } from '#/api';
 import type { TableProps } from 'ant-design-vue';
 import type { Dayjs } from 'dayjs';
 
@@ -37,13 +37,18 @@ import {
 } from 'ant-design-vue';
 
 import {
+  assignUserOrgUnits,
   createUser,
   deleteUser,
+  getOrgDimensions,
+  getOrgTree,
   getRoleList,
+  getUserOrgAssignments,
   getUserList,
   updateUser,
   updateUserStatus,
 } from '#/api';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
 
 const RangePicker = DatePicker.RangePicker;
 
@@ -56,6 +61,11 @@ const USER_PERMISSIONS = {
 
 const ROLE_PERMISSIONS = {
   query: '/api/v1/roles:GET',
+} as const;
+
+const ORG_PERMISSIONS = {
+  query: '/api/v1/org/units:GET',
+  update: '/api/v1/org/units/*:PUT',
 } as const;
 
 type UserFormModel = {
@@ -71,15 +81,16 @@ type QueryFormModel = {
   createdRange?: [Dayjs, Dayjs];
   remark?: string;
   status?: 0 | 1;
-  userId?: string;
   username?: string;
 };
 
 type UserColumnKey =
   | 'action'
   | 'createdAt'
-  | 'id'
-  | 'remark'
+  | 'email'
+  | 'orgs'
+  | 'phone'
+  | 'roles'
   | 'status'
   | 'username';
 
@@ -92,15 +103,23 @@ type UserColumnSetting = {
 
 const defaultColumnSettings: UserColumnSetting[] = [
   { key: 'username', title: '用户名', visible: true, width: 120 },
-  { key: 'id', title: '用户ID', visible: true, width: 150 },
-  { key: 'status', title: '状态', visible: true, width: 120 },
-  { key: 'remark', title: '备注', visible: true, width: 160 },
-  { key: 'createdAt', title: '创建时间', visible: true, width: 260 },
+  { key: 'roles', title: '角色', visible: true, width: 200 },
+  { key: 'orgs', title: '组织', visible: true, width: 240 },
+  { key: 'phone', title: '手机号', visible: true, width: 140 },
+  { key: 'email', title: '邮箱', visible: true, width: 220 },
+  { key: 'status', title: '状态', visible: true, width: 110 },
+  { key: 'createdAt', title: '创建时间', visible: true, width: 220 },
   { key: 'action', title: '操作', visible: true, width: 190 },
 ];
 
 const users = ref<SystemUserApi.SystemUser[]>([]);
 const roles = ref<SystemRoleApi.SystemRole[]>([]);
+const orgDimensions = ref<SystemOrgApi.OrgDimension[]>([]);
+const orgTreeRows = ref<SystemOrgApi.OrgTreeNode[]>([]);
+const userOrgAssignmentMap = ref<
+  Record<string, SystemOrgApi.UserOrgAssignmentResponse[]>
+>({});
+const detailAssignments = ref<SystemOrgApi.UserOrgAssignmentResponse[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const formOpen = ref(false);
@@ -112,6 +131,10 @@ const columnSettingOpen = ref(false);
 const tableKey = ref(0);
 const editingUser = ref<SystemUserApi.SystemUser>();
 const detailUser = ref<SystemUserApi.SystemUser>();
+const activeOrgDimension = ref('ADMIN');
+const assignmentOrgUnitIds = ref<string[]>([]);
+const primaryOrgUnitId = ref<string>();
+const assignmentPosition = ref('');
 const { hasAccessByCodes } = useAccess();
 
 const canQuery = computed(() => hasAccessByCodes([USER_PERMISSIONS.query]));
@@ -119,6 +142,10 @@ const canCreate = computed(() => hasAccessByCodes([USER_PERMISSIONS.create]));
 const canUpdate = computed(() => hasAccessByCodes([USER_PERMISSIONS.update]));
 const canDelete = computed(() => hasAccessByCodes([USER_PERMISSIONS.delete]));
 const canQueryRoles = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.query]));
+const canQueryOrg = computed(() => hasAccessByCodes([ORG_PERMISSIONS.query]));
+const canUpdateOrgAssignments = computed(() =>
+  hasAccessByCodes([ORG_PERMISSIONS.update]),
+);
 const canSaveUser = computed(() =>
   editingUser.value ? canUpdate.value : canCreate.value,
 );
@@ -127,7 +154,6 @@ const queryForm = reactive<QueryFormModel>({
   createdRange: undefined,
   remark: '',
   status: undefined,
-  userId: '',
   username: '',
 });
 
@@ -152,6 +178,25 @@ const roleOptions = computed(() =>
     value: role.id,
   })),
 );
+const roleLabelMap = computed(
+  () => new Map(roles.value.map((role) => [role.roleCode, role.roleName])),
+);
+const orgDimensionOptions = computed(() =>
+  orgDimensions.value.map((item) => ({
+    label: item.dimensionName,
+    value: item.dimensionCode,
+  })),
+);
+const activeOrgDimensionName = computed(
+  () =>
+    orgDimensions.value.find(
+      (item) => item.dimensionCode === activeOrgDimension.value,
+    )?.dimensionName ?? activeOrgDimension.value,
+);
+const orgOptions = computed(() => flattenOrgOptions(orgTreeRows.value));
+const primaryOrgOptions = computed(() =>
+  orgOptions.value.filter((item) => assignmentOrgUnitIds.value.includes(item.value)),
+);
 
 const columnSettings = reactive<UserColumnSetting[]>(
   defaultColumnSettings.map((item) => ({ ...item })),
@@ -168,11 +213,13 @@ const baseColumns: Record<UserColumnKey, NonNullable<TableProps['columns']>[numb
       dataIndex: 'createdAt',
       key: 'createdAt',
       title: '创建时间',
-      width: 260,
+      width: 220,
     },
-    id: { align: 'center', dataIndex: 'id', key: 'id', title: '用户ID', width: 150 },
-    remark: { align: 'center', dataIndex: 'remark', key: 'remark', title: '备注', width: 160 },
-    status: { align: 'center', dataIndex: 'status', key: 'status', title: '状态', width: 120 },
+    email: { dataIndex: 'email', key: 'email', title: '邮箱', width: 220 },
+    orgs: { key: 'orgs', title: '组织', width: 240 },
+    phone: { align: 'center', dataIndex: 'phone', key: 'phone', title: '手机号', width: 140 },
+    roles: { key: 'roles', title: '角色', width: 200 },
+    status: { align: 'center', dataIndex: 'status', key: 'status', title: '状态', width: 110 },
     username: {
       align: 'center',
       dataIndex: 'username',
@@ -208,10 +255,107 @@ async function loadRoles() {
   if (roles.value.length > 0) {
     return;
   }
-  if (!canQueryRoles.value || (!canCreate.value && !canUpdate.value)) {
+  if (!canQueryRoles.value) {
     return;
   }
   roles.value = await getRoleList({ status: 1 });
+}
+
+function buildOrgTree(list: SystemOrgApi.OrgTreeNode[]) {
+  const nodeMap = new Map<string, SystemOrgApi.OrgTreeNode>();
+  list.forEach((item) => {
+    nodeMap.set(item.id, { ...item, children: [] });
+  });
+  const roots: SystemOrgApi.OrgTreeNode[] = [];
+  list.forEach((item) => {
+    const node = nodeMap.get(item.id);
+    if (!node) {
+      return;
+    }
+    if (item.parentUnitId && nodeMap.has(item.parentUnitId)) {
+      nodeMap.get(item.parentUnitId)?.children?.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+  const sortNodes = (nodes: SystemOrgApi.OrgTreeNode[]) => {
+    nodes.sort((a, b) => (a.sortOrder ?? 100) - (b.sortOrder ?? 100));
+    nodes.forEach((node) => {
+      if (node.children?.length) {
+        sortNodes(node.children);
+      } else {
+        delete node.children;
+      }
+    });
+  };
+  sortNodes(roots);
+  return roots;
+}
+
+function flattenOrgOptions(
+  list: SystemOrgApi.OrgTreeNode[],
+  depth = 0,
+): Array<{ label: string; value: string }> {
+  return list.flatMap((item) => {
+    const option = {
+      label: `${'　'.repeat(depth)}${item.unitName} (${item.unitCode})`,
+      value: item.id,
+    };
+    return [
+      option,
+      ...flattenOrgOptions(item.children ?? [], depth + 1),
+    ];
+  });
+}
+
+async function loadOrgDimensions() {
+  if (!canQueryOrg.value) {
+    orgDimensions.value = [];
+    orgTreeRows.value = [];
+    return;
+  }
+  if (orgDimensions.value.length === 0) {
+    orgDimensions.value = await getOrgDimensions();
+    activeOrgDimension.value =
+      orgDimensions.value.find((item) => item.isDefault === 1)?.dimensionCode ??
+      orgDimensions.value[0]?.dimensionCode ??
+      'ADMIN';
+  }
+}
+
+async function loadOrgTree() {
+  if (!canQueryOrg.value || !activeOrgDimension.value) {
+    orgTreeRows.value = [];
+    return;
+  }
+  orgTreeRows.value = buildOrgTree(await getOrgTree(activeOrgDimension.value));
+}
+
+async function ensureOrgContext() {
+  await loadOrgDimensions();
+  await loadOrgTree();
+}
+
+async function loadUserOrgAssignmentsForList(
+  sourceUsers = users.value,
+) {
+  if (!canQueryOrg.value || !activeOrgDimension.value || sourceUsers.length === 0) {
+    userOrgAssignmentMap.value = {};
+    return;
+  }
+  const results = await Promise.allSettled(
+    sourceUsers.map(async (user) => ({
+      assignments: await getUserOrgAssignments(user.id, activeOrgDimension.value),
+      userId: user.id,
+    })),
+  );
+  const nextMap: Record<string, SystemOrgApi.UserOrgAssignmentResponse[]> = {};
+  results.forEach((result) => {
+    if (result.status === 'fulfilled') {
+      nextMap[result.value.userId] = result.value.assignments;
+    }
+  });
+  userOrgAssignmentMap.value = nextMap;
 }
 
 async function loadUsers(page = pagination.current) {
@@ -233,12 +377,12 @@ async function loadUsers(page = pagination.current) {
       page,
       size: pagination.pageSize,
       status: queryForm.status,
-      userId: queryForm.userId?.trim() || undefined,
       username: queryForm.username?.trim() || undefined,
     });
     users.value = result.items;
     pagination.current = page;
     pagination.total = result.total;
+    await loadUserOrgAssignmentsForList(result.items);
   } finally {
     loading.value = false;
   }
@@ -248,7 +392,6 @@ function resetQuery() {
   queryForm.createdRange = undefined;
   queryForm.remark = '';
   queryForm.status = undefined;
-  queryForm.userId = '';
   queryForm.username = '';
   loadUsers(1);
 }
@@ -285,9 +428,12 @@ function confirmColumnSettings() {
 
 function resetForm() {
   editingUser.value = undefined;
+  assignmentOrgUnitIds.value = [];
+  assignmentPosition.value = '';
   formModel.email = '';
   formModel.password = '';
   formModel.phone = '';
+  primaryOrgUnitId.value = undefined;
   formModel.roleIds = [];
   formModel.status = 1;
   formModel.username = '';
@@ -304,12 +450,12 @@ function getRoleIdsByCodes(codes?: string[]) {
 
 async function openCreate() {
   resetForm();
-  await loadRoles();
+  await Promise.all([loadRoles(), ensureOrgContext()]);
   formOpen.value = true;
 }
 
 async function openEdit(record: SystemUserApi.SystemUser) {
-  await loadRoles();
+  await Promise.all([loadRoles(), ensureOrgContext()]);
   editingUser.value = record;
   formModel.email = record.email ?? '';
   formModel.password = '';
@@ -317,13 +463,19 @@ async function openEdit(record: SystemUserApi.SystemUser) {
   formModel.roleIds = canQueryRoles.value ? getRoleIdsByCodes(record.roles) : [];
   formModel.status = record.status;
   formModel.username = record.username;
+  await loadFormOrgAssignments(record.id);
   formOpen.value = true;
 }
 
-function openDetail(record: SystemUserApi.SystemUser) {
+async function openDetail(record: SystemUserApi.SystemUser) {
   editingUser.value = undefined;
   detailUser.value = record;
+  detailAssignments.value = userOrgAssignmentMap.value[record.id] ?? [];
   detailOpen.value = true;
+  await ensureOrgContext();
+  detailAssignments.value = canQueryOrg.value
+    ? await getUserOrgAssignments(record.id, activeOrgDimension.value)
+    : [];
 }
 
 function validatePassword(password: string) {
@@ -352,6 +504,14 @@ async function submitForm() {
     message.warning('密码至少 8 位，且包含大小写字母和数字');
     return;
   }
+  if (
+    canUpdateOrgAssignments.value &&
+    assignmentOrgUnitIds.value.length > 0 &&
+    !primaryOrgUnitId.value
+  ) {
+    message.warning('请选择主组织');
+    return;
+  }
 
   saving.value = true;
   try {
@@ -368,19 +528,90 @@ async function submitForm() {
       payload.password = formModel.password;
     }
 
+    let savedUser: SystemUserApi.SystemUser;
     if (editingUser.value) {
-      await updateUser(editingUser.value.id, payload);
+      savedUser = await updateUser(editingUser.value.id, payload);
       message.success('用户已更新');
     } else {
-      await createUser(payload);
+      savedUser = await createUser(payload);
       message.success('用户已创建');
     }
+    await saveUserOrgAssignments(editingUser.value?.id ?? savedUser.id);
 
     formOpen.value = false;
     await loadUsers();
   } finally {
     saving.value = false;
   }
+}
+
+async function loadFormOrgAssignments(userId: string) {
+  if (!canQueryOrg.value) {
+    assignmentOrgUnitIds.value = [];
+    primaryOrgUnitId.value = undefined;
+    assignmentPosition.value = '';
+    return;
+  }
+  const assignments = await getUserOrgAssignments(userId, activeOrgDimension.value);
+  assignmentOrgUnitIds.value = assignments.map((item) => item.orgUnitId);
+  primaryOrgUnitId.value =
+    assignments.find((item) => item.primary)?.orgUnitId ??
+    assignments[0]?.orgUnitId;
+  assignmentPosition.value = assignments[0]?.positionName ?? '';
+}
+
+async function changeOrgDimension(value: string) {
+  activeOrgDimension.value = value;
+  await loadOrgTree();
+  if (editingUser.value) {
+    await loadFormOrgAssignments(editingUser.value.id);
+  } else {
+    assignmentOrgUnitIds.value = [];
+    primaryOrgUnitId.value = undefined;
+    assignmentPosition.value = '';
+  }
+}
+
+function syncPrimaryOrgSelection() {
+  if (
+    primaryOrgUnitId.value &&
+    assignmentOrgUnitIds.value.includes(primaryOrgUnitId.value)
+  ) {
+    return;
+  }
+  primaryOrgUnitId.value = assignmentOrgUnitIds.value[0];
+}
+
+async function saveUserOrgAssignments(userId: string) {
+  if (!canUpdateOrgAssignments.value) {
+    return;
+  }
+  await assignUserOrgUnits(userId, {
+    assignments: assignmentOrgUnitIds.value.map((orgUnitId) => ({
+      orgUnitId,
+      positionName: assignmentPosition.value.trim() || undefined,
+      primary: orgUnitId === primaryOrgUnitId.value,
+      status: 1,
+    })),
+    dimensionCode: activeOrgDimension.value,
+    primaryOrgUnitId: primaryOrgUnitId.value,
+  });
+}
+
+function getRowOrgAssignments(userId: string) {
+  return userOrgAssignmentMap.value[userId] ?? [];
+}
+
+function formatRoleLabel(roleCode: string) {
+  const roleName = roleLabelMap.value.get(roleCode);
+  return roleName ? `${roleName}` : roleCode;
+}
+
+function formatOrgAssignmentLabel(
+  assignment: SystemOrgApi.UserOrgAssignmentResponse,
+) {
+  const name = assignment.orgUnitName || assignment.orgUnitId;
+  return assignment.primary ? `${name} · 主` : name;
 }
 
 function changeStatus(record: SystemUserApi.SystemUser, checked: boolean) {
@@ -422,13 +653,16 @@ function toggleFullscreen() {
 
 onMounted(async () => {
   await loadUsers(1);
+  Promise.allSettled([loadRoles(), ensureOrgContext()]).then(() =>
+    loadUserOrgAssignmentsForList(),
+  );
 });
 </script>
 
 <template>
   <Page auto-content-height>
     <div
-      class="user-page"
+      class="erp-compact-page user-page"
       :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }"
     >
       <section v-show="!queryHidden" class="query-panel">
@@ -441,15 +675,7 @@ onMounted(async () => {
               @press-enter="loadUsers(1)"
             />
           </FormItem>
-          <FormItem label="用户ID">
-            <Input
-              v-model:value="queryForm.userId"
-              allow-clear
-              placeholder="请输入"
-              @press-enter="loadUsers(1)"
-            />
-          </FormItem>
-          <FormItem label="状态">
+          <FormItem v-if="!collapsed" label="状态">
             <Select
               v-model:value="queryForm.status"
               allow-clear
@@ -482,7 +708,7 @@ onMounted(async () => {
             <Button type="link" @click="collapsed = !collapsed">
               {{ collapsed ? '展开' : '收起' }}
               <IconifyIcon
-                :icon="collapsed ? 'lucide:chevron-down' : 'lucide:chevron-up'"
+                :icon="collapsed ? ERP_TOOLBAR_ICONS.expand : ERP_TOOLBAR_ICONS.collapse"
                 class="ml-1 size-4"
               />
             </Button>
@@ -505,18 +731,22 @@ onMounted(async () => {
             </Button>
             <Tooltip v-if="canQuery" title="查询并隐藏搜索栏">
               <Button shape="circle" type="primary" @click="handleToolbarSearch">
-                <IconifyIcon icon="lucide:search" class="size-4" />
+                <IconifyIcon :icon="ERP_TOOLBAR_ICONS.search" class="size-4" />
               </Button>
             </Tooltip>
             <Tooltip v-if="canQuery" title="刷新">
               <Button shape="circle" @click="loadUsers()">
-                <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
+                <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
               </Button>
             </Tooltip>
             <Tooltip :title="blockFullscreen ? '还原' : '全屏'">
               <Button shape="circle" @click="toggleFullscreen">
                 <IconifyIcon
-                  :icon="blockFullscreen ? 'lucide:minimize' : 'lucide:expand'"
+                  :icon="
+                    blockFullscreen
+                      ? ERP_TOOLBAR_ICONS.fullscreenExit
+                      : ERP_TOOLBAR_ICONS.fullscreen
+                  "
                   class="size-4"
                 />
               </Button>
@@ -540,21 +770,13 @@ onMounted(async () => {
                       class="column-setting-item"
                     >
                       <Checkbox v-model:checked="item.visible" />
-                      <IconifyIcon icon="lucide:grip-vertical" class="drag-icon" />
+                      <IconifyIcon :icon="ERP_TOOLBAR_ICONS.drag" class="drag-icon" />
                       <span class="column-setting-title">{{ item.title }}</span>
-                      <button
-                        class="pin-button"
-                        disabled
-                        type="button"
-                      >
-                        <IconifyIcon icon="lucide:pin" class="size-4" />
+                      <button class="pin-button" disabled type="button">
+                        <IconifyIcon :icon="ERP_TOOLBAR_ICONS.pin" class="size-4" />
                       </button>
-                      <button
-                        class="pin-button"
-                        disabled
-                        type="button"
-                      >
-                        <IconifyIcon icon="lucide:pin" class="size-4 rotate-pin" />
+                      <button class="pin-button" disabled type="button">
+                        <IconifyIcon :icon="ERP_TOOLBAR_ICONS.pin" class="size-4 rotate-pin" />
                       </button>
                     </div>
                   </div>
@@ -573,7 +795,7 @@ onMounted(async () => {
                   class="column-setting-trigger"
                   shape="circle"
                 >
-                  <IconifyIcon icon="lucide:columns-3" class="size-4" />
+                  <IconifyIcon :icon="ERP_TOOLBAR_ICONS.columnSettings" class="size-4" />
                 </Button>
               </Tooltip>
             </Popover>
@@ -587,17 +809,55 @@ onMounted(async () => {
             :data-source="users"
             :loading="loading"
             :pagination="false"
+            :scroll="{ x: 1440 }"
             bordered
             row-key="id"
             table-layout="fixed"
-            size="middle"
+            size="small"
           >
             <template #emptyText>
               <Empty description="暂无数据" />
             </template>
 
             <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'status'">
+              <template v-if="column.key === 'roles'">
+                <Space wrap :size="4">
+                  <Tag v-for="role in record.roles" :key="role" color="blue">
+                    {{ formatRoleLabel(role) }}
+                  </Tag>
+                  <span v-if="!record.roles?.length" class="text-muted-foreground">
+                    -
+                  </span>
+                </Space>
+              </template>
+
+              <template v-else-if="column.key === 'orgs'">
+                <Space wrap :size="4">
+                  <Tag
+                    v-for="assignment in getRowOrgAssignments(record.id)"
+                    :key="assignment.id"
+                    :color="assignment.primary ? 'geekblue' : 'default'"
+                  >
+                    {{ formatOrgAssignmentLabel(assignment) }}
+                  </Tag>
+                  <span
+                    v-if="getRowOrgAssignments(record.id).length === 0"
+                    class="text-muted-foreground"
+                  >
+                    -
+                  </span>
+                </Space>
+              </template>
+
+              <template v-else-if="column.key === 'email'">
+                {{ record.email || '-' }}
+              </template>
+
+              <template v-else-if="column.key === 'phone'">
+                {{ record.phone || '-' }}
+              </template>
+
+              <template v-else-if="column.key === 'status'">
                 <Switch
                   v-if="canUpdate"
                   :checked="record.status === 1"
@@ -608,17 +868,6 @@ onMounted(async () => {
                 <Tag v-else :color="record.status === 1 ? 'success' : 'error'">
                   {{ record.status === 1 ? '启用' : '禁用' }}
                 </Tag>
-              </template>
-
-              <template v-else-if="column.key === 'remark'">
-                <Space wrap>
-                  <Tag v-for="role in record.roles" :key="role" color="blue">
-                    {{ role }}
-                  </Tag>
-                  <span v-if="!record.roles?.length" class="text-muted-foreground">
-                    -
-                  </span>
-                </Space>
               </template>
 
               <template v-else-if="column.key === 'action'">
@@ -655,6 +904,7 @@ onMounted(async () => {
             v-model:current="pagination.current"
             v-model:page-size="pagination.pageSize"
             :page-size-options="['10', '20', '50', '100']"
+            size="small"
             :total="pagination.total"
             show-less-items
             show-size-changer
@@ -665,14 +915,12 @@ onMounted(async () => {
       </section>
     </div>
 
-    <Modal
+    <Drawer
       v-model:open="formOpen"
-      :confirm-loading="saving"
-      :ok-button-props="{ disabled: !canSaveUser }"
-      ok-text="保存"
       :title="editingUser ? '编辑用户' : '新增用户'"
       destroy-on-close
-      @ok="submitForm"
+      placement="right"
+      width="640"
     >
       <Form layout="vertical">
         <FormItem label="用户名" required>
@@ -708,12 +956,68 @@ onMounted(async () => {
             :options="roleOptions"
           />
         </FormItem>
-      </Form>
-    </Modal>
 
-    <Drawer v-model:open="detailOpen" :footer="null" title="用户详情" width="420">
+        <div v-if="canQueryOrg" class="drawer-section">
+          <div class="drawer-section-header">
+            <strong>组织归属</strong>
+            <Tag color="blue">{{ activeOrgDimensionName }}</Tag>
+          </div>
+          <FormItem label="组织维度">
+            <Select
+              :disabled="!canUpdateOrgAssignments"
+              :options="orgDimensionOptions"
+              :value="activeOrgDimension"
+              @change="(value) => changeOrgDimension(String(value || activeOrgDimension))"
+            />
+          </FormItem>
+          <FormItem label="归属组织">
+            <Select
+              v-model:value="assignmentOrgUnitIds"
+              allow-clear
+              :disabled="!canUpdateOrgAssignments"
+              mode="multiple"
+              :options="orgOptions"
+              placeholder="请选择组织"
+              show-search
+              @change="syncPrimaryOrgSelection"
+            />
+          </FormItem>
+          <FormItem label="主组织">
+            <Select
+              v-model:value="primaryOrgUnitId"
+              allow-clear
+              :disabled="!canUpdateOrgAssignments || assignmentOrgUnitIds.length === 0"
+              :options="primaryOrgOptions"
+              placeholder="请选择主组织"
+            />
+          </FormItem>
+          <FormItem label="岗位">
+            <Input
+              v-model:value="assignmentPosition"
+              :disabled="!canUpdateOrgAssignments || assignmentOrgUnitIds.length === 0"
+              placeholder="例如：部门负责人"
+            />
+          </FormItem>
+        </div>
+      </Form>
+
+      <template #footer>
+        <Space>
+          <Button @click="formOpen = false">取消</Button>
+          <Button
+            :disabled="!canSaveUser"
+            :loading="saving"
+            type="primary"
+            @click="submitForm"
+          >
+            保存
+          </Button>
+        </Space>
+      </template>
+    </Drawer>
+
+    <Drawer v-model:open="detailOpen" :footer="null" title="用户详情" placement="right" width="520">
       <Descriptions v-if="detailUser" bordered :column="1" size="small">
-        <DescriptionsItem label="用户 ID">{{ detailUser.id }}</DescriptionsItem>
         <DescriptionsItem label="用户名">{{ detailUser.username }}</DescriptionsItem>
         <DescriptionsItem label="邮箱">{{ detailUser.email || '-' }}</DescriptionsItem>
         <DescriptionsItem label="手机号">{{ detailUser.phone || '-' }}</DescriptionsItem>
@@ -725,10 +1029,32 @@ onMounted(async () => {
         <DescriptionsItem label="角色">
           <Space wrap>
             <Tag v-for="role in detailUser.roles" :key="role" color="blue">
-              {{ role }}
+              {{ formatRoleLabel(role) }}
             </Tag>
             <span v-if="!detailUser.roles?.length">-</span>
           </Space>
+        </DescriptionsItem>
+        <DescriptionsItem label="组织维度">
+          {{ activeOrgDimensionName }}
+        </DescriptionsItem>
+        <DescriptionsItem label="组织归属">
+          <Space wrap>
+            <Tag
+              v-for="assignment in detailAssignments"
+              :key="assignment.id"
+              :color="assignment.primary ? 'geekblue' : 'default'"
+            >
+              {{ formatOrgAssignmentLabel(assignment) }}
+            </Tag>
+            <span v-if="detailAssignments.length === 0">-</span>
+          </Space>
+        </DescriptionsItem>
+        <DescriptionsItem label="主组织">
+          {{
+            detailAssignments.find((item) => item.primary)?.orgUnitName ||
+            detailAssignments.find((item) => item.primary)?.orgUnitId ||
+            '-'
+          }}
         </DescriptionsItem>
         <DescriptionsItem label="创建时间">
           {{ detailUser.createdAt || '-' }}
@@ -742,9 +1068,8 @@ onMounted(async () => {
 .user-page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 100%;
-  background: #f1f3f6;
 }
 
 .user-page.is-block-fullscreen {
@@ -752,7 +1077,7 @@ onMounted(async () => {
   inset: 0;
   z-index: 1000;
   height: 100vh;
-  padding: 12px;
+  padding: 8px;
   overflow: auto;
 }
 
@@ -766,14 +1091,14 @@ onMounted(async () => {
 }
 
 .query-panel {
-  padding: 22px 8px 16px;
+  padding: 8px;
 }
 
 .query-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(280px, 1fr));
-  column-gap: 52px;
-  row-gap: 10px;
+  column-gap: 12px;
+  row-gap: 8px;
   align-items: center;
 }
 
@@ -798,7 +1123,7 @@ onMounted(async () => {
 .query-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 8px;
 }
 
 .list-panel {
@@ -806,7 +1131,7 @@ onMounted(async () => {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  padding: 16px 8px 10px;
+  padding: 8px;
 }
 
 .list-header {
@@ -825,7 +1150,7 @@ onMounted(async () => {
 .list-header h2 {
   margin: 0;
   color: #111827;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -876,20 +1201,20 @@ onMounted(async () => {
 }
 
 .table-frame :deep(.ant-empty) {
-  margin: 120px 0;
+  margin: 64px 0;
 }
 
 .table-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 46px;
-  padding: 10px 2px 0;
+  min-height: 34px;
+  padding: 6px 2px 0;
 }
 
 .table-total {
   color: #111827;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 :global(.user-column-popover .ant-popover-inner) {
@@ -972,6 +1297,22 @@ onMounted(async () => {
   height: 38px;
   padding: 0 10px;
   border-top: 1px solid #edf0f5;
+}
+
+.drawer-section {
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid #edf0f5;
+}
+
+.drawer-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: #111827;
+  font-size: 13px;
 }
 
 @media (max-width: 1100px) {

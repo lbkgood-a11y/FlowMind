@@ -47,6 +47,10 @@ spring:
           uri: ${AUTH_SERVICE_URL:http://localhost:8081}
           predicates:
             - Path=/api/v1/users,/api/v1/users/**,/api/v1/roles,/api/v1/roles/**,/api/v1/permissions,/api/v1/permissions/**,/api/v1/menus,/api/v1/menus/**,/api/v1/menu,/api/v1/menu/**,/api/v1/data-policies,/api/v1/data-policies/**,/api/v1/audit-logs,/api/v1/audit-logs/**,/api/v1/sessions,/api/v1/sessions/**,/api/v1/dictionaries,/api/v1/dictionaries/**,/api/v1/system-configs,/api/v1/system-configs/**
+        - id: service-ops
+          uri: ${OPS_SERVICE_URL:http://localhost:8087}
+          predicates:
+            - Path=/api/v1/announcements,/api/v1/announcements/**,/api/v1/messages,/api/v1/messages/**,/api/v1/files,/api/v1/files/**,/api/v1/file-references,/api/v1/file-references/**,/api/v1/import-export-tasks,/api/v1/import-export-tasks/**,/api/v1/jobs,/api/v1/jobs/**
       httpclient:
         response-timeout: 120s
         connect-timeout: 5000

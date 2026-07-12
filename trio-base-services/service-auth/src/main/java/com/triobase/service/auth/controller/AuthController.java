@@ -1,10 +1,12 @@
 package com.triobase.service.auth.controller;
 
+import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.result.R;
 import com.triobase.common.dto.auth.*;
 import com.triobase.service.auth.service.AuthService;
 import com.triobase.service.auth.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -48,8 +50,11 @@ public class AuthController {
     }
 
     @GetMapping("/codes")
-    public R<List<String>> accessCodes(@RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
+    public R<List<String>> accessCodes(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String token = extractBearerToken(authHeader);
+        if (!StringUtils.hasText(token)) {
+            return R.fail(AuthErrorCode.TOKEN_INVALID);
+        }
         TokenValidateResult result = authService.validate(token);
         if (!result.isValid()) {
             return R.fail(1005, result.getError());
@@ -58,8 +63,11 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public R<Map<String, Object>> currentUser(@RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
+    public R<Map<String, Object>> currentUser(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String token = extractBearerToken(authHeader);
+        if (!StringUtils.hasText(token)) {
+            return R.fail(AuthErrorCode.TOKEN_INVALID);
+        }
         TokenValidateResult result = authService.validate(token);
         if (!result.isValid()) {
             return R.fail(1005, result.getError());
@@ -75,5 +83,15 @@ public class AuthController {
         userInfo.put("desc", "");
         userInfo.put("token", token);
         return R.ok(userInfo);
+    }
+
+    private String extractBearerToken(String authHeader) {
+        if (!StringUtils.hasText(authHeader)) {
+            return "";
+        }
+        if (authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7).trim();
+        }
+        return authHeader.trim();
     }
 }
