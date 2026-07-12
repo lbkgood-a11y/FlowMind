@@ -4,6 +4,7 @@ import type { TableProps } from 'ant-design-vue';
 
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { IconPicker, Page } from '@vben/common-ui';
 import { IconifyIcon, Plus } from '@vben/icons';
 
@@ -38,6 +39,13 @@ import {
   updateMenu,
 } from '#/api';
 import { componentKeys } from '#/router/routes';
+
+const MENU_PERMISSIONS = {
+  create: '/api/v1/menus:POST',
+  delete: '/api/v1/menus/*:DELETE',
+  query: '/api/v1/menus:GET',
+  update: '/api/v1/menus/*:PUT',
+} as const;
 
 type MenuFormModel = {
   activeIcon?: string;
@@ -203,6 +211,15 @@ const expandedRowKeys = ref<Array<number | string>>([]);
 const autoExpandRows = ref(true);
 const editingMenu = ref<SystemMenuApi.SystemMenu>();
 const hydratingForm = ref(false);
+const { hasAccessByCodes } = useAccess();
+
+const canQuery = computed(() => hasAccessByCodes([MENU_PERMISSIONS.query]));
+const canCreate = computed(() => hasAccessByCodes([MENU_PERMISSIONS.create]));
+const canUpdate = computed(() => hasAccessByCodes([MENU_PERMISSIONS.update]));
+const canDelete = computed(() => hasAccessByCodes([MENU_PERMISSIONS.delete]));
+const canSaveMenu = computed(() =>
+  editingMenu.value ? canUpdate.value : canCreate.value,
+);
 
 const columnSettings = reactive<MenuColumnSetting[]>(
   defaultColumnSettings.map((item) => ({ ...item })),
@@ -449,6 +466,13 @@ function resolveMenuIcon(record: SystemMenuApi.SystemMenu) {
 }
 
 async function loadMenus() {
+  if (!canQuery.value) {
+    menus.value = [];
+    allMenus.value = [];
+    expandedRowKeys.value = [];
+    tableKey.value += 1;
+    return;
+  }
   loading.value = true;
   try {
     const items = await getMenuList();
@@ -489,11 +513,19 @@ function resetForm(parentId?: string) {
 }
 
 function openCreate(parent?: SystemMenuApi.SystemMenu) {
+  if (!canCreate.value) {
+    message.warning('当前账号没有新增菜单的权限');
+    return;
+  }
   resetForm(parent?.id);
   formOpen.value = true;
 }
 
 function openEdit(record: SystemMenuApi.SystemMenu) {
+  if (!canUpdate.value) {
+    message.warning('当前账号没有修改菜单的权限');
+    return;
+  }
   hydratingForm.value = true;
   editingMenu.value = record;
   formModel.activeIcon = record.activeIcon ?? '';
@@ -604,6 +636,10 @@ async function validateUniqueFields() {
 }
 
 async function submitForm() {
+  if (!canSaveMenu.value) {
+    message.warning('当前账号没有保存菜单的权限');
+    return;
+  }
   if (!validateForm()) {
     return;
   }
@@ -628,6 +664,10 @@ async function submitForm() {
 }
 
 async function removeMenu(record: SystemMenuApi.SystemMenu) {
+  if (!canDelete.value) {
+    message.warning('当前账号没有删除菜单的权限');
+    return;
+  }
   await deleteMenu(record.id);
   message.success('菜单已删除');
   await loadMenus();
@@ -716,16 +756,16 @@ onMounted(loadMenus);
         <div class="list-header">
           <div></div>
           <Space :size="10">
-            <Button type="primary" @click="openCreate()">
+            <Button v-if="canCreate" type="primary" @click="openCreate()">
               <Plus class="size-4" />
               新增菜单
             </Button>
-            <Tooltip title="刷新">
+            <Tooltip v-if="canQuery" title="刷新">
               <Button shape="circle" @click="loadMenus">
                 <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
               </Button>
             </Tooltip>
-            <Tooltip title="展开全部">
+            <Tooltip v-if="canQuery" title="展开全部">
               <Button shape="circle" @click="expandAll">
                 <IconifyIcon icon="lucide:scan-line" class="size-4" />
               </Button>
@@ -792,6 +832,7 @@ onMounted(loadMenus);
             :loading="loading"
             :pagination="false"
             :scroll="{ x: 1280 }"
+            :sticky="{ offsetScroll: 0 }"
             row-key="id"
             size="middle"
             @expanded-rows-change="onExpandedRowsChange"
@@ -834,17 +875,23 @@ onMounted(loadMenus);
               <template v-else-if="column.key === 'action'">
                 <Space :size="12">
                   <Button
-                    v-if="asMenu(record).menuType !== 'button'"
+                    v-if="canCreate && asMenu(record).menuType !== 'button'"
                     size="small"
                     type="link"
                     @click="openCreate(asMenu(record))"
                   >
                     新增下级
                   </Button>
-                  <Button size="small" type="link" @click="openEdit(asMenu(record))">
+                  <Button
+                    v-if="canUpdate"
+                    size="small"
+                    type="link"
+                    @click="openEdit(asMenu(record))"
+                  >
                     修改
                   </Button>
                   <Popconfirm
+                    v-if="canDelete"
                     title="确认删除该菜单？"
                     ok-text="删除"
                     cancel-text="取消"
@@ -865,6 +912,8 @@ onMounted(loadMenus);
         :confirm-loading="saving"
         :destroy-on-close="false"
         :mask-closable="false"
+        :ok-button-props="{ disabled: !canSaveMenu }"
+        ok-text="保存"
         :title="formTitle"
         centered
         class="menu-edit-modal"

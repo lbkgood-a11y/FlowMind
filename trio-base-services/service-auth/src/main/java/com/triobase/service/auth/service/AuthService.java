@@ -39,6 +39,7 @@ public class AuthService {
     private final RoleMapper roleMapper;
     private final PasswordEncoder passwordEncoder;
     private final StringRedisTemplate redis;
+    private final LoginSessionService loginSessionService;
 
     @Value("${auth.jwt.secret}")
     private String jwtSecret;
@@ -83,14 +84,18 @@ public class AuthService {
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, request.getUsername()));
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            loginSessionService.recordLoginFailure(request.getUsername(), "BAD_CREDENTIALS");
             throw new BizException(AuthErrorCode.BAD_CREDENTIALS);
         }
         if (user.getStatus() != 1) {
+            loginSessionService.recordLoginFailure(request.getUsername(), "ACCOUNT_DISABLED");
             throw new BizException(AuthErrorCode.ACCOUNT_DISABLED);
         }
         List<String> roles = userMapper.selectRoleCodesByUserId(user.getId());
         log.info("User logged in: {} ({})", user.getUsername(), user.getId());
-        return buildLoginResponse(user, roles);
+        LoginResponse response = buildLoginResponse(user, roles);
+        loginSessionService.recordLoginSuccess(user);
+        return response;
     }
 
     public LoginResponse refresh(String refreshToken) {
@@ -128,6 +133,9 @@ public class AuthService {
         if (payload.jti() != null && Boolean.TRUE.equals(redis.hasKey(REVOKED_KEY_PREFIX + payload.jti()))) {
             return TokenValidateResult.fail("Token 已被吊销");
         }
+        if (loginSessionService.isAccessJtiInactive(payload.jti())) {
+            return TokenValidateResult.fail("会话已失效");
+        }
         List<String> permissions = userMapper.selectPermissionsByUserId(payload.userId());
         return TokenValidateResult.success(payload.userId(), payload.username(), permissions);
     }
@@ -140,6 +148,7 @@ public class AuthService {
                         ? Math.max(1, (accessPayload.expirationTime().getTime() - System.currentTimeMillis()) / 1000)
                         : accessTokenTtl;
                 redis.opsForValue().set(REVOKED_KEY_PREFIX + accessPayload.jti(), "1", Duration.ofSeconds(remaining));
+                loginSessionService.markLogout(accessToken, jwtSecret);
             }
         }
         if (refreshToken != null) {
@@ -183,6 +192,7 @@ public class AuthService {
         resp.setUserId(user.getId());
         resp.setUsername(user.getUsername());
         resp.setRoles(roles);
+        loginSessionService.recordSession(user, resp, jwtSecret);
         return resp;
     }
 }

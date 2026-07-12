@@ -40,13 +40,58 @@ const routes: RouteRecordRaw[] = [
         component: () => import('#/views/system/menu/list.vue'),
       },
       {
-        path: 'dept',
-        name: 'SystemDept',
+        path: 'org',
+        name: 'SystemOrg',
         meta: {
           icon: 'charm:organisation',
-          title: $t('system.dept.title'),
+          title: $t('system.org.title'),
         },
-        component: () => import('#/views/system/dept/list.vue'),
+        component: () => import('#/views/system/org/list.vue'),
+      },
+      {
+        path: 'data-permission',
+        name: 'SystemDataPermission',
+        meta: {
+          icon: 'mdi:shield-key-outline',
+          title: $t('system.dataPermission.title'),
+        },
+        component: () => import('#/views/system/data-permission/list.vue'),
+      },
+      {
+        path: 'audit-log',
+        name: 'SystemAuditLog',
+        meta: {
+          icon: 'mdi:clipboard-text-clock-outline',
+          title: $t('system.auditLog.title'),
+        },
+        component: () => import('#/views/system/audit-log/list.vue'),
+      },
+      {
+        path: 'session',
+        name: 'SystemSession',
+        meta: {
+          icon: 'mdi:account-clock-outline',
+          title: $t('system.session.title'),
+        },
+        component: () => import('#/views/system/session/list.vue'),
+      },
+      {
+        path: 'dictionary',
+        name: 'SystemDictionary',
+        meta: {
+          icon: 'mdi:book-open-variant-outline',
+          title: $t('system.dictionary.title'),
+        },
+        component: () => import('#/views/system/dictionary/list.vue'),
+      },
+      {
+        path: 'config',
+        name: 'SystemConfig',
+        meta: {
+          icon: 'mdi:tune-variant',
+          title: $t('system.config.title'),
+        },
+        component: () => import('#/views/system/config/list.vue'),
       },
     ],
   },

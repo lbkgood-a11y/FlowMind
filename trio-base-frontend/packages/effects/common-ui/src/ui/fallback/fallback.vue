@@ -4,6 +4,7 @@ import type { FallbackProps } from './fallback';
 import { computed, defineAsyncComponent } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { LOGIN_PATH } from '@vben/constants';
 import { ArrowLeft, RotateCw } from '@vben/icons';
 import { $t } from '@vben/locales';
 
@@ -111,6 +112,10 @@ const showBack = computed(() => {
   return props.status === '403' || props.status === '404';
 });
 
+const showLogin = computed(() => {
+  return props.status === '404';
+});
+
 const showRefresh = computed(() => {
   return props.status === '500' || props.status === 'offline';
 });
@@ -120,6 +125,15 @@ const { push } = useRouter();
 // 返回首页
 function back() {
   push(props.homePath);
+}
+
+function backToLogin() {
+  push({
+    path: LOGIN_PATH,
+    query: {
+      forceLogin: '1',
+    },
+  });
 }
 
 function refresh() {
@@ -151,10 +165,16 @@ function refresh() {
         {{ descText }}
       </p>
       <slot v-if="$slots.action" name="action"></slot>
-      <VbenButton v-else-if="showBack" size="lg" @click="back">
-        <ArrowLeft class="mr-2 size-4" />
-        {{ $t('common.backToHome') }}
-      </VbenButton>
+      <div v-else-if="showBack" class="flex flex-wrap justify-center gap-3">
+        <VbenButton size="lg" @click="back">
+          <ArrowLeft class="mr-2 size-4" />
+          {{ $t('common.backToHome') }}
+        </VbenButton>
+        <VbenButton v-if="showLogin" size="lg" @click="backToLogin">
+          <ArrowLeft class="mr-2 size-4" />
+          {{ $t('common.backToLogin') }}
+        </VbenButton>
+      </div>
       <VbenButton v-else-if="showRefresh" size="lg" @click="refresh">
         <RotateCw class="mr-2 size-4" />
         {{ $t('common.refresh') }}

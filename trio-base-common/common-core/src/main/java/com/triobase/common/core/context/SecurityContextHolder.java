@@ -41,8 +41,30 @@ public final class SecurityContextHolder {
         return ctx != null ? ctx.permissions() : Collections.emptyList();
     }
 
-    public record SecurityContext(String userId, String username, List<String> permissions) {
+    public static String getTenantId() {
+        SecurityContext ctx = CONTEXT.get();
+        return ctx != null ? ctx.tenantId() : null;
+    }
+
+    public static List<String> getRoles() {
+        SecurityContext ctx = CONTEXT.get();
+        return ctx != null ? ctx.roles() : Collections.emptyList();
+    }
+
+    public record SecurityContext(String userId,
+                                  String username,
+                                  String tenantId,
+                                  List<String> roles,
+                                  List<String> permissions,
+                                  Long authVersion,
+                                  Long roleVersion,
+                                  Long dataPolicyVersion) {
+        public SecurityContext(String userId, String username, List<String> permissions) {
+            this(userId, username, null, Collections.emptyList(), permissions, null, null, null);
+        }
+
         public SecurityContext {
+            roles = roles != null ? List.copyOf(roles) : Collections.emptyList();
             permissions = permissions != null ? List.copyOf(permissions) : Collections.emptyList();
         }
     }

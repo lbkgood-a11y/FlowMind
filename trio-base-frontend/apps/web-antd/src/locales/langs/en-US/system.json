@@ -13,15 +13,30 @@
     "operation": "Operation",
     "placeholder": "Search Department..."
   },
-  "dept": {
-    "name": "Department",
-    "title": "Department Management",
+  "org": {
+    "name": "Organization",
+    "title": "Organization Management",
     "deptName": "Department Name",
     "status": "Status",
     "createTime": "Create Time",
     "remark": "Remark",
     "operation": "Operation",
     "parentDept": "Parent Department"
+  },
+  "dataPermission": {
+    "title": "Data Permission"
+  },
+  "auditLog": {
+    "title": "Operation Audit"
+  },
+  "session": {
+    "title": "Session Management"
+  },
+  "dictionary": {
+    "title": "Dictionary"
+  },
+  "config": {
+    "title": "System Config"
   },
   "menu": {
     "title": "Menu Management",

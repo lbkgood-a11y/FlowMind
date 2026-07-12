@@ -5,6 +5,7 @@ import type { Dayjs } from 'dayjs';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import { IconifyIcon, Plus } from '@vben/icons';
 
@@ -49,6 +50,17 @@ import {
 const RangePicker = DatePicker.RangePicker;
 const Textarea = Input.TextArea;
 
+const ROLE_PERMISSIONS = {
+  create: '/api/v1/roles:POST',
+  delete: '/api/v1/roles/*:DELETE',
+  query: '/api/v1/roles:GET',
+  update: '/api/v1/roles/*:PUT',
+} as const;
+
+const MENU_PERMISSIONS = {
+  query: '/api/v1/menus:GET',
+} as const;
+
 type RoleFormModel = {
   description?: string;
   menuIds: string[];
@@ -56,6 +68,13 @@ type RoleFormModel = {
   roleName: string;
   status: 0 | 1;
 };
+
+type MenuCheckedKeys =
+  | Array<number | string>
+  | {
+      checked: Array<number | string>;
+      halfChecked: Array<number | string>;
+    };
 
 type RoleQueryModel = {
   createdRange?: [Dayjs, Dayjs];
@@ -106,6 +125,16 @@ const columnSettingOpen = ref(false);
 const tableKey = ref(0);
 const editingRole = ref<SystemRoleApi.RoleDetail>();
 const detailRole = ref<SystemRoleApi.RoleDetail>();
+const { hasAccessByCodes } = useAccess();
+
+const canQuery = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.query]));
+const canCreate = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.create]));
+const canUpdate = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.update]));
+const canDelete = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.delete]));
+const canQueryMenus = computed(() => hasAccessByCodes([MENU_PERMISSIONS.query]));
+const canSaveRole = computed(() =>
+  editingRole.value ? canUpdate.value : canCreate.value,
+);
 
 const queryForm = reactive<RoleQueryModel>({
   createdRange: undefined,
@@ -136,7 +165,7 @@ const columnDraft = ref<RoleColumnSetting[]>(
   defaultColumnSettings.map((item) => ({ ...item })),
 );
 
-const menuCheckedKeys = ref<Array<number | string>>([]);
+const menuCheckedKeys = ref<MenuCheckedKeys>([]);
 
 const menuIds = computed(() => new Set(menus.value.map((item) => item.id)));
 const menuTree = computed(() => buildMenuTree(menus.value));
@@ -267,6 +296,9 @@ async function loadMenusForAuthorization(force = false) {
   if (!force && menus.value.length > 0) {
     return;
   }
+  if (!canQueryMenus.value || (!canCreate.value && !canUpdate.value)) {
+    return;
+  }
   loadingMenus.value = true;
   try {
     menus.value = await getMenuList();
@@ -276,6 +308,11 @@ async function loadMenusForAuthorization(force = false) {
 }
 
 async function loadRoles(page = pagination.current) {
+  if (!canQuery.value) {
+    roles.value = [];
+    pagination.total = 0;
+    return;
+  }
   loading.value = true;
   try {
     const result = await getRolePage({
@@ -378,7 +415,10 @@ function confirmColumnSettings() {
 }
 
 function selectedMenuIds() {
-  return menuCheckedKeys.value
+  const checkedKeys = Array.isArray(menuCheckedKeys.value)
+    ? menuCheckedKeys.value
+    : menuCheckedKeys.value.checked;
+  return checkedKeys
     .map((key) => String(key))
     .filter((key) => menuIds.value.has(key));
 }
@@ -396,6 +436,10 @@ function validateForm() {
 }
 
 async function submitForm() {
+  if (!canSaveRole.value) {
+    message.warning('当前账号没有保存角色的权限');
+    return;
+  }
   if (!validateForm()) {
     return;
   }
@@ -407,7 +451,7 @@ async function submitForm() {
     }
     const payload: SystemRoleApi.SaveRoleParams = {
       description: formModel.description?.trim() || undefined,
-      menuIds: selectedMenuIds(),
+      menuIds: canQueryMenus.value ? selectedMenuIds() : formModel.menuIds,
       roleName: formModel.roleName.trim(),
       status: formModel.status,
     };
@@ -526,8 +570,8 @@ onMounted(() => {
             />
           </FormItem>
           <div class="query-actions">
-            <Button @click="resetQuery">重置</Button>
-            <Button type="primary" @click="loadRoles(1)">搜索</Button>
+            <Button v-if="canQuery" @click="resetQuery">重置</Button>
+            <Button v-if="canQuery" type="primary" @click="loadRoles(1)">搜索</Button>
             <Button type="link" @click="collapsed = !collapsed">
               {{ collapsed ? '展开' : '收起' }}
               <IconifyIcon
@@ -548,16 +592,16 @@ onMounted(() => {
             </Button>
           </div>
           <Space :size="8">
-            <Button type="primary" @click="openCreate">
+            <Button v-if="canCreate" type="primary" @click="openCreate">
               <Plus class="size-4" />
               新增角色
             </Button>
-            <Tooltip title="查询并隐藏搜索栏">
+            <Tooltip v-if="canQuery" title="查询并隐藏搜索栏">
               <Button shape="circle" type="primary" @click="handleToolbarSearch">
                 <IconifyIcon icon="lucide:search" class="size-4" />
               </Button>
             </Tooltip>
-            <Tooltip title="刷新">
+            <Tooltip v-if="canQuery" title="刷新">
               <Button shape="circle" @click="loadRoles()">
                 <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
               </Button>
@@ -623,6 +667,7 @@ onMounted(() => {
             :loading="loading"
             :pagination="false"
             :scroll="{ x: 'max-content' }"
+            :sticky="{ offsetScroll: 0 }"
             bordered
             row-key="id"
             table-layout="fixed"
@@ -642,11 +687,15 @@ onMounted(() => {
 
               <template v-else-if="column.key === 'status'">
                 <Switch
+                  v-if="canUpdate"
                   :checked="statusValue(asRole(record)) === 1"
                   checked-children="启用"
                   un-checked-children="禁用"
                   @change="(checked) => changeStatus(asRole(record), checked as boolean)"
                 />
+                <Tag v-else :color="statusValue(asRole(record)) === 1 ? 'success' : 'error'">
+                  {{ statusValue(asRole(record)) === 1 ? '启用' : '禁用' }}
+                </Tag>
               </template>
 
               <template v-else-if="column.key === 'description'">
@@ -662,13 +711,24 @@ onMounted(() => {
                   <Button size="small" type="link" @click="openDetail(asRole(record))">
                     详情
                   </Button>
-                  <Button size="small" type="link" @click="openEdit(asRole(record))">
+                  <Button
+                    v-if="canUpdate"
+                    size="small"
+                    type="link"
+                    @click="openEdit(asRole(record))"
+                  >
                     编辑
                   </Button>
-                  <Button size="small" type="link" @click="openEdit(asRole(record), true)">
+                  <Button
+                    v-if="canUpdate && canQueryMenus"
+                    size="small"
+                    type="link"
+                    @click="openEdit(asRole(record), true)"
+                  >
                     授权
                   </Button>
                   <Popconfirm
+                    v-if="canDelete"
                     title="确认删除该角色？"
                     ok-text="删除"
                     cancel-text="取消"
@@ -743,10 +803,11 @@ onMounted(() => {
           </FormItem>
         </div>
 
-        <FormItem class="permission-item" label="菜单授权">
+        <FormItem v-if="canQueryMenus" class="permission-item" label="菜单授权">
           <div class="permission-panel">
             <Tree
               v-model:checkedKeys="menuCheckedKeys"
+              :check-strictly="true"
               :tree-data="menuTree"
               block-node
               checkable
@@ -760,7 +821,14 @@ onMounted(() => {
       <template #footer>
         <Space>
           <Button @click="formOpen = false">取消</Button>
-          <Button :loading="saving" type="primary" @click="submitForm">确认</Button>
+          <Button
+            :disabled="!canSaveRole"
+            :loading="saving"
+            type="primary"
+            @click="submitForm"
+          >
+            保存
+          </Button>
         </Space>
       </template>
     </Drawer>

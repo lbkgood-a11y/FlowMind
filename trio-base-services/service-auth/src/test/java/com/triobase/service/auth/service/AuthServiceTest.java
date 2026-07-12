@@ -39,6 +39,7 @@ class AuthServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private StringRedisTemplate redis;
     @Mock private ValueOperations<String, String> valueOperations;
+    @Mock private LoginSessionService loginSessionService;
 
     @InjectMocks
     private AuthService authService;
@@ -125,5 +126,16 @@ class AuthServiceTest {
         String token = JwtUtil.createAccessToken("U001", "admin", List.of(), SECRET, -1);
         TokenValidateResult result = authService.validate(token);
         assertFalse(result.isValid());
+    }
+
+    @Test
+    void validate_shouldReturnInvalid_whenSessionInactive() {
+        String token = JwtUtil.createAccessToken("U001", "admin", List.of("ADMIN"), SECRET, 300);
+        when(loginSessionService.isAccessJtiInactive(anyString())).thenReturn(true);
+
+        TokenValidateResult result = authService.validate(token);
+
+        assertFalse(result.isValid());
+        assertEquals("会话已失效", result.getError());
     }
 }

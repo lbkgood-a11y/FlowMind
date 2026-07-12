@@ -13,16 +13,31 @@
     "operation": "操作",
     "placeholder": "搜索部门..."
   },
-  "dept": {
+  "org": {
     "list": "部门列表",
     "createTime": "创建时间",
     "deptName": "部门名称",
-    "name": "部门",
+    "name": "组织",
     "operation": "操作",
     "parentDept": "上级部门",
     "remark": "备注",
     "status": "状态",
-    "title": "部门管理"
+    "title": "组织管理"
+  },
+  "dataPermission": {
+    "title": "数据权限"
+  },
+  "auditLog": {
+    "title": "操作审计"
+  },
+  "session": {
+    "title": "会话管理"
+  },
+  "dictionary": {
+    "title": "数据字典"
+  },
+  "config": {
+    "title": "系统参数"
   },
   "menu": {
     "list": "菜单列表",

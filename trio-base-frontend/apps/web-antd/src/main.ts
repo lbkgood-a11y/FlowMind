@@ -1,4 +1,4 @@
-import { initPreferences } from '@vben/preferences';
+import { initPreferences, updatePreferences } from '@vben/preferences';
 import { unmountGlobalLoading } from '@vben/utils';
 
 import { overridesPreferences, preferencesExtension } from './preferences';
@@ -19,6 +19,8 @@ async function initApplication() {
     namespace,
     overrides: overridesPreferences,
   });
+  // 权限模式不能被历史偏好缓存降级成 frontend，否则普通用户会走静态路由看到全量菜单。
+  updatePreferences({ app: { accessMode: 'backend' } });
 
   // 启动应用并挂载
   // vue应用主要逻辑及视图

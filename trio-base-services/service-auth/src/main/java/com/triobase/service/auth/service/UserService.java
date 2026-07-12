@@ -3,6 +3,8 @@ package com.triobase.service.auth.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.triobase.common.core.auth.DataScope;
+import com.triobase.common.core.context.DataScopeContextHolder;
 import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
@@ -76,12 +78,32 @@ public class UserService {
         if (createdEnd != null) {
             queryWrapper.le(SysUser::getCreatedAt, createdEnd);
         }
+        if (!applyDataScope(queryWrapper, DataScopeContextHolder.get())) {
+            return PageResult.empty(page, size);
+        }
 
         IPage<SysUser> userPage = userMapper.selectPage(new Page<>(page, size), queryWrapper);
         List<UserInfoPayload> records = userPage.getRecords().stream()
                 .map(this::toPayload)
                 .collect(Collectors.toList());
         return PageResult.of(records, userPage.getTotal(), page, size);
+    }
+
+    boolean applyDataScope(LambdaQueryWrapper<SysUser> queryWrapper, DataScope dataScope) {
+        if (dataScope == null) {
+            return true;
+        }
+        if (dataScope.restrictive()) {
+            return false;
+        }
+        if (dataScope.allowsAll()) {
+            return true;
+        }
+        if (dataScope.allowsSelf() && StringUtils.hasText(dataScope.userId())) {
+            queryWrapper.eq(SysUser::getId, dataScope.userId());
+            return true;
+        }
+        return false;
     }
 
     @Transactional

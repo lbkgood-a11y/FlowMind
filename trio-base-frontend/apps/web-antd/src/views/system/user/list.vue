@@ -5,6 +5,7 @@ import type { Dayjs } from 'dayjs';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 import { IconifyIcon, Plus } from '@vben/icons';
 
@@ -45,6 +46,17 @@ import {
 } from '#/api';
 
 const RangePicker = DatePicker.RangePicker;
+
+const USER_PERMISSIONS = {
+  create: '/api/v1/users:POST',
+  delete: '/api/v1/users/*:DELETE',
+  query: '/api/v1/users:GET',
+  update: '/api/v1/users/*:PUT',
+} as const;
+
+const ROLE_PERMISSIONS = {
+  query: '/api/v1/roles:GET',
+} as const;
 
 type UserFormModel = {
   email?: string;
@@ -100,6 +112,16 @@ const columnSettingOpen = ref(false);
 const tableKey = ref(0);
 const editingUser = ref<SystemUserApi.SystemUser>();
 const detailUser = ref<SystemUserApi.SystemUser>();
+const { hasAccessByCodes } = useAccess();
+
+const canQuery = computed(() => hasAccessByCodes([USER_PERMISSIONS.query]));
+const canCreate = computed(() => hasAccessByCodes([USER_PERMISSIONS.create]));
+const canUpdate = computed(() => hasAccessByCodes([USER_PERMISSIONS.update]));
+const canDelete = computed(() => hasAccessByCodes([USER_PERMISSIONS.delete]));
+const canQueryRoles = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.query]));
+const canSaveUser = computed(() =>
+  editingUser.value ? canUpdate.value : canCreate.value,
+);
 
 const queryForm = reactive<QueryFormModel>({
   createdRange: undefined,
@@ -183,10 +205,21 @@ const keyword = computed(() => {
 });
 
 async function loadRoles() {
+  if (roles.value.length > 0) {
+    return;
+  }
+  if (!canQueryRoles.value || (!canCreate.value && !canUpdate.value)) {
+    return;
+  }
   roles.value = await getRoleList({ status: 1 });
 }
 
 async function loadUsers(page = pagination.current) {
+  if (!canQuery.value) {
+    users.value = [];
+    pagination.total = 0;
+    return;
+  }
   loading.value = true;
   try {
     const result = await getUserList({
@@ -269,23 +302,26 @@ function getRoleIdsByCodes(codes?: string[]) {
     .map((role) => role.id);
 }
 
-function openCreate() {
+async function openCreate() {
   resetForm();
+  await loadRoles();
   formOpen.value = true;
 }
 
-function openEdit(record: SystemUserApi.SystemUser) {
+async function openEdit(record: SystemUserApi.SystemUser) {
+  await loadRoles();
   editingUser.value = record;
   formModel.email = record.email ?? '';
   formModel.password = '';
   formModel.phone = record.phone ?? '';
-  formModel.roleIds = getRoleIdsByCodes(record.roles);
+  formModel.roleIds = canQueryRoles.value ? getRoleIdsByCodes(record.roles) : [];
   formModel.status = record.status;
   formModel.username = record.username;
   formOpen.value = true;
 }
 
 function openDetail(record: SystemUserApi.SystemUser) {
+  editingUser.value = undefined;
   detailUser.value = record;
   detailOpen.value = true;
 }
@@ -300,6 +336,10 @@ function validatePassword(password: string) {
 }
 
 async function submitForm() {
+  if (!canSaveUser.value) {
+    message.warning('当前账号没有保存用户的权限');
+    return;
+  }
   if (!formModel.username.trim()) {
     message.warning('请输入用户名');
     return;
@@ -318,7 +358,7 @@ async function submitForm() {
     const payload: SystemUserApi.SaveUserParams = {
       email: formModel.email || undefined,
       phone: formModel.phone || undefined,
-      roleIds: formModel.roleIds,
+      roleIds: canQueryRoles.value ? formModel.roleIds : undefined,
       status: formModel.status,
     };
     if (!editingUser.value) {
@@ -381,7 +421,6 @@ function toggleFullscreen() {
 }
 
 onMounted(async () => {
-  await loadRoles();
   await loadUsers(1);
 });
 </script>
@@ -438,8 +477,8 @@ onMounted(async () => {
             />
           </FormItem>
           <div class="query-actions">
-            <Button @click="resetQuery">重置</Button>
-            <Button type="primary" @click="loadUsers(1)">搜索</Button>
+            <Button v-if="canQuery" @click="resetQuery">重置</Button>
+            <Button v-if="canQuery" type="primary" @click="loadUsers(1)">搜索</Button>
             <Button type="link" @click="collapsed = !collapsed">
               {{ collapsed ? '展开' : '收起' }}
               <IconifyIcon
@@ -460,16 +499,16 @@ onMounted(async () => {
             </Button>
           </div>
           <Space :size="8">
-            <Button type="primary" @click="openCreate">
+            <Button v-if="canCreate" type="primary" @click="openCreate">
               <Plus class="size-4" />
               新增用户名
             </Button>
-            <Tooltip title="查询并隐藏搜索栏">
+            <Tooltip v-if="canQuery" title="查询并隐藏搜索栏">
               <Button shape="circle" type="primary" @click="handleToolbarSearch">
                 <IconifyIcon icon="lucide:search" class="size-4" />
               </Button>
             </Tooltip>
-            <Tooltip title="刷新">
+            <Tooltip v-if="canQuery" title="刷新">
               <Button shape="circle" @click="loadUsers()">
                 <IconifyIcon icon="lucide:refresh-cw" class="size-4" />
               </Button>
@@ -560,11 +599,15 @@ onMounted(async () => {
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'status'">
                 <Switch
+                  v-if="canUpdate"
                   :checked="record.status === 1"
                   checked-children="启用"
                   un-checked-children="禁用"
                   @change="(checked) => changeStatus(asUser(record), checked as boolean)"
                 />
+                <Tag v-else :color="record.status === 1 ? 'success' : 'error'">
+                  {{ record.status === 1 ? '启用' : '禁用' }}
+                </Tag>
               </template>
 
               <template v-else-if="column.key === 'remark'">
@@ -583,10 +626,16 @@ onMounted(async () => {
                   <Button size="small" type="link" @click="openDetail(asUser(record))">
                     详情
                   </Button>
-                  <Button size="small" type="link" @click="openEdit(asUser(record))">
+                  <Button
+                    v-if="canUpdate"
+                    size="small"
+                    type="link"
+                    @click="openEdit(asUser(record))"
+                  >
                     编辑
                   </Button>
                   <Popconfirm
+                    v-if="canDelete"
                     title="确认删除该用户？"
                     ok-text="删除"
                     cancel-text="取消"
@@ -619,6 +668,8 @@ onMounted(async () => {
     <Modal
       v-model:open="formOpen"
       :confirm-loading="saving"
+      :ok-button-props="{ disabled: !canSaveUser }"
+      ok-text="保存"
       :title="editingUser ? '编辑用户' : '新增用户'"
       destroy-on-close
       @ok="submitForm"
@@ -649,7 +700,7 @@ onMounted(async () => {
             <Radio :value="0">禁用</Radio>
           </RadioGroup>
         </FormItem>
-        <FormItem label="角色">
+        <FormItem v-if="canQueryRoles" label="角色">
           <Select
             v-model:value="formModel.roleIds"
             mode="multiple"
@@ -660,7 +711,7 @@ onMounted(async () => {
       </Form>
     </Modal>
 
-    <Drawer v-model:open="detailOpen" title="用户详情" width="420">
+    <Drawer v-model:open="detailOpen" :footer="null" title="用户详情" width="420">
       <Descriptions v-if="detailUser" bordered :column="1" size="small">
         <DescriptionsItem label="用户 ID">{{ detailUser.id }}</DescriptionsItem>
         <DescriptionsItem label="用户名">{{ detailUser.username }}</DescriptionsItem>

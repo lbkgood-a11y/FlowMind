@@ -1,5 +1,6 @@
 package com.triobase.service.auth.controller;
 
+import com.triobase.common.core.annotation.RequireDataScope;
 import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.core.result.R;
@@ -23,6 +24,7 @@ public class UserController {
 
     @GetMapping
     @RequirePermission("/api/v1/users:GET")
+    @RequireDataScope(resource = "USER", action = "QUERY")
     public R<PageResult<UserInfoPayload>> list(@RequestParam(defaultValue = "1") int page,
                                                 @RequestParam(defaultValue = "20") int size,
                                                 @RequestParam(required = false) String keyword,

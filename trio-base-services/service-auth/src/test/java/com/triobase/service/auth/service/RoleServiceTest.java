@@ -118,6 +118,26 @@ class RoleServiceTest {
     }
 
     @Test
+    void update_shouldPreserveRoleMenus_whenMenuIdsAbsent() {
+        UpdateRoleRequest request = new UpdateRoleRequest();
+        request.setRoleName("Tenant Administrator");
+        request.setStatus(1);
+
+        SysRole role = new SysRole();
+        role.setId("R001");
+        role.setRoleCode("TENANT_ADMIN");
+
+        when(roleMapper.selectById("R001")).thenReturn(role);
+        when(roleMapper.updateById(role)).thenReturn(1);
+
+        SysRole updated = roleService.update("R001", request);
+
+        assertEquals("Tenant Administrator", updated.getRoleName());
+        verify(roleMenuMapper, never()).delete(any());
+        verify(roleMenuMapper, never()).insert(any(SysRoleMenu.class));
+    }
+
+    @Test
     void updateStatus_shouldPersistStatus() {
         SysRole role = new SysRole();
         role.setId("R001");

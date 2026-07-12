@@ -52,7 +52,12 @@ function setupAccessGuard(router: Router) {
 
     // 基本路由，这些路由不需要进入权限拦截
     if (coreRouteNames.includes(to.name as string)) {
-      if (to.path === LOGIN_PATH && accessStore.accessToken) {
+      const shouldForceLogin = to.query?.forceLogin === '1';
+      if (
+        to.path === LOGIN_PATH &&
+        accessStore.accessToken &&
+        !shouldForceLogin
+      ) {
         return decodeURIComponent(
           (to.query?.redirect as string) ||
             userStore.userInfo?.homePath ||
