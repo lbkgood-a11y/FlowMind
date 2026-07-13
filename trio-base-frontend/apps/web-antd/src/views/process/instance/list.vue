@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { TableProps } from 'ant-design-vue';
 
+import type { SystemOrgApi } from '#/api';
+import type { ProcessApi } from '#/api/process';
+
 import { computed, h, onMounted, reactive, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
@@ -14,7 +17,6 @@ import {
   FormItem,
   Input,
   message,
-  Modal,
   Pagination,
   Select,
   Space,
@@ -23,8 +25,8 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
+import { getOrgDimensions, getOrgTree } from '#/api';
 import { getProcessInstanceList, getProcessPackageList, startProcessInstance } from '#/api/process';
-import type { ProcessApi } from '#/api/process';
 
 const Textarea = Input.TextArea;
 
@@ -33,9 +35,14 @@ const PERMISSIONS = {
   start: '/api/v1/process-instances/start:POST',
 } as const;
 
+const ORG_PERMISSIONS = {
+  query: '/api/v1/org/units:GET',
+} as const;
+
 const { hasAccessByCodes } = useAccess();
 const canQuery = computed(() => hasAccessByCodes([PERMISSIONS.query]));
 const canStart = computed(() => hasAccessByCodes([PERMISSIONS.start]));
+const canQueryOrg = computed(() => hasAccessByCodes([ORG_PERMISSIONS.query]));
 
 const loading = ref(false);
 const saving = ref(false);
@@ -44,6 +51,8 @@ const detailOpen = ref(false);
 const detailRecord = ref<ProcessApi.ProcessInstance>();
 const instances = ref<ProcessApi.ProcessInstance[]>([]);
 const packageOptions = ref<Array<{ label: string; value: string }>>([]);
+const orgDimensions = ref<SystemOrgApi.OrgDimension[]>([]);
+const orgTreeRows = ref<SystemOrgApi.OrgTreeNode[]>([]);
 
 const query = reactive({
   keyword: '',
@@ -57,6 +66,8 @@ const pagination = reactive({
 });
 
 const formModel = reactive({
+  orgDimensionCode: 'ADMIN',
+  orgUnitId: undefined as string | undefined,
   processKey: '',
   title: '',
   formData: '{}' as string,
@@ -89,6 +100,77 @@ const columns: TableProps['columns'] = [
   { key: 'action', title: '操作', width: 100, align: 'center', fixed: 'right' },
 ];
 
+const orgDimensionOptions = computed(() =>
+  orgDimensions.value.map((item) => ({
+    label: item.dimensionName,
+    value: item.dimensionCode,
+  })),
+);
+
+const orgRows = computed(() => flattenOrgRows(orgTreeRows.value));
+
+const orgOptions = computed(() => flattenOrgOptions(orgTreeRows.value));
+
+const selectedOrgUnit = computed(() =>
+  orgRows.value.find((item) => item.id === formModel.orgUnitId),
+);
+
+function buildOrgTree(list: SystemOrgApi.OrgTreeNode[]): SystemOrgApi.OrgTreeNode[] {
+  const nodeMap = new Map<string, SystemOrgApi.OrgTreeNode>();
+  list.forEach((item) => {
+    nodeMap.set(item.id, { ...item, children: [] });
+  });
+  const roots: SystemOrgApi.OrgTreeNode[] = [];
+  list.forEach((item) => {
+    const node = nodeMap.get(item.id);
+    if (!node) {
+      return;
+    }
+    if (item.parentUnitId && nodeMap.has(item.parentUnitId)) {
+      nodeMap.get(item.parentUnitId)?.children?.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+  const sortNodes = (nodes: SystemOrgApi.OrgTreeNode[]) => {
+    nodes.sort((a, b) => (a.sortOrder ?? 100) - (b.sortOrder ?? 100));
+    nodes.forEach((node) => {
+      if (node.children?.length) {
+        sortNodes(node.children);
+      } else {
+        delete node.children;
+      }
+    });
+  };
+  sortNodes(roots);
+  return roots;
+}
+
+function flattenOrgRows(
+  list: SystemOrgApi.OrgTreeNode[],
+): SystemOrgApi.OrgTreeNode[] {
+  return list.flatMap((item) => [
+    item,
+    ...flattenOrgRows(item.children ?? []),
+  ]);
+}
+
+function flattenOrgOptions(
+  list: SystemOrgApi.OrgTreeNode[],
+  depth = 0,
+): Array<{ label: string; value: string }> {
+  return list.flatMap((item) => {
+    const option = {
+      label: `${'  '.repeat(depth)}${item.unitName} (${item.unitCode})`,
+      value: item.id,
+    };
+    return [
+      option,
+      ...flattenOrgOptions(item.children ?? [], depth + 1),
+    ];
+  });
+}
+
 async function loadInstances(page = pagination.current) {
   if (!canQuery.value) {
     instances.value = [];
@@ -119,12 +201,56 @@ async function loadPackageOptions() {
   }
 }
 
-function openStart() {
+async function loadOrgDimensions() {
+  if (!canQueryOrg.value) {
+    orgDimensions.value = [];
+    orgTreeRows.value = [];
+    return;
+  }
+  if (orgDimensions.value.length === 0) {
+    orgDimensions.value = await getOrgDimensions();
+  }
+  const nextDimension =
+    orgDimensions.value.find((item) => item.isDefault === 1)?.dimensionCode ??
+    orgDimensions.value[0]?.dimensionCode ??
+    'ADMIN';
+  if (
+    !formModel.orgDimensionCode ||
+    !orgDimensions.value.some(
+      (item) => item.dimensionCode === formModel.orgDimensionCode,
+    )
+  ) {
+    formModel.orgDimensionCode = nextDimension;
+  }
+}
+
+async function loadOrgTree() {
+  if (!canQueryOrg.value || !formModel.orgDimensionCode) {
+    orgTreeRows.value = [];
+    return;
+  }
+  orgTreeRows.value = buildOrgTree(await getOrgTree(formModel.orgDimensionCode));
+}
+
+async function ensureOrgContext() {
+  await loadOrgDimensions();
+  await loadOrgTree();
+}
+
+async function changeOrgDimension(value: string) {
+  formModel.orgDimensionCode = value;
+  formModel.orgUnitId = undefined;
+  await loadOrgTree();
+}
+
+async function openStart() {
   formModel.processKey = '';
   formModel.title = '';
   formModel.formData = '{}';
-  loadPackageOptions();
+  formModel.orgDimensionCode = 'ADMIN';
+  formModel.orgUnitId = undefined;
   formOpen.value = true;
+  await Promise.all([loadPackageOptions(), ensureOrgContext()]);
 }
 
 function openDetail(record: ProcessApi.ProcessInstance) {
@@ -141,10 +267,31 @@ async function submitStart() {
   try {
     let formDataObj: Record<string, any> = {};
     try {
-      formDataObj = JSON.parse(formModel.formData);
+      const parsedFormData = JSON.parse(formModel.formData);
+      if (
+        !parsedFormData ||
+        typeof parsedFormData !== 'object' ||
+        Array.isArray(parsedFormData)
+      ) {
+        message.warning('表单数据必须是 JSON 对象');
+        return;
+      }
+      formDataObj = parsedFormData;
     } catch {
       message.warning('表单数据 JSON 格式不正确');
       return;
+    }
+    if (formModel.orgUnitId) {
+      if (!selectedOrgUnit.value) {
+        message.warning('请选择有效组织');
+        return;
+      }
+      formDataObj.org = {
+        dimensionCode: formModel.orgDimensionCode,
+        unitCode: selectedOrgUnit.value.unitCode,
+        unitId: selectedOrgUnit.value.id,
+        unitName: selectedOrgUnit.value.unitName,
+      };
     }
     await startProcessInstance({
       processKey: formModel.processKey,
@@ -241,11 +388,29 @@ onMounted(() => loadInstances(1));
         <FormItem label="选择流程" required>
           <Select v-model:value="formModel.processKey" placeholder="选择已发布的流程" :options="packageOptions" />
         </FormItem>
+        <FormItem v-if="canQueryOrg" label="组织维度">
+          <Select
+            :options="orgDimensionOptions"
+            :value="formModel.orgDimensionCode"
+            placeholder="请选择组织维度"
+            @change="(value) => changeOrgDimension(String(value || formModel.orgDimensionCode))"
+          />
+        </FormItem>
+        <FormItem v-if="canQueryOrg" label="选择组织">
+          <Select
+            v-model:value="formModel.orgUnitId"
+            allow-clear
+            option-filter-prop="label"
+            :options="orgOptions"
+            placeholder="请选择组织"
+            show-search
+          />
+        </FormItem>
         <FormItem label="标题">
           <Input v-model:value="formModel.title" placeholder="不填则自动生成" />
         </FormItem>
         <FormItem label="表单数据 (JSON)">
-          <Textarea v-model:value="formModel.formData" :rows="8" placeholder='{"amount": 3000, "reason": "出差费用", "dept": "技术部"}' />
+          <Textarea v-model:value="formModel.formData" :rows="8" placeholder="{&quot;amount&quot;: 3000, &quot;reason&quot;: &quot;出差费用&quot;, &quot;dept&quot;: &quot;技术部&quot;}" />
         </FormItem>
       </Form>
       <template #footer>
@@ -261,7 +426,8 @@ onMounted(() => loadInstances(1));
         <p><strong>标题：</strong>{{ detailRecord.title }}</p>
         <p><strong>流程：</strong>{{ detailRecord.processName }} ({{ detailRecord.processKey }})</p>
         <p><strong>版本：</strong>{{ detailRecord.version }}</p>
-        <p><strong>状态：</strong>
+        <p>
+          <strong>状态：</strong>
           <Tag :color="detailRecord.status === 'COMPLETED' ? 'success' : detailRecord.status === 'RUNNING' ? 'processing' : 'error'">
             {{ detailRecord.status }}
           </Tag>
