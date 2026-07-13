@@ -31,12 +31,32 @@ const coreRoutes: RouteRecordRaw[] = [
     component: BasicLayout,
     meta: {
       hideInBreadcrumb: true,
+      hideInTab: true,
       title: 'Root',
     },
     name: 'Root',
     path: '/',
     redirect: preferences.app.defaultHomePath,
-    children: [],
+    children: [
+      {
+        name: 'X6FlowDemo',
+        path: 'demos/x6-flow',
+        component: () => import('#/views/demos/x6-flow/index.vue'),
+        meta: {
+          title: 'X6 流程设计器测试',
+          hideInMenu: true,
+        },
+      },
+      {
+        name: 'FlowDesigner',
+        path: 'process/designer',
+        component: () => import('#/views/process/designer/index.vue'),
+        meta: {
+          title: '流程设计器',
+          hideInMenu: true,
+        },
+      },
+    ],
   },
   {
     component: AuthPageLayout,

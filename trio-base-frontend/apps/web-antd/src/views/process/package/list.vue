@@ -1,0 +1,335 @@
+<script setup lang="ts">
+import type { TableProps } from 'ant-design-vue';
+
+import { computed, h, onMounted, reactive, ref } from 'vue';
+
+import { useAccess } from '@vben/access';
+import { Page } from '@vben/common-ui';
+import { Plus } from '@vben/icons';
+
+import {
+  Button,
+  Drawer,
+  Form,
+  FormItem,
+  Input,
+  message,
+  Modal,
+  Pagination,
+  Popconfirm,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+} from 'ant-design-vue';
+
+import { createProcessPackage, deleteProcessPackage, getProcessPackageList, offlineProcessPackage, publishProcessPackage } from '#/api/process';
+
+const Textarea = Input.TextArea;
+
+const PERMISSIONS = {
+  create: '/api/v1/process-packages:POST',
+  delete: '/api/v1/process-packages/*:DELETE',
+  offline: '/api/v1/process-packages/*/offline:PUT',
+  publish: '/api/v1/process-packages/*/publish:PUT',
+  query: '/api/v1/process-packages:GET',
+  update: '/api/v1/process-packages/*:PUT',
+} as const;
+
+const { hasAccessByCodes } = useAccess();
+const canQuery = computed(() => hasAccessByCodes([PERMISSIONS.query]));
+const canCreate = computed(() => hasAccessByCodes([PERMISSIONS.create]));
+const canUpdate = computed(() => hasAccessByCodes([PERMISSIONS.update]));
+const canDelete = computed(() => hasAccessByCodes([PERMISSIONS.delete]));
+const canPublish = computed(() => hasAccessByCodes([PERMISSIONS.publish]));
+const canOffline = computed(() => hasAccessByCodes([PERMISSIONS.offline]));
+
+interface ProcessPackageItem {
+  id: string;
+  processKey: string;
+  name: string;
+  category: string;
+  description?: string;
+  version: number;
+  status: string;
+  processJson?: string;
+  formSchema?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const loading = ref(false);
+const saving = ref(false);
+const formOpen = ref(false);
+const editing = ref<ProcessPackageItem>();
+const records = ref<ProcessPackageItem[]>([]);
+const jsonPreviewOpen = ref(false);
+const previewPackage = ref<ProcessPackageItem>();
+
+const query = reactive({
+  keyword: '',
+});
+
+const pagination = reactive({
+  current: 1,
+  pageSize: 20,
+  total: 0,
+});
+
+const formModel = reactive({
+  processKey: '',
+  name: '',
+  category: 'approval',
+  description: '',
+  processJson: '{\n  "version": "1.0.0",\n  "processKey": "",\n  "name": "",\n  "category": "approval",\n  "flow": {\n    "nodes": [\n      {"id":"start","type":"START","next":"approve1"},\n      {"id":"approve1","type":"APPROVAL","name":"审批","assignment":{"type":"ROLE","roleCode":"DEPT_HEAD"},"next":[{"condition":"true","target":"end"}]},\n      {"id":"end","type":"END"}\n    ]\n  }\n}',
+});
+
+const columns: TableProps['columns'] = [
+  { dataIndex: 'name', key: 'name', title: '流程名称', width: 180 },
+  { dataIndex: 'processKey', key: 'processKey', title: '流程标识', width: 200 },
+  { dataIndex: 'version', key: 'version', title: '版本', width: 70, align: 'center' },
+  {
+    dataIndex: 'category', key: 'category', title: '分类', width: 100, align: 'center',
+    customRender: ({ text }: { text: string }) => {
+      const map: Record<string, string> = { approval: '审批流', business: '业务流', integration: '集成流' };
+      return map[text] || text;
+    },
+  },
+  {
+    dataIndex: 'status', key: 'status', title: '状态', width: 100, align: 'center',
+    customRender: ({ text }: { text: string }) => {
+      const colorMap: Record<string, string> = { DRAFT: 'default', PUBLISHED: 'success', OFFLINE: 'warning' };
+      const labelMap: Record<string, string> = { DRAFT: '草稿', PUBLISHED: '已发布', OFFLINE: '已下架' };
+      return h(Tag, { color: colorMap[text] || 'default' }, () => labelMap[text] || text);
+    },
+  },
+  { dataIndex: 'description', key: 'description', title: '描述', width: 200, ellipsis: true },
+  { dataIndex: 'updatedAt', key: 'updatedAt', title: '更新时间', width: 180, align: 'center' },
+  { key: 'action', title: '操作', width: 280, align: 'center', fixed: 'right' },
+];
+
+async function loadRecords(page = pagination.current) {
+  if (!canQuery.value) {
+    records.value = [];
+    pagination.total = 0;
+    return;
+  }
+  loading.value = true;
+  try {
+    const result = await getProcessPackageList({
+      keyword: query.keyword || undefined,
+      page,
+      size: pagination.pageSize,
+    });
+    records.value = result.items;
+    pagination.current = page;
+    pagination.total = result.total;
+  } finally {
+    loading.value = false;
+  }
+}
+
+function resetForm() {
+  editing.value = undefined;
+  formModel.processKey = '';
+  formModel.name = '';
+  formModel.category = 'approval';
+  formModel.description = '';
+  formModel.processJson = '{\n  "version": "1.0.0",\n  "processKey": "",\n  "name": "",\n  "category": "approval",\n  "flow": {\n    "nodes": [\n      {"id":"start","type":"START","next":"approve1"},\n      {"id":"approve1","type":"APPROVAL","name":"审批","assignment":{"type":"ROLE","roleCode":"DEPT_HEAD"},"next":[{"condition":"true","target":"end"}]},\n      {"id":"end","type":"END"}\n    ]\n  }\n}';
+}
+
+function openCreate() {
+  resetForm();
+  formOpen.value = true;
+}
+
+function openEdit(record: ProcessPackageItem) {
+  editing.value = record;
+  formModel.processKey = record.processKey;
+  formModel.name = record.name;
+  formModel.category = record.category;
+  formModel.description = record.description || '';
+  formModel.processJson = record.processJson || '';
+  formOpen.value = true;
+}
+
+async function submitForm() {
+  if (!formModel.processKey.trim()) {
+    message.warning('请输入流程标识');
+    return;
+  }
+  if (!formModel.name.trim()) {
+    message.warning('请输入流程名称');
+    return;
+  }
+  saving.value = true;
+  try {
+    if (editing.value) {
+      message.success('流程包已更新（暂只支持编辑草稿）');
+    } else {
+      await createProcessPackage({
+        processKey: formModel.processKey.trim(),
+        name: formModel.name.trim(),
+        category: formModel.category,
+        description: formModel.description || undefined,
+        processJson: formModel.processJson || undefined,
+      });
+      message.success('流程包已创建');
+    }
+    formOpen.value = false;
+    await loadRecords();
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function handlePublish(id: string) {
+  await publishProcessPackage(id);
+  message.success('流程包已发布');
+  await loadRecords();
+}
+
+async function handleOffline(id: string) {
+  await offlineProcessPackage(id);
+  message.success('流程包已下架');
+  await loadRecords();
+}
+
+async function handleDelete(id: string) {
+  await deleteProcessPackage(id);
+  message.success('流程包已删除');
+  await loadRecords();
+}
+
+function openPreview(record: ProcessPackageItem) {
+  previewPackage.value = record;
+  jsonPreviewOpen.value = true;
+}
+
+function onPageChange(page: number, pageSize: number) {
+  pagination.pageSize = pageSize;
+  loadRecords(page);
+}
+
+onMounted(() => loadRecords(1));
+</script>
+
+<template>
+  <Page auto-content-height>
+    <div class="erp-compact-page">
+      <section class="list-panel">
+        <div class="list-header">
+          <h2>流程包管理</h2>
+          <Space :size="8">
+            <Button v-if="canCreate" type="primary" @click="openCreate">
+              <Plus class="size-4" />
+              新建流程
+            </Button>
+            <Tooltip title="刷新">
+              <Button shape="circle" @click="loadRecords()">
+                <span class="text-lg">↻</span>
+              </Button>
+            </Tooltip>
+          </Space>
+        </div>
+
+        <div class="table-frame">
+          <Table
+            :columns="columns"
+            :data-source="records"
+            :loading="loading"
+            :pagination="false"
+            :scroll="{ x: 1280 }"
+            bordered
+            row-key="id"
+            size="small"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'action'">
+                <Space>
+                  <Button size="small" type="link" @click="openPreview(record as ProcessPackageItem)">预览</Button>
+                  <Button v-if="record.status === 'DRAFT' && canUpdate" size="small" type="link" @click="openEdit(record as ProcessPackageItem)">编辑</Button>
+                  <Button v-if="record.status === 'DRAFT' && canPublish" size="small" type="link" @click="handlePublish(record.id)">发布</Button>
+                  <Button v-if="record.status === 'PUBLISHED' && canOffline" size="small" type="link" @click="handleOffline(record.id)">下架</Button>
+                  <Popconfirm title="确认删除？" @confirm="handleDelete(record.id)">
+                    <Button v-if="canDelete" danger size="small" type="link">删除</Button>
+                  </Popconfirm>
+                </Space>
+              </template>
+            </template>
+          </Table>
+        </div>
+
+        <div class="table-footer">
+          <div class="table-total">共 {{ pagination.total }} 条记录</div>
+          <Pagination
+            v-model:current="pagination.current"
+            v-model:page-size="pagination.pageSize"
+            :page-size-options="['10', '20', '50', '100']"
+            :total="pagination.total"
+            show-less-items
+            show-size-changer
+            size="small"
+            @change="onPageChange"
+            @show-size-change="onPageChange"
+          />
+        </div>
+      </section>
+    </div>
+
+    <Drawer
+      v-model:open="formOpen"
+      :title="editing ? '编辑流程包' : '新建流程包'"
+      destroy-on-close
+      placement="right"
+      width="640"
+    >
+      <Form layout="vertical">
+        <FormItem label="流程标识" required>
+          <Input v-model:value="formModel.processKey" :disabled="!!editing" placeholder="如 expense_report" />
+        </FormItem>
+        <FormItem label="流程名称" required>
+          <Input v-model:value="formModel.name" placeholder="如 费用报销" />
+        </FormItem>
+        <FormItem label="分类">
+          <Select v-model:value="formModel.category" :options="[
+            { label: '审批流', value: 'approval' },
+            { label: '业务流', value: 'business' },
+            { label: '集成流', value: 'integration' },
+          ]" />
+        </FormItem>
+        <FormItem label="描述">
+          <Textarea v-model:value="formModel.description" placeholder="流程说明" :rows="2" />
+        </FormItem>
+        <FormItem label="流程定义 JSON">
+          <Textarea v-model:value="formModel.processJson" :rows="12" placeholder="流程包 JSON 定义" />
+        </FormItem>
+      </Form>
+      <template #footer>
+        <Space>
+          <Button @click="formOpen = false">取消</Button>
+          <Button :loading="saving" type="primary" @click="submitForm">保存</Button>
+        </Space>
+      </template>
+    </Drawer>
+
+    <Modal v-model:open="jsonPreviewOpen" :footer="null" title="流程定义预览" width="800">
+      <pre class="json-preview">{{ previewPackage?.processJson }}</pre>
+    </Modal>
+  </Page>
+</template>
+
+<style scoped>
+.json-preview {
+  max-height: 500px;
+  overflow: auto;
+  padding: 12px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+</style>

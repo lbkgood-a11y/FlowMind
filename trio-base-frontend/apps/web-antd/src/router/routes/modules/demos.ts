@@ -21,6 +21,14 @@ const routes: RouteRecordRaw[] = [
         path: 'ant-design',
         component: () => import('#/views/demos/antd/index.vue'),
       },
+      {
+        meta: {
+          title: 'X6 流程设计器',
+        },
+        name: 'X6Flow',
+        path: 'x6-flow',
+        component: () => import('#/views/demos/x6-flow/index.vue'),
+      },
     ],
   },
 ];
