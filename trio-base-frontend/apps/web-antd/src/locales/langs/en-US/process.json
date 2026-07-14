@@ -1,0 +1,17 @@
+{
+  "process": {
+    "title": "Process Center",
+    "package": {
+      "title": "Process Packages"
+    },
+    "instance": {
+      "title": "Process Instances"
+    },
+    "task": {
+      "title": "Task Center"
+    },
+    "designer": {
+      "title": "Process Designer"
+    }
+  }
+}

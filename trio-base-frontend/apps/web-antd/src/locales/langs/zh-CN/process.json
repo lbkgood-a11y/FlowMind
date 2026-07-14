@@ -1,0 +1,17 @@
+{
+  "process": {
+    "title": "流程中心",
+    "package": {
+      "title": "流程管理"
+    },
+    "instance": {
+      "title": "流程实例"
+    },
+    "task": {
+      "title": "任务中心"
+    },
+    "designer": {
+      "title": "流程设计器"
+    }
+  }
+}

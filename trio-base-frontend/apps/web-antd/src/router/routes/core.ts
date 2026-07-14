@@ -47,15 +47,6 @@ const coreRoutes: RouteRecordRaw[] = [
           hideInMenu: true,
         },
       },
-      {
-        name: 'FlowDesigner',
-        path: 'process/designer',
-        component: () => import('#/views/process/designer/index.vue'),
-        meta: {
-          title: '流程设计器',
-          hideInMenu: true,
-        },
-      },
     ],
   },
   {
