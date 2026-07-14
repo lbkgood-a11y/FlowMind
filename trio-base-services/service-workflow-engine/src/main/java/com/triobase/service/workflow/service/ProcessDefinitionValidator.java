@@ -27,6 +27,7 @@ public class ProcessDefinitionValidator {
 
     private final ObjectMapper objectMapper;
     private final RestrictedConditionEvaluator conditionEvaluator;
+    private final BusinessClosurePolicyValidator businessClosurePolicyValidator;
 
     public ProcessPackageDefinition validate(String processJson) {
         ProcessPackageDefinition definition = readDefinition(processJson);
@@ -82,6 +83,7 @@ public class ProcessDefinitionValidator {
         if (canReachEnd.size() != nodes.size()) {
             throw new BizException(40000, "PROCESS_CONTAINS_DEAD_END_PATH");
         }
+        businessClosurePolicyValidator.validate(definition);
         return definition;
     }
 

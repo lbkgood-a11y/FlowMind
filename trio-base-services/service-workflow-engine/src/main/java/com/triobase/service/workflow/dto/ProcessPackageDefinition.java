@@ -1,5 +1,6 @@
 package com.triobase.service.workflow.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
@@ -18,6 +19,13 @@ public class ProcessPackageDefinition {
     private FormSchema form;
     private FlowSchema flow;
     private PermissionSchema permissions;
+    @JsonAlias("businessBinding")
+    private BusinessObjectBinding businessObject;
+    private LaunchPolicy launchPolicy;
+    @JsonAlias("businessPermissions")
+    private BusinessPermissionPolicy permissionPolicy;
+    private ClosurePolicy closurePolicy;
+    private AgentFollowUpPolicy agentFollowUpPolicy;
     @JsonProperty("extends")
     private ExtendsSchema extendsConfig;
 
@@ -70,6 +78,78 @@ public class ProcessPackageDefinition {
     public static class DataRule {
         private String resource;
         private String rule;
+    }
+
+    @Data
+    public static class BusinessObjectBinding {
+        @JsonAlias({"businessType", "objectType"})
+        private String typeCode;
+        private BusinessRefSource businessRef;
+    }
+
+    @Data
+    public static class BusinessRefSource {
+        private String sourceType; // FORM_FIELD / PAGE_CONTEXT / API_INPUT / PROCESS_CONTEXT / FIXED
+        private String fieldKey;
+        private String contextKey;
+        private String fixedValue;
+    }
+
+    @Data
+    public static class LaunchPolicy {
+        @JsonAlias({"businessType", "objectType"})
+        private String businessObjectType;
+        private List<String> modes;
+        private List<String> allowedStatuses;
+        private String submitActionCode;
+        private String createActionCode;
+        private BusinessRefSource businessRef;
+        private List<ClosureEffectDefinition> startEffects;
+    }
+
+    @Data
+    public static class BusinessPermissionPolicy {
+        private String submitActionCode;
+        private String viewActionCode;
+        private String approveActionCode;
+        private String retryClosureActionCode;
+        private String agentFollowUpActionCode;
+        private Map<String, String> taskActionCodes;
+    }
+
+    @Data
+    public static class ClosurePolicy {
+        @JsonAlias({"businessType", "objectType"})
+        private String businessObjectType;
+        private BusinessRefSource businessRef;
+        private Map<String, List<ClosureEffectDefinition>> outcomes;
+        private List<ClosureEffectDefinition> failureEffects;
+    }
+
+    @Data
+    public static class AgentFollowUpPolicy {
+        private List<ClosureEffectDefinition> actions;
+    }
+
+    @Data
+    public static class ClosureEffectDefinition {
+        private String effectKey;
+        private String actionCode;
+        private String agentActionCode;
+        private String eventCode;
+        private String mode;
+        private Map<String, Object> params;
+        private String executorKey;
+        private String url;
+        private String sql;
+        private String script;
+        @JsonAlias({"class", "className", "dynamicClass", "executorClass"})
+        private String className;
+        @JsonAlias({"prompt", "freePrompt"})
+        private String prompt;
+        private Map<String, Object> connector;
+        private Map<String, Object> toolCall;
+        private Map<String, Object> execution;
     }
 
     @Data

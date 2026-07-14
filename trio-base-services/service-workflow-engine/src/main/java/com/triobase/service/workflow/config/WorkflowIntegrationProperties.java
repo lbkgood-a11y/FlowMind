@@ -12,6 +12,7 @@ public class WorkflowIntegrationProperties {
     private final Services services = new Services();
     private final Internal internal = new Internal();
     private final Participants participants = new Participants();
+    private final BusinessClosure businessClosure = new BusinessClosure();
 
     @Data
     public static class Services {
@@ -31,5 +32,10 @@ public class WorkflowIntegrationProperties {
         private Duration connectTimeout = Duration.ofMillis(200);
         private Duration readTimeout = Duration.ofMillis(400);
         private int maxCandidates = 200;
+    }
+
+    @Data
+    public static class BusinessClosure {
+        private Duration executorTimeout = Duration.ofSeconds(2);
     }
 }

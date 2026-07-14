@@ -14,6 +14,11 @@ public class ProcessInstanceResponse {
     private String title;
     private String status;
     private String formData;
+    private String tenantId;
+    private String businessType;
+    private String businessId;
+    private String launchMode;
+    private String launchIdempotencyKey;
     private String initiatorId;
     private String initiatorName;
     private String currentNodeId;

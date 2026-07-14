@@ -18,6 +18,11 @@ public class ProcessInstance extends BaseEntity {
     private String title;
     private String status;          // RUNNING / SUSPENDED / COMPLETED / TERMINATED
     private String formData;        // 提交的表单数据 JSON
+    private String tenantId;
+    private String businessType;
+    private String businessId;
+    private String launchMode;
+    private String launchIdempotencyKey;
     private String initiatorId;
     private String initiatorName;
     private String currentNodeId;

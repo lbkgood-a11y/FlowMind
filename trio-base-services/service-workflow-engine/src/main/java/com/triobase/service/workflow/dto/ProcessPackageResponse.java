@@ -18,6 +18,11 @@ public class ProcessPackageResponse {
     private String formUiSchema;
     private String formDefinitionId;
     private Integer formDefinitionVersion;
+    private String businessBindingSnapshot;
+    private String launchPlanJson;
+    private String permissionPlanJson;
+    private String closurePlanJson;
+    private String agentFollowUpPlanJson;
     private String sourcePackageId;
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;

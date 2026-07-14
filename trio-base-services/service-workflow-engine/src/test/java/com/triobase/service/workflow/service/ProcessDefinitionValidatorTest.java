@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
 
 class ProcessDefinitionValidatorTest {
 
@@ -16,7 +17,8 @@ class ProcessDefinitionValidatorTest {
     void setUp() {
         ObjectMapper objectMapper = new ObjectMapper();
         validator = new ProcessDefinitionValidator(
-                objectMapper, new RestrictedConditionEvaluator(objectMapper));
+                objectMapper, new RestrictedConditionEvaluator(objectMapper),
+                mock(BusinessClosurePolicyValidator.class));
     }
 
     @Test

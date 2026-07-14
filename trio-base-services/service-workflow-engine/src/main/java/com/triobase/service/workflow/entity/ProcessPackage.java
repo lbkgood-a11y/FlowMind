@@ -22,6 +22,11 @@ public class ProcessPackage extends BaseEntity {
     private String formUiSchema;   // 抽取的 UI Schema
     private String formDefinitionId;
     private Integer formDefinitionVersion;
+    private String businessBindingSnapshot;
+    private String launchPlanJson;
+    private String permissionPlanJson;
+    private String closurePlanJson;
+    private String agentFollowUpPlanJson;
     private String sourcePackageId;
     private LocalDateTime publishedAt;
 }

@@ -36,6 +36,7 @@ public class ProcessPackageService {
     private final LowcodeFormClient lowcodeFormClient;
     private final ProcessDefinitionValidator processDefinitionValidator;
     private final FormSnapshotValidator formSnapshotValidator;
+    private final BusinessClosurePlanCompiler businessClosurePlanCompiler;
 
     public PageResult<ProcessPackageResponse> list(int pageNo, int pageSize) {
         IPage<ProcessPackage> page = processPackageMapper.selectPage(
@@ -125,6 +126,7 @@ public class ProcessPackageService {
             pkg.setProcessJson(request.getProcessJson());
             pkg.setFormSchema(snapshot.schema());
             pkg.setFormUiSchema(snapshot.uiSchema());
+            clearBusinessClosureSnapshots(pkg);
         }
         if (request.getFormDefinitionId() != null) {
             pkg.setFormDefinitionId(normalizeBlank(request.getFormDefinitionId()));
@@ -165,6 +167,7 @@ public class ProcessPackageService {
         draft.setFormUiSchema(source.getFormUiSchema());
         draft.setFormDefinitionId(source.getFormDefinitionId());
         draft.setFormDefinitionVersion(source.getFormDefinitionVersion());
+        clearBusinessClosureSnapshots(draft);
         draft.setSourcePackageId(source.getId());
         processPackageMapper.insert(draft);
         return toResponse(draft);
@@ -174,15 +177,21 @@ public class ProcessPackageService {
     public ProcessPackageResponse publish(String id) {
         ProcessPackage pkg = requirePackage(id);
         requireDraft(pkg);
-        processDefinitionValidator.validate(pkg.getProcessJson());
+        var definition = processDefinitionValidator.validate(pkg.getProcessJson());
 
         FormSnapshot snapshot = StringUtils.hasText(pkg.getFormDefinitionId())
                 ? loadPublishedFormSnapshot(pkg.getFormDefinitionId())
                 : extractInlineFormSnapshot(pkg.getProcessJson());
         formSnapshotValidator.validate(snapshot.schema(), snapshot.uiSchema());
+        var businessClosurePlan = businessClosurePlanCompiler.compile(definition);
         pkg.setFormSchema(snapshot.schema());
         pkg.setFormUiSchema(snapshot.uiSchema());
         pkg.setFormDefinitionVersion(snapshot.version());
+        pkg.setBusinessBindingSnapshot(businessClosurePlan.businessBindingSnapshot());
+        pkg.setLaunchPlanJson(businessClosurePlan.launchPlanJson());
+        pkg.setPermissionPlanJson(businessClosurePlan.permissionPlanJson());
+        pkg.setClosurePlanJson(businessClosurePlan.closurePlanJson());
+        pkg.setAgentFollowUpPlanJson(businessClosurePlan.agentFollowUpPlanJson());
         pkg.setStatus(STATUS_PUBLISHED);
         pkg.setPublishedAt(LocalDateTime.now());
         processPackageMapper.updateById(pkg);
@@ -300,6 +309,11 @@ public class ProcessPackageService {
         resp.setFormUiSchema(pkg.getFormUiSchema());
         resp.setFormDefinitionId(pkg.getFormDefinitionId());
         resp.setFormDefinitionVersion(pkg.getFormDefinitionVersion());
+        resp.setBusinessBindingSnapshot(pkg.getBusinessBindingSnapshot());
+        resp.setLaunchPlanJson(pkg.getLaunchPlanJson());
+        resp.setPermissionPlanJson(pkg.getPermissionPlanJson());
+        resp.setClosurePlanJson(pkg.getClosurePlanJson());
+        resp.setAgentFollowUpPlanJson(pkg.getAgentFollowUpPlanJson());
         resp.setSourcePackageId(pkg.getSourcePackageId());
         resp.setPublishedAt(pkg.getPublishedAt());
         resp.setCreatedAt(pkg.getCreatedAt());
@@ -317,6 +331,14 @@ public class ProcessPackageService {
             throw new BizException(50200, "INVALID_PUBLISHED_FORM_SNAPSHOT");
         }
         return new FormSnapshot(form.getSchemaJson(), form.getUiSchemaJson(), form.getVersion());
+    }
+
+    private void clearBusinessClosureSnapshots(ProcessPackage pkg) {
+        pkg.setBusinessBindingSnapshot(null);
+        pkg.setLaunchPlanJson(null);
+        pkg.setPermissionPlanJson(null);
+        pkg.setClosurePlanJson(null);
+        pkg.setAgentFollowUpPlanJson(null);
     }
 
     private record FormSnapshot(String schema, String uiSchema, Integer version) {

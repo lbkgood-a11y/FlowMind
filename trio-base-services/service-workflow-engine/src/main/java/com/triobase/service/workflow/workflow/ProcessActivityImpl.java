@@ -19,6 +19,7 @@ import com.triobase.service.workflow.mapper.ProcessInstanceMapper;
 import com.triobase.service.workflow.mapper.TaskCandidateMapper;
 import com.triobase.service.workflow.mapper.TaskMapper;
 import com.triobase.service.workflow.service.ParticipantResolver;
+import com.triobase.service.workflow.service.ProcessOutcomeService;
 import com.triobase.service.workflow.service.RestrictedConditionEvaluator;
 import io.temporal.spring.boot.ActivityImpl;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,7 @@ public class ProcessActivityImpl implements ProcessActivity {
     private final ParticipantResolutionMapper participantResolutionMapper;
     private final ParticipantResolver participantResolver;
     private final RestrictedConditionEvaluator conditionEvaluator;
+    private final ProcessOutcomeService processOutcomeService;
 
     @Override
     public String resolveAssignee(ProcessPackageDefinition.Assignment assignment,
@@ -313,6 +315,7 @@ public class ProcessActivityImpl implements ProcessActivity {
         if (instance != null) {
             instance.setStatus("SUSPENDED");
             processInstanceMapper.updateById(instance);
+            processOutcomeService.createOutcome(instanceId, "SUSPENDED", reason);
         }
     }
 
@@ -325,6 +328,7 @@ public class ProcessActivityImpl implements ProcessActivity {
         instance.setStatus("COMPLETED");
         instance.setCompletedAt(LocalDateTime.now());
         processInstanceMapper.updateById(instance);
+        processOutcomeService.createOutcome(instanceId, "APPROVED", null);
     }
 
     @Override
@@ -336,6 +340,8 @@ public class ProcessActivityImpl implements ProcessActivity {
         instance.setStatus("TERMINATED");
         instance.setCompletedAt(LocalDateTime.now());
         processInstanceMapper.updateById(instance);
+        String outcomeStatus = "REJECTED".equals(status) ? "REJECTED" : "TERMINATED";
+        processOutcomeService.createOutcome(instanceId, outcomeStatus, reason);
 
         taskMapper.selectList(new LambdaQueryWrapper<Task>()
                         .eq(Task::getProcessInstanceId, instanceId)

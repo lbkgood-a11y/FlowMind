@@ -36,8 +36,13 @@ the Worker queue or only the client queue will leave executions unpolled.
 
 1. Start Docker infrastructure.
 2. Start `service-auth`, `service-org`, and `service-lowcode` with one shared internal token.
-3. Start `service-workflow-engine` and confirm Flyway reaches workflow schema v27.
+3. Start `service-workflow-engine` and confirm Flyway reaches workflow schema v34.
 4. Start `platform-gateway` and the Vben frontend.
+
+Workflow schema v30-v34 add the business object catalog, expense-report
+fixtures, process package closure snapshots, business launch fields, and
+standardized process business events. The seed catalog is documented in
+[`business-process-closure-foundation.md`](business-process-closure-foundation.md).
 
 Every external model call remains outside this workflow path and must still pass
 through the API gateway and LLM gateway double-sanitization controls.

@@ -32,9 +32,12 @@ import {
 
 import { getOrgDimensions, getOrgTree } from '#/api';
 import {
+  getProcessClosureDetail,
   getProcessHistory,
   getProcessInstanceList,
   getProcessPackageList,
+  markClosureEffectHandled,
+  retryClosureEffect,
   startProcessInstance,
 } from '#/api/process';
 
@@ -42,9 +45,10 @@ import DynamicProcessForm from '../components/DynamicProcessForm.vue';
 import { getProcessFormFields, parseFormSchema } from '../components/process-form';
 
 const PERMISSIONS = {
-  query: '/api/v1/process-instances:GET',
-  start: '/api/v1/process-instances/start:POST',
   history: '/api/v1/process-instances/*/history:GET',
+  query: '/api/v1/process-instances:GET',
+  retryClosure: '/api/v1/process-closures/*/retry:POST',
+  start: '/api/v1/process-instances/start:POST',
 } as const;
 
 const ORG_PERMISSIONS = {
@@ -55,6 +59,9 @@ const { hasAccessByCodes } = useAccess();
 const canQuery = computed(() => hasAccessByCodes([PERMISSIONS.query]));
 const canStart = computed(() => hasAccessByCodes([PERMISSIONS.start]));
 const canHistory = computed(() => hasAccessByCodes([PERMISSIONS.history]));
+const canRetryClosure = computed(() =>
+  hasAccessByCodes([PERMISSIONS.retryClosure]),
+);
 const canQueryOrg = computed(() => hasAccessByCodes([ORG_PERMISSIONS.query]));
 
 const loading = ref(false);
@@ -63,6 +70,8 @@ const formOpen = ref(false);
 const detailOpen = ref(false);
 const detailRecord = ref<ProcessApi.ProcessInstance>();
 const detailHistory = ref<ProcessApi.ProcessHistory>();
+const detailClosure = ref<ProcessApi.ProcessClosureDetail>();
+const closureLoading = ref(false);
 const historyLoading = ref(false);
 const instances = ref<ProcessApi.ProcessInstance[]>([]);
 const packageOptions = ref<Array<{ label: string; value: string }>>([]);
@@ -311,14 +320,44 @@ function changePackage(packageId?: string) {
 async function openDetail(record: ProcessApi.ProcessInstance) {
   detailRecord.value = record;
   detailHistory.value = undefined;
+  detailClosure.value = undefined;
   detailOpen.value = true;
+  await Promise.all([loadHistory(record.id), loadClosure(record.id)]);
+}
+
+async function loadHistory(instanceId: string) {
   if (!canHistory.value) return;
   historyLoading.value = true;
   try {
-    detailHistory.value = await getProcessHistory(record.id);
+    detailHistory.value = await getProcessHistory(instanceId);
   } finally {
     historyLoading.value = false;
   }
+}
+
+async function loadClosure(instanceId: string) {
+  closureLoading.value = true;
+  try {
+    detailClosure.value = await getProcessClosureDetail(instanceId);
+  } catch {
+    detailClosure.value = undefined;
+  } finally {
+    closureLoading.value = false;
+  }
+}
+
+async function retryEffect(effectId: string) {
+  if (!detailRecord.value) return;
+  await retryClosureEffect(effectId);
+  message.success('已提交重试');
+  await loadClosure(detailRecord.value.id);
+}
+
+async function markEffectHandled(effectId: string) {
+  if (!detailRecord.value) return;
+  await markClosureEffectHandled(effectId, { reason: '人工确认已处理' });
+  message.success('已标记为人工处理');
+  await loadClosure(detailRecord.value.id);
 }
 
 async function submitStart() {
@@ -380,6 +419,41 @@ async function submitStart() {
 function onPageChange(page: number, pageSize: number) {
   pagination.pageSize = pageSize;
   loadInstances(page);
+}
+
+function outcomeStatusColor(status?: string) {
+  if (status === 'APPROVED') return 'success';
+  if (status === 'REJECTED' || status === 'TERMINATED') return 'error';
+  if (status === 'SUSPENDED' || status === 'CLOSURE_FAILED') return 'warning';
+  return 'default';
+}
+
+function closureStatusColor(status?: string) {
+  if (status === 'SUCCEEDED' || status === 'SKIPPED') return 'success';
+  if (status === 'FAILED' || status === 'PARTIAL_FAILED') return 'error';
+  if (status === 'RUNNING' || status === 'PENDING') return 'processing';
+  return 'default';
+}
+
+function effectStatusColor(status?: string) {
+  if (status === 'SUCCEEDED' || status === 'SKIPPED' || status === 'MANUALLY_HANDLED') {
+    return 'success';
+  }
+  if (status === 'FAILED') return 'error';
+  if (status === 'RETRYING' || status === 'RUNNING' || status === 'PENDING') {
+    return 'processing';
+  }
+  return 'default';
+}
+
+function effectResultSummary(effect: ProcessApi.ProcessClosureDetail['effects'][number]) {
+  if (!effect.resultJson) return '';
+  try {
+    const parsed = JSON.parse(effect.resultJson);
+    return parsed.message || parsed.data?.summary || '';
+  } catch {
+    return '';
+  }
 }
 
 onMounted(() => loadInstances(1));
@@ -517,6 +591,65 @@ onMounted(() => loadInstances(1));
         <p><strong>当前节点：</strong>{{ detailRecord.currentNodeId || '-' }}</p>
         <p><strong>发起时间：</strong>{{ detailRecord.startedAt }}</p>
         <p><strong>完成时间：</strong>{{ detailRecord.completedAt || '-' }}</p>
+        <p><strong>业务对象：</strong>{{ detailRecord.businessType || '-' }} / {{ detailRecord.businessId || '-' }}</p>
+
+        <Divider>业务闭环</Divider>
+        <Spin :spinning="closureLoading">
+          <template v-if="detailClosure?.outcome">
+            <div class="closure-summary">
+              <span>审批结果</span>
+              <Tag :color="outcomeStatusColor(detailClosure.outcome.outcomeStatus)">
+                {{ detailClosure.outcome.outcomeStatus }}
+              </Tag>
+              <span>闭环状态</span>
+              <Tag :color="closureStatusColor(detailClosure.closure?.closureStatus)">
+                {{ detailClosure.closure?.closureStatus || 'SKIPPED' }}
+              </Tag>
+              <span>TraceId</span>
+              <code>{{ detailClosure.closure?.traceId || detailClosure.outcome.traceId || '-' }}</code>
+            </div>
+            <div v-if="detailClosure.effects.length" class="effect-list">
+              <div
+                v-for="effect in detailClosure.effects"
+                :key="effect.id"
+                class="effect-row"
+              >
+                <div class="effect-main">
+                  <Tag :color="effectStatusColor(effect.status)">{{ effect.status }}</Tag>
+                  <strong>{{ effect.businessActionName || effect.businessActionCode || effect.effectKey }}</strong>
+                  <span>{{ effect.effectType }} · {{ effect.mode }} · {{ effect.businessActionCode || effect.effectKey }}</span>
+                </div>
+                <div class="effect-meta">
+                  <span>尝试 {{ effect.attemptCount ?? 0 }}</span>
+                  <span v-if="effect.traceId">TraceId {{ effect.traceId }}</span>
+                  <span v-if="effect.lastError">{{ effect.failureCategory || 'FAILED' }} · {{ effect.lastError }}</span>
+                  <span v-if="effectResultSummary(effect)">{{ effectResultSummary(effect) }}</span>
+                </div>
+                <div class="effect-actions">
+                  <Button
+                    v-if="canRetryClosure && effect.retryAvailable"
+                    size="small"
+                    type="link"
+                    @click="retryEffect(effect.id)"
+                  >
+                    重试
+                  </Button>
+                  <Button
+                    v-if="canRetryClosure && effect.manualHandlingAvailable"
+                    size="small"
+                    type="link"
+                    @click="markEffectHandled(effect.id)"
+                  >
+                    标记已处理
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <Empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" />
+          </template>
+          <Empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" />
+        </Spin>
+
         <div v-if="detailRecord.formData" class="mt-2">
           <strong>表单数据：</strong>
           <pre class="json-preview mt-1">{{ detailRecord.formData }}</pre>
@@ -574,5 +707,59 @@ onMounted(() => loadInstances(1));
   padding: 6px 0;
   border-bottom: 1px solid #f0f0f0;
   font-size: 12px;
+}
+
+.closure-summary {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px 10px;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.closure-summary span {
+  color: #64748b;
+}
+
+.effect-list {
+  display: grid;
+  gap: 8px;
+}
+
+.effect-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 8px;
+  padding: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.effect-main,
+.effect-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.effect-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.effect-main span,
+.effect-meta {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.effect-meta {
+  grid-column: 1 / -1;
 }
 </style>

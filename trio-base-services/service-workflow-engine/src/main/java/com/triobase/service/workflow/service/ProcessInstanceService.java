@@ -45,6 +45,8 @@ public class ProcessInstanceService {
     private final WorkflowClient workflowClient;
     private final ObjectMapper objectMapper;
     private final ProcessFormDataValidator processFormDataValidator;
+    private final BusinessLaunchRuntimeService businessLaunchRuntimeService;
+    private final ProcessBusinessAuthorizationService processBusinessAuthorizationService;
 
     @Transactional
     public ProcessInstanceResponse startProcess(StartProcessRequest request) {
@@ -55,12 +57,6 @@ public class ProcessInstanceService {
         // 1. 获取已发布的流程包
         ProcessPackage pkg = processPackageService.findPublishedByKey(request.getProcessKey());
         verifyRequestedVersion(request, pkg);
-        ProcessPackageDefinition packageDef;
-        try {
-            packageDef = objectMapper.readValue(pkg.getProcessJson(), ProcessPackageDefinition.class);
-        } catch (JsonProcessingException e) {
-            throw new BizException(50000, "INVALID_PACKAGE_JSON");
-        }
 
         // 2. 获取当前用户
         String userId = SecurityContextHolder.getUserId();
@@ -69,7 +65,21 @@ public class ProcessInstanceService {
             throw new BizException(40100, "UNAUTHENTICATED");
         }
 
+        ProcessInstance existing = findExistingLaunch(pkg, request);
+        if (existing != null) {
+            return toResponse(existing);
+        }
+
+        ProcessPackageDefinition packageDef;
+        try {
+            packageDef = objectMapper.readValue(pkg.getProcessJson(), ProcessPackageDefinition.class);
+        } catch (JsonProcessingException e) {
+            throw new BizException(50000, "INVALID_PACKAGE_JSON");
+        }
+
         processFormDataValidator.validate(pkg.getFormSchema(), request.getFormData());
+        BusinessLaunchRuntimeService.BusinessLaunchResult businessLaunch =
+                businessLaunchRuntimeService.prepareLaunch(pkg, request, userId);
 
         // 3. 构建表单数据 JSON
         String formDataJson = null;
@@ -92,6 +102,12 @@ public class ProcessInstanceService {
         instance.setTitle(request.getTitle() != null ? request.getTitle() : userName + "的" + pkg.getName());
         instance.setStatus("RUNNING");
         instance.setFormData(formDataJson);
+        instance.setTenantId(StringUtils.hasText(SecurityContextHolder.getTenantId())
+                ? SecurityContextHolder.getTenantId() : "GLOBAL");
+        instance.setBusinessType(businessLaunch.businessType());
+        instance.setBusinessId(businessLaunch.businessId());
+        instance.setLaunchMode(businessLaunch.launchMode());
+        instance.setLaunchIdempotencyKey(normalizeBlank(request.getIdempotencyKey()));
         instance.setInitiatorId(userId);
         instance.setInitiatorName(userName);
         instance.setStartedAt(LocalDateTime.now());
@@ -134,6 +150,17 @@ public class ProcessInstanceService {
         }
     }
 
+    private ProcessInstance findExistingLaunch(ProcessPackage pkg, StartProcessRequest request) {
+        String idempotencyKey = normalizeBlank(request.getIdempotencyKey());
+        if (idempotencyKey == null) {
+            return null;
+        }
+        return processInstanceMapper.selectOne(new LambdaQueryWrapper<ProcessInstance>()
+                .eq(ProcessInstance::getProcessPackageId, pkg.getId())
+                .eq(ProcessInstance::getLaunchIdempotencyKey, idempotencyKey)
+                .last("LIMIT 1"));
+    }
+
     public PageResult<ProcessInstanceResponse> list(int pageNo, int pageSize, String status) {
         LambdaQueryWrapper<ProcessInstance> qw = new LambdaQueryWrapper<ProcessInstance>()
                 .orderByDesc(ProcessInstance::getStartedAt);
@@ -150,13 +177,16 @@ public class ProcessInstanceService {
         if (instance == null) {
             throw new BizException(40400, "PROCESS_INSTANCE_NOT_FOUND");
         }
+        processBusinessAuthorizationService.requireCanView(instance);
         return toResponse(instance);
     }
 
     public ProcessHistoryResponse getHistory(String id) {
-        if (processInstanceMapper.selectById(id) == null) {
+        ProcessInstance instance = processInstanceMapper.selectById(id);
+        if (instance == null) {
             throw new BizException(40400, "PROCESS_INSTANCE_NOT_FOUND");
         }
+        processBusinessAuthorizationService.requireCanView(instance);
 
         ProcessHistoryResponse response = new ProcessHistoryResponse();
         response.setNodes(nodeRecordMapper.selectList(new LambdaQueryWrapper<NodeRecord>()
@@ -214,6 +244,11 @@ public class ProcessInstanceService {
         resp.setTitle(instance.getTitle());
         resp.setStatus(instance.getStatus());
         resp.setFormData(instance.getFormData());
+        resp.setTenantId(instance.getTenantId());
+        resp.setBusinessType(instance.getBusinessType());
+        resp.setBusinessId(instance.getBusinessId());
+        resp.setLaunchMode(instance.getLaunchMode());
+        resp.setLaunchIdempotencyKey(instance.getLaunchIdempotencyKey());
         resp.setInitiatorId(instance.getInitiatorId());
         resp.setInitiatorName(instance.getInitiatorName());
         resp.setCurrentNodeId(instance.getCurrentNodeId());
@@ -221,5 +256,9 @@ public class ProcessInstanceService {
         resp.setCompletedAt(instance.getCompletedAt());
         resp.setCreatedAt(instance.getCreatedAt());
         return resp;
+    }
+
+    private String normalizeBlank(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 }

@@ -16,6 +16,7 @@ import com.triobase.service.workflow.mapper.ProcessInstanceMapper;
 import com.triobase.service.workflow.mapper.TaskCandidateMapper;
 import com.triobase.service.workflow.mapper.TaskMapper;
 import com.triobase.service.workflow.service.ParticipantResolver;
+import com.triobase.service.workflow.service.ProcessOutcomeService;
 import com.triobase.service.workflow.service.RestrictedConditionEvaluator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,6 +54,8 @@ class ProcessActivityImplTest {
     private ParticipantResolver participantResolver;
     @Mock
     private RestrictedConditionEvaluator conditionEvaluator;
+    @Mock
+    private ProcessOutcomeService processOutcomeService;
 
     private ObjectMapper objectMapper;
     private ProcessActivityImpl activity;
@@ -68,7 +71,8 @@ class ProcessActivityImplTest {
                 nodeRecordMapper,
                 participantResolutionMapper,
                 participantResolver,
-                conditionEvaluator);
+                conditionEvaluator,
+                processOutcomeService);
     }
 
     @Test

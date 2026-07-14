@@ -90,3 +90,23 @@ a linked pending task; add-sign creates a linked parallel mandatory task.
 `GET /process-instances/{id}/history` returns ordered node visit records and
 immutable task operation records, including visit number, assignee snapshot,
 operator, action, task linkage, target, comment, TraceId, and timestamps.
+
+## Business Closure Extension
+
+The business-object closure foundation extends this MVP contract with catalog,
+launch, outcome, closure effect, retry, and manual-handling APIs. See
+[`../business-process-closure-foundation.md`](../business-process-closure-foundation.md)
+for table semantics, database registration examples, executor contracts, and
+designer workflow.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/process-business-objects` | List published effective business objects |
+| `GET` | `/process-business-objects/{typeCode}` | Read statuses, forms, permissions, actions, events, Agent actions |
+| `GET` | `/process-closures/instances/{processInstanceId}` | Read approval outcome, closure status, effects, retry and manual handling availability |
+| `POST` | `/process-closures/effects/{effectId}/retry` | Retry a failed or retrying closure effect with the original idempotency key |
+| `POST` | `/process-closures/effects/{effectId}/manual-handled` | Mark a failed effect handled only when policy enables manual handling |
+
+`POST /process-instances/start` also accepts optional `businessType`,
+`businessId`, `launchMode`, and `idempotencyKey` fields for existing-document
+launch and create-and-launch idempotency.
