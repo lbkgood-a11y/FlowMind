@@ -15,6 +15,10 @@ export namespace ProcessApi {
     processJson: string;
     formSchema?: string;
     formUiSchema?: string;
+    formDefinitionId?: string;
+    formDefinitionVersion?: number;
+    sourcePackageId?: string;
+    publishedAt?: string;
     createdAt: string;
     updatedAt: string;
   }
@@ -49,6 +53,9 @@ export namespace ProcessApi {
     assigneeId?: string;
     assigneeName?: string;
     assigneeType: string;
+    nodeVisitNo?: number;
+    sourceTaskId?: string;
+    rootTaskId?: string;
     comment?: string;
     claimedAt?: string;
     completedAt?: string;
@@ -58,6 +65,48 @@ export namespace ProcessApi {
   export interface PageListResult<T> {
     items: T[];
     total: number;
+  }
+
+  export interface NodeHistoryItem {
+    id: string;
+    nodeId: string;
+    nodeName: string;
+    nodeType: string;
+    visitNo: number;
+    status: string;
+    assigneeSnapshot?: string;
+    result?: string;
+    enteredAt: string;
+    exitedAt?: string;
+  }
+
+  export interface TaskOperationItem {
+    operationId: string;
+    sourceTaskId: string;
+    targetTaskId?: string;
+    action: string;
+    operatorId: string;
+    operatorName?: string;
+    targetUserId?: string;
+    targetUserName?: string;
+    targetNodeId?: string;
+    comment?: string;
+    status: string;
+    traceId?: string;
+    resultJson?: string;
+    createdAt: string;
+  }
+
+  export interface ProcessHistory {
+    nodes: NodeHistoryItem[];
+    operations: TaskOperationItem[];
+  }
+
+  export interface FormFieldError {
+    field: string;
+    code: string;
+    message: string;
+    keyword: string;
   }
 }
 
@@ -83,9 +132,27 @@ async function createProcessPackage(data: {
   name: string;
   category?: string;
   description?: string;
-  processJson?: string;
+  formDefinitionId?: string;
+  processJson: string;
 }) {
   return requestClient.post<ProcessApi.ProcessPackage>('/process-packages', data);
+}
+
+async function updateProcessPackage(
+  id: string,
+  data: {
+    category?: string;
+    description?: string;
+    formDefinitionId?: string;
+    name?: string;
+    processJson?: string;
+  },
+) {
+  return requestClient.put<ProcessApi.ProcessPackage>(`/process-packages/${id}`, data);
+}
+
+async function createProcessPackageVersion(id: string) {
+  return requestClient.post<ProcessApi.ProcessPackage>(`/process-packages/${id}/versions`);
 }
 
 async function publishProcessPackage(id: string) {
@@ -113,7 +180,17 @@ async function getProcessInstanceById(id: string) {
   return requestClient.get<ProcessApi.ProcessInstance>(`/process-instances/${id}`);
 }
 
-async function startProcessInstance(data: { processKey: string; title?: string; formData?: Record<string, any> }) {
+async function getProcessHistory(id: string) {
+  return requestClient.get<ProcessApi.ProcessHistory>(`/process-instances/${id}/history`);
+}
+
+async function startProcessInstance(data: {
+  formData?: Record<string, any>;
+  processKey: string;
+  processPackageId?: string;
+  title?: string;
+  version?: number;
+}) {
   return requestClient.post<ProcessApi.ProcessInstance>('/process-instances/start', data);
 }
 
@@ -138,23 +215,55 @@ async function getTaskById(id: string) {
   return requestClient.get<ProcessApi.TaskItem>(`/tasks/${id}`);
 }
 
-async function approveTask(id: string, data: { action: string; comment?: string }) {
+async function approveTask(id: string, data: { comment?: string; operationId: string }) {
   return requestClient.post<ProcessApi.TaskItem>(`/tasks/${id}/approve`, data);
 }
 
+async function rejectTask(
+  id: string,
+  data: { comment?: string; operationId: string; targetNodeId?: string },
+) {
+  return requestClient.post<ProcessApi.TaskItem>(`/tasks/${id}/reject`, data);
+}
+
+async function transferTask(
+  id: string,
+  data: { newAssigneeId: string; newAssigneeName?: string; operationId: string },
+) {
+  return requestClient.post<ProcessApi.TaskItem>(`/tasks/${id}/transfer`, data);
+}
+
+async function addSignTask(
+  id: string,
+  data: { assigneeId: string; assigneeName?: string; operationId: string },
+) {
+  return requestClient.post<ProcessApi.TaskItem>(`/tasks/${id}/add-sign`, data);
+}
+
+async function getRejectTargets(processInstanceId: string) {
+  return requestClient.get<string[]>(`/tasks/reject-targets/${processInstanceId}`);
+}
+
 export {
+  addSignTask,
   approveTask,
   createProcessPackage,
+  createProcessPackageVersion,
   deleteProcessPackage,
   getMyCompletedTasks,
   getMyPendingTasks,
   getProcessInstanceById,
+  getProcessHistory,
   getProcessInstanceList,
   getProcessPackageById,
   getProcessPackageByKey,
   getProcessPackageList,
   getTaskById,
+  getRejectTargets,
   offlineProcessPackage,
   publishProcessPackage,
+  rejectTask,
   startProcessInstance,
+  transferTask,
+  updateProcessPackage,
 };

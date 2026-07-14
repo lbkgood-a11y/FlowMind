@@ -12,6 +12,9 @@ import com.triobase.service.org.mapper.OrgDimensionMapper;
 import com.triobase.service.org.mapper.OrgRelationMapper;
 import com.triobase.service.org.mapper.OrgUnitMapper;
 import com.triobase.service.org.mapper.UserOrgUnitMapper;
+import com.triobase.service.org.mapper.UserViewMapper;
+import com.triobase.service.org.entity.SysUserOrgUnit;
+import com.triobase.service.org.entity.SysUserView;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -39,6 +42,9 @@ class OrgUnitServiceTest {
 
     @Mock
     private UserOrgUnitMapper userOrgUnitMapper;
+
+    @Mock
+    private UserViewMapper userViewMapper;
 
     @InjectMocks
     private OrgUnitService orgUnitService;
@@ -141,5 +147,53 @@ class OrgUnitServiceTest {
                 () -> orgUnitService.assignUserOrgUnits("U001", request));
 
         assertEquals(40047, ex.getCode());
+    }
+
+    @Test
+    void resolveEnabledUsers_shouldExcludeDisabledUsers() {
+        SysOrgDimension dimension = new SysOrgDimension();
+        dimension.setId("ORG_DIM_ADMIN");
+        dimension.setDimensionCode("ADMIN");
+
+        SysOrgUnit unit = new SysOrgUnit();
+        unit.setId("OU1");
+        unit.setUnitName("Technology");
+
+        SysOrgRelation relation = new SysOrgRelation();
+        relation.setDimensionId("ORG_DIM_ADMIN");
+        relation.setChildUnitId("OU1");
+
+        SysUserOrgUnit enabledRelation = userRelation("REL1", "U001");
+        SysUserOrgUnit disabledRelation = userRelation("REL2", "U002");
+        SysUserView enabledUser = userView("U001", "enabled", 1);
+        SysUserView disabledUser = userView("U002", "disabled", 0);
+
+        when(orgDimensionMapper.selectOne(any())).thenReturn(dimension);
+        when(orgUnitMapper.selectById("OU1")).thenReturn(unit);
+        when(orgRelationMapper.selectOne(any())).thenReturn(relation);
+        when(userOrgUnitMapper.selectList(any())).thenReturn(List.of(enabledRelation, disabledRelation));
+        when(userViewMapper.selectBatchIds(any())).thenReturn(List.of(enabledUser, disabledUser));
+
+        var response = orgUnitService.resolveEnabledUsers("OU1", "ADMIN");
+
+        assertEquals(List.of("U001"), response.getUsers().stream().map(item -> item.getUserId()).toList());
+    }
+
+    private SysUserOrgUnit userRelation(String id, String userId) {
+        SysUserOrgUnit relation = new SysUserOrgUnit();
+        relation.setId(id);
+        relation.setUserId(userId);
+        relation.setDimensionId("ORG_DIM_ADMIN");
+        relation.setOrgUnitId("OU1");
+        relation.setStatus((short) 1);
+        return relation;
+    }
+
+    private SysUserView userView(String id, String username, int status) {
+        SysUserView user = new SysUserView();
+        user.setId(id);
+        user.setUsername(username);
+        user.setStatus(status);
+        return user;
     }
 }

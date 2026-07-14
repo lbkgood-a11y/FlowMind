@@ -8,10 +8,7 @@ import { Page } from '@vben/common-ui';
 
 import {
   Button,
-  Drawer,
-  Input,
   message,
-  Modal,
   Pagination,
   Space,
   Table,
@@ -19,29 +16,35 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
-import { approveTask, getMyCompletedTasks, getMyPendingTasks } from '#/api/process';
+import { getMyCompletedTasks, getMyPendingTasks } from '#/api/process';
 import type { ProcessApi } from '#/api/process';
 
-const Textarea = Input.TextArea;
+import TaskActionDialog, {
+  type TaskActionType,
+} from '../components/TaskActionDialog.vue';
 
 const PERMISSIONS = {
   approve: '/api/v1/tasks/*/approve:POST',
+  addSign: '/api/v1/tasks/*/add-sign:POST',
   pending: '/api/v1/tasks/my-pending:GET',
   completed: '/api/v1/tasks/my-completed:GET',
+  reject: '/api/v1/tasks/*/reject:POST',
+  transfer: '/api/v1/tasks/*/transfer:POST',
 } as const;
 
 const { hasAccessByCodes } = useAccess();
 const canApprove = computed(() => hasAccessByCodes([PERMISSIONS.approve]));
+const canAddSign = computed(() => hasAccessByCodes([PERMISSIONS.addSign]));
 const canQueryPending = computed(() => hasAccessByCodes([PERMISSIONS.pending]));
 const canQueryCompleted = computed(() => hasAccessByCodes([PERMISSIONS.completed]));
+const canReject = computed(() => hasAccessByCodes([PERMISSIONS.reject]));
+const canTransfer = computed(() => hasAccessByCodes([PERMISSIONS.transfer]));
 
 const activeTab = ref<'pending' | 'completed'>('pending');
 const loading = ref(false);
-const saving = ref(false);
-const approveOpen = ref(false);
-const approveTarget = ref<ProcessApi.TaskItem>();
-const approveAction = ref<'APPROVE' | 'REJECT'>('APPROVE');
-const approveComment = ref('');
+const actionOpen = ref(false);
+const actionTarget = ref<ProcessApi.TaskItem>();
+const actionType = ref<TaskActionType>('APPROVE');
 
 const pendingTasks = ref<ProcessApi.TaskItem[]>([]);
 const completedTasks = ref<ProcessApi.TaskItem[]>([]);
@@ -115,28 +118,22 @@ function switchTab(tab: 'pending' | 'completed') {
   else loadCompleted(1);
 }
 
-function openApprove(task: ProcessApi.TaskItem, action: 'APPROVE' | 'REJECT') {
-  approveTarget.value = task;
-  approveAction.value = action;
-  approveComment.value = '';
-  approveOpen.value = true;
+function openAction(task: ProcessApi.TaskItem, action: TaskActionType) {
+  actionTarget.value = task;
+  actionType.value = action;
+  actionOpen.value = true;
 }
 
-async function submitApprove() {
-  if (!approveTarget.value) return;
-  saving.value = true;
-  try {
-    await approveTask(approveTarget.value.id, {
-      action: approveAction.value,
-      comment: approveComment.value || undefined,
-    });
-    message.success(approveAction.value === 'APPROVE' ? '已通过' : '已驳回');
-    approveOpen.value = false;
-    await loadPending();
-    if (canQueryCompleted.value) await loadCompleted();
-  } finally {
-    saving.value = false;
-  }
+async function handleActionSuccess(action: TaskActionType) {
+  const labels: Record<TaskActionType, string> = {
+    ADD_SIGN: '加签任务已创建',
+    APPROVE: '任务已通过',
+    REJECT: '任务已驳回',
+    TRANSFER: '任务已转办',
+  };
+  message.success(labels[action]);
+  await loadPending();
+  if (canQueryCompleted.value) await loadCompleted();
 }
 
 function onPendingPageChange(page: number, pageSize: number) {
@@ -191,8 +188,10 @@ onMounted(() => loadPending(1));
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'action' && activeTab === 'pending'">
                 <Space v-if="record.status === 'PENDING'">
-                  <Button v-if="canApprove" size="small" type="primary" @click="openApprove(record as ProcessApi.TaskItem, 'APPROVE')">通过</Button>
-                  <Button v-if="canApprove" size="small" danger @click="openApprove(record as ProcessApi.TaskItem, 'REJECT')">驳回</Button>
+                  <Button v-if="canApprove" size="small" type="primary" @click="openAction(record as ProcessApi.TaskItem, 'APPROVE')">通过</Button>
+                  <Button v-if="canReject" size="small" danger @click="openAction(record as ProcessApi.TaskItem, 'REJECT')">驳回</Button>
+                  <Button v-if="canTransfer" size="small" @click="openAction(record as ProcessApi.TaskItem, 'TRANSFER')">转办</Button>
+                  <Button v-if="canAddSign" size="small" @click="openAction(record as ProcessApi.TaskItem, 'ADD_SIGN')">加签</Button>
                 </Space>
                 <span v-else class="text-muted-foreground text-sm">-</span>
               </template>
@@ -217,26 +216,11 @@ onMounted(() => loadPending(1));
       </section>
     </div>
 
-    <Modal
-      v-model:open="approveOpen"
-      :title="`${approveAction === 'APPROVE' ? '通过' : '驳回'}审批`"
-      :on-ok="submitApprove"
-      :ok-text="approveAction === 'APPROVE' ? '通过' : '驳回'"
-      :ok-button-props="{ danger: approveAction === 'REJECT' }"
-      :confirm-loading="saving"
-      destroy-on-close
-    >
-      <p class="mb-2">
-        <strong>任务：</strong>{{ approveTarget?.title }}
-      </p>
-      <p class="mb-3">
-        <strong>流程：</strong>{{ approveTarget?.processName }}
-      </p>
-      <Textarea
-        v-model:value="approveComment"
-        :rows="3"
-        placeholder="审批意见（可选）"
-      />
-    </Modal>
+    <TaskActionDialog
+      v-model:open="actionOpen"
+      :action="actionType"
+      :task="actionTarget"
+      @success="handleActionSuccess"
+    />
   </Page>
 </template>

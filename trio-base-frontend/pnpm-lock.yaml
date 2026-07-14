@@ -573,6 +573,9 @@ importers:
       '@vitejs/plugin-vue-jsx':
         specifier: 'catalog:'
         version: 5.1.5(vite@8.0.10(@types/node@25.9.4)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.6)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.48.0)(yaml@2.9.0))(vue@3.5.38(typescript@6.0.3))
+      '@vue/test-utils':
+        specifier: 'catalog:'
+        version: 2.4.11(@vue/compiler-dom@3.5.38)(@vue/server-renderer@3.5.38(vue@3.5.38(typescript@6.0.3)))(vue@3.5.38(typescript@6.0.3))
       cross-env:
         specifier: 'catalog:'
         version: 10.1.0
@@ -658,33 +661,6 @@ importers:
       '@antv/x6':
         specifier: ^3.1.7
         version: 3.1.7
-      '@antv/x6-plugin-clipboard':
-        specifier: ^3.0.0
-        version: 3.0.0(@antv/x6@3.1.7)
-      '@antv/x6-plugin-dnd':
-        specifier: ^2.1.1
-        version: 2.1.1(@antv/x6@3.1.7)
-      '@antv/x6-plugin-history':
-        specifier: ^2.2.4
-        version: 2.2.4(@antv/x6@3.1.7)
-      '@antv/x6-plugin-keyboard':
-        specifier: ^2.2.3
-        version: 2.2.3(@antv/x6@3.1.7)
-      '@antv/x6-plugin-minimap':
-        specifier: ^2.0.7
-        version: 2.0.7(@antv/x6@3.1.7)
-      '@antv/x6-plugin-scroller':
-        specifier: ^2.0.10
-        version: 2.0.10(@antv/x6@3.1.7)
-      '@antv/x6-plugin-selection':
-        specifier: ^2.2.2
-        version: 2.2.2(@antv/x6@3.1.7)
-      '@antv/x6-plugin-snapline':
-        specifier: ^2.1.7
-        version: 2.1.7(@antv/x6@3.1.7)
-      '@antv/x6-vue-shape':
-        specifier: ^3.0.2
-        version: 3.0.2(@antv/x6@3.1.7)(vue@3.5.38(typescript@6.0.3))
       '@vben-core/menu-ui':
         specifier: workspace:*
         version: link:../../packages/@core/ui-kit/menu-ui
@@ -733,6 +709,9 @@ importers:
       '@vueuse/core':
         specifier: 'catalog:'
         version: 14.3.0(vue@3.5.38(typescript@6.0.3))
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       ant-design-vue:
         specifier: 'catalog:'
         version: 4.2.6(vue@3.5.38(typescript@6.0.3))
@@ -2173,57 +2152,6 @@ packages:
 
   '@antfu/install-pkg@1.1.0':
     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
-
-  '@antv/x6-plugin-clipboard@3.0.0':
-    resolution: {integrity: sha512-fi8Sdz0xuE+6okhq9QplrVcALA3ow1/SCSzQB5e7DxpcKOztJreMOf3tR1cnrfkL1aOp7ckKAKTAhYbIDspC7A==}
-    deprecated: this package has been deprecated
-    peerDependencies:
-      '@antv/x6': ^3.x
-
-  '@antv/x6-plugin-dnd@2.1.1':
-    resolution: {integrity: sha512-v0szzik1RkadPDn4Qi5mOSaB2AeI78D40/YuCYbPVzplG+HydGsHwO3MLTgJPQ+R5n0eM0W5F850p1VfTOHR7g==}
-    peerDependencies:
-      '@antv/x6': ^2.x
-
-  '@antv/x6-plugin-history@2.2.4':
-    resolution: {integrity: sha512-9gHHvEW4Fla+1hxUV49zNgJyIMoV9CjVM52MrFgAJcvyRn1Kvxz4MfxiKlG+DEZUs+/zvfjl9pS6gJOd8laRkg==}
-    peerDependencies:
-      '@antv/x6': ^2.x
-
-  '@antv/x6-plugin-keyboard@2.2.3':
-    resolution: {integrity: sha512-pnCIC+mDyKKfkcDyLePfGxKVIqXBcldTgannITkHC1kc0IafRS1GMvzpvuDGrM5haRYd6Nwz8kjkJyHkJE4GPA==}
-    peerDependencies:
-      '@antv/x6': ^2.x
-
-  '@antv/x6-plugin-minimap@2.0.7':
-    resolution: {integrity: sha512-8zzESCx0jguFPCOKCA0gPFb6JmRgq81CXXtgJYe34XhySdZ6PB23I5Po062lNsEuTjTjnzli4lju8vvU+jzlGw==}
-    peerDependencies:
-      '@antv/x6': ^2.x
-
-  '@antv/x6-plugin-scroller@2.0.10':
-    resolution: {integrity: sha512-CrC5zCbtPe7LJEKK8ucLcDN+9lMtTJNApFmFObAiR/y2LO1QFCHz8GGLVeNOZaIEmJbR/Z/etpJkvc1LE7WhTg==}
-    peerDependencies:
-      '@antv/x6': ^2.x
-
-  '@antv/x6-plugin-selection@2.2.2':
-    resolution: {integrity: sha512-s2gtR9Onlhr7HOHqyqg0d+4sG76JCcQEbvrZZ64XmSChlvieIPlC3YtH4dg1KMNhYIuBmBmpSum6S0eVTEiPQw==}
-    peerDependencies:
-      '@antv/x6': ^2.x
-
-  '@antv/x6-plugin-snapline@2.1.7':
-    resolution: {integrity: sha512-AsysoCb9vES0U2USNhEpYuO/W8I0aYfkhlbee5Kt4NYiMfQfZKQyqW/YjDVaS2pm38C1NKu1LdPVk/BBr4CasA==}
-    peerDependencies:
-      '@antv/x6': ^2.x
-
-  '@antv/x6-vue-shape@3.0.2':
-    resolution: {integrity: sha512-HWnYFvLCaUD9ernINxTn9vCRj66eG/nXKErSSq0hfI4U1HOitC/1oUrzDdwL/BT80HKAQeSsmy7gpDA/79jYlw==}
-    peerDependencies:
-      '@antv/x6': ^3.x
-      '@vue/composition-api': ^1.0.0-rc.1
-      vue: ^3.5.38
-    peerDependenciesMeta:
-      '@vue/composition-api':
-        optional: true
 
   '@antv/x6@3.1.7':
     resolution: {integrity: sha512-NLKXtbCK51oLbazfFD0XsD93rMmih08UBW4gAuEyLBpwAqHmHe+vP8VhOZDkl5O9jV1LSv85IJghr9CT5tZjWw==}
@@ -11603,45 +11531,6 @@ snapshots:
     dependencies:
       package-manager-detector: 1.6.0
       tinyexec: 1.2.4
-
-  '@antv/x6-plugin-clipboard@3.0.0(@antv/x6@3.1.7)':
-    dependencies:
-      '@antv/x6': 3.1.7
-
-  '@antv/x6-plugin-dnd@2.1.1(@antv/x6@3.1.7)':
-    dependencies:
-      '@antv/x6': 3.1.7
-
-  '@antv/x6-plugin-history@2.2.4(@antv/x6@3.1.7)':
-    dependencies:
-      '@antv/x6': 3.1.7
-
-  '@antv/x6-plugin-keyboard@2.2.3(@antv/x6@3.1.7)':
-    dependencies:
-      '@antv/x6': 3.1.7
-      mousetrap: 1.6.5
-
-  '@antv/x6-plugin-minimap@2.0.7(@antv/x6@3.1.7)':
-    dependencies:
-      '@antv/x6': 3.1.7
-
-  '@antv/x6-plugin-scroller@2.0.10(@antv/x6@3.1.7)':
-    dependencies:
-      '@antv/x6': 3.1.7
-
-  '@antv/x6-plugin-selection@2.2.2(@antv/x6@3.1.7)':
-    dependencies:
-      '@antv/x6': 3.1.7
-
-  '@antv/x6-plugin-snapline@2.1.7(@antv/x6@3.1.7)':
-    dependencies:
-      '@antv/x6': 3.1.7
-
-  '@antv/x6-vue-shape@3.0.2(@antv/x6@3.1.7)(vue@3.5.38(typescript@6.0.3))':
-    dependencies:
-      '@antv/x6': 3.1.7
-      vue: 3.5.38(typescript@6.0.3)
-      vue-demi: 0.14.10(vue@3.5.38(typescript@6.0.3))
 
   '@antv/x6@3.1.7':
     dependencies:

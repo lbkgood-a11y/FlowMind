@@ -135,9 +135,9 @@ INSERT INTO sys_menu (
     NULL, NULL, NULL,
     'button', 'system', 6, 1, 1,
     1, 0, 0, 0,
-    '01HK153X0M000000000000000M', '/api/v1/menus/*:PUT', '菜单管理-编辑API权限(隐藏)'
+    '01HK153X0L000000000000000L', '/api/v1/menus/*:PUT', '菜单管理-编辑API权限(隐藏)'
 ) ON CONFLICT (id) DO UPDATE SET
-    permission_id = '01HK153X0M000000000000000M', permission_code = '/api/v1/menus/*:PUT',
+    permission_id = '01HK153X0L000000000000000L', permission_code = '/api/v1/menus/*:PUT',
     hide_in_menu = 1, menu_type = 'button';
 
 INSERT INTO sys_menu (

@@ -9,10 +9,19 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import { Page } from '@vben/common-ui';
 
 import { Button, Space } from 'ant-design-vue';
-import { Graph, Shape } from '@antv/x6';
+import {
+  Clipboard,
+  Graph,
+  History,
+  Keyboard,
+  Scroller,
+  Selection,
+  Shape,
+  Snapline,
+} from '@antv/x6';
 
 const containerRef = ref<HTMLDivElement>();
-let graph: Graph | null = null;
+const graph = ref<Graph>();
 
 // ── 自定义节点定义 ──
 Shape.HTML.register({
@@ -83,7 +92,7 @@ Shape.HTML.register({
 
 // ── 创建画布 ──
 onMounted(() => {
-  graph = new Graph({
+  const instance = new Graph({
     container: containerRef.value!,
     autoResize: true,
     background: { color: '#fafafa' },
@@ -95,45 +104,46 @@ onMounted(() => {
       snap: { radius: 20 },
       allowMulti: false,
     },
-    selecting: { enabled: true },
-    clipboard: { enabled: true },
-    keyboard: { enabled: true },
-    history: { enabled: true },
-    scroller: { enabled: true, pannable: true },
-    minimap: { enabled: true, width: 200, height: 150 },
-    snapline: { enabled: true },
   });
 
+  instance.use(new Selection({ rubberband: true, showNodeSelectionBox: true }));
+  instance.use(new Clipboard());
+  instance.use(new History({ enabled: true }));
+  instance.use(new Keyboard());
+  instance.use(new Scroller({ pannable: true, autoResize: true }));
+  instance.use(new Snapline({ sharp: true }));
+  graph.value = instance;
+
   // ── 添加示例节点 ──
-  graph.addNode({
+  instance.addNode({
     shape: 'approval-node',
     id: 'start',
     x: 270,
     y: 20,
   });
 
-  graph.addNode({
+  instance.addNode({
     shape: 'condition-node',
     id: 'cond',
     x: 285,
     y: 120,
   });
 
-  graph.addNode({
+  instance.addNode({
     shape: 'approval-node',
     id: 'finance',
     x: 100,
     y: 220,
   });
 
-  graph.addNode({
+  instance.addNode({
     shape: 'approval-node',
     id: 'dept',
     x: 440,
     y: 220,
   });
 
-  graph.addNode({
+  instance.addNode({
     shape: 'end-node',
     id: 'end',
     x: 285,
@@ -141,48 +151,48 @@ onMounted(() => {
   });
 
   // ── 添加连线 ──
-  graph.addEdge({
+  instance.addEdge({
     source: 'start',
     target: 'cond',
     attrs: { line: { stroke: '#1677ff', strokeWidth: 2, targetMarker: 'classic' } },
   });
 
-  graph.addEdge({
+  instance.addEdge({
     source: { cell: 'cond', anchor: { name: 'left' } },
     target: 'finance',
     attrs: { line: { stroke: '#fa8c16', strokeWidth: 2, targetMarker: 'classic' } },
     labels: [{ attrs: { text: { text: '金额 > 5000' } }, position: 0.5 }],
   });
 
-  graph.addEdge({
+  instance.addEdge({
     source: { cell: 'cond', anchor: { name: 'right' } },
     target: 'dept',
     attrs: { line: { stroke: '#52c41a', strokeWidth: 2, targetMarker: 'classic' } },
     labels: [{ attrs: { text: { text: '金额 ≤ 5000' } }, position: 0.5 }],
   });
 
-  graph.addEdge({
+  instance.addEdge({
     source: 'finance',
     target: 'end',
     attrs: { line: { stroke: '#1677ff', strokeWidth: 2, targetMarker: 'classic' } },
   });
 
-  graph.addEdge({
+  instance.addEdge({
     source: 'dept',
     target: 'end',
     attrs: { line: { stroke: '#1677ff', strokeWidth: 2, targetMarker: 'classic' } },
   });
 
-  graph.centerContent();
+  instance.centerContent();
 });
 
 onUnmounted(() => {
-  graph?.dispose();
+  graph.value?.dispose();
 });
 
 function exportJson() {
-  if (!graph) return;
-  const json = graph.toJSON();
+  if (!graph.value) return;
+  const json = graph.value.toJSON();
   const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
+import com.triobase.common.dto.internal.PublishedFormSnapshotResponse;
 import com.triobase.service.lowcode.dto.CreateFormDefinitionRequest;
 import com.triobase.service.lowcode.dto.FormDefinitionResponse;
 import com.triobase.service.lowcode.dto.FormFieldSchemaRequest;
@@ -129,6 +130,23 @@ public class FormDefinitionService {
                         .thenComparing(LcFormDefinition::getVersion, Comparator.reverseOrder()))
                 .findFirst()
                 .orElseThrow(() -> new BizException(40402, "FORM_KEY_NOT_FOUND"));
+    }
+
+    public PublishedFormSnapshotResponse getPublishedSnapshot(String id) {
+        LcFormDefinition definition = formDefinitionMapper.selectById(id);
+        if (definition == null) {
+            throw new BizException(40401, "FORM_DEFINITION_NOT_FOUND");
+        }
+        if (!STATUS_PUBLISHED.equals(definition.getStatus())) {
+            throw new BizException(40901, "FORM_DEFINITION_NOT_PUBLISHED");
+        }
+        PublishedFormSnapshotResponse response = new PublishedFormSnapshotResponse();
+        response.setFormDefinitionId(definition.getId());
+        response.setFormKey(definition.getFormKey());
+        response.setVersion(definition.getVersion());
+        response.setSchemaJson(definition.getSchemaJson());
+        response.setUiSchemaJson(definition.getUiSchemaJson());
+        return response;
     }
 
     private FormDefinitionResponse toResponseWithoutFields(LcFormDefinition definition) {

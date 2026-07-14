@@ -5,6 +5,7 @@ import com.triobase.common.core.result.PageResult;
 import com.triobase.common.core.result.R;
 import com.triobase.service.workflow.dto.CreateProcessPackageRequest;
 import com.triobase.service.workflow.dto.ProcessPackageResponse;
+import com.triobase.service.workflow.dto.UpdateProcessPackageRequest;
 import com.triobase.service.workflow.service.ProcessPackageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -41,14 +42,27 @@ public class ProcessPackageController {
         return R.ok(processPackageService.create(request));
     }
 
-    @PutMapping("/{id}/publish")
+    @PutMapping("/{id}")
     @RequirePermission("/api/v1/process-packages/*:PUT")
+    public R<ProcessPackageResponse> update(@PathVariable String id,
+                                            @RequestBody UpdateProcessPackageRequest request) {
+        return R.ok(processPackageService.update(id, request));
+    }
+
+    @PostMapping("/{id}/versions")
+    @RequirePermission("/api/v1/process-packages/*/versions:POST")
+    public R<ProcessPackageResponse> createNewVersion(@PathVariable String id) {
+        return R.ok(processPackageService.createNewVersion(id));
+    }
+
+    @PutMapping("/{id}/publish")
+    @RequirePermission("/api/v1/process-packages/*/publish:PUT")
     public R<ProcessPackageResponse> publish(@PathVariable String id) {
         return R.ok(processPackageService.publish(id));
     }
 
     @PutMapping("/{id}/offline")
-    @RequirePermission("/api/v1/process-packages/*:PUT")
+    @RequirePermission("/api/v1/process-packages/*/offline:PUT")
     public R<ProcessPackageResponse> offline(@PathVariable String id) {
         return R.ok(processPackageService.offline(id));
     }

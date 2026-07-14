@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableProps } from 'ant-design-vue';
+import type { ProcessApi } from '#/api/process';
 
 import { computed, h, onMounted, reactive, ref } from 'vue';
 
@@ -24,7 +25,17 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
-import { createProcessPackage, deleteProcessPackage, getProcessPackageList, offlineProcessPackage, publishProcessPackage } from '#/api/process';
+import {
+  createProcessPackage,
+  createProcessPackageVersion,
+  deleteProcessPackage,
+  getProcessPackageList,
+  offlineProcessPackage,
+  publishProcessPackage,
+  updateProcessPackage,
+} from '#/api/process';
+
+import { validateProcessDefinition } from '../components/process-designer';
 
 const Textarea = Input.TextArea;
 
@@ -35,29 +46,19 @@ const PERMISSIONS = {
   publish: '/api/v1/process-packages/*/publish:PUT',
   query: '/api/v1/process-packages:GET',
   update: '/api/v1/process-packages/*:PUT',
+  version: '/api/v1/process-packages/*/versions:POST',
 } as const;
 
 const { hasAccessByCodes } = useAccess();
 const canQuery = computed(() => hasAccessByCodes([PERMISSIONS.query]));
 const canCreate = computed(() => hasAccessByCodes([PERMISSIONS.create]));
 const canUpdate = computed(() => hasAccessByCodes([PERMISSIONS.update]));
+const canVersion = computed(() => hasAccessByCodes([PERMISSIONS.version]));
 const canDelete = computed(() => hasAccessByCodes([PERMISSIONS.delete]));
 const canPublish = computed(() => hasAccessByCodes([PERMISSIONS.publish]));
 const canOffline = computed(() => hasAccessByCodes([PERMISSIONS.offline]));
 
-interface ProcessPackageItem {
-  id: string;
-  processKey: string;
-  name: string;
-  category: string;
-  description?: string;
-  version: number;
-  status: string;
-  processJson?: string;
-  formSchema?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+type ProcessPackageItem = ProcessApi.ProcessPackage;
 
 const loading = ref(false);
 const saving = ref(false);
@@ -82,7 +83,8 @@ const formModel = reactive({
   name: '',
   category: 'approval',
   description: '',
-  processJson: '{\n  "version": "1.0.0",\n  "processKey": "",\n  "name": "",\n  "category": "approval",\n  "flow": {\n    "nodes": [\n      {"id":"start","type":"START","next":"approve1"},\n      {"id":"approve1","type":"APPROVAL","name":"审批","assignment":{"type":"ROLE","roleCode":"DEPT_HEAD"},"next":[{"condition":"true","target":"end"}]},\n      {"id":"end","type":"END"}\n    ]\n  }\n}',
+  formDefinitionId: '',
+  processJson: '{\n  "version": "1.0.0",\n  "processKey": "",\n  "name": "",\n  "category": "approval",\n  "flow": {\n    "nodes": [\n      {"id":"start","type":"START","name":"开始","next":[{"condition":"true","target":"approve1"}]},\n      {"id":"approve1","type":"APPROVAL","name":"审批","assignment":{"type":"ROLE","roleCode":"DEPT_HEAD"},"next":[{"condition":"true","target":"end"}]},\n      {"id":"end","type":"END","name":"结束"}\n    ]\n  }\n}',
 });
 
 const columns: TableProps['columns'] = [
@@ -136,7 +138,8 @@ function resetForm() {
   formModel.name = '';
   formModel.category = 'approval';
   formModel.description = '';
-  formModel.processJson = '{\n  "version": "1.0.0",\n  "processKey": "",\n  "name": "",\n  "category": "approval",\n  "flow": {\n    "nodes": [\n      {"id":"start","type":"START","next":"approve1"},\n      {"id":"approve1","type":"APPROVAL","name":"审批","assignment":{"type":"ROLE","roleCode":"DEPT_HEAD"},"next":[{"condition":"true","target":"end"}]},\n      {"id":"end","type":"END"}\n    ]\n  }\n}';
+  formModel.formDefinitionId = '';
+  formModel.processJson = '{\n  "version": "1.0.0",\n  "processKey": "",\n  "name": "",\n  "category": "approval",\n  "flow": {\n    "nodes": [\n      {"id":"start","type":"START","name":"开始","next":[{"condition":"true","target":"approve1"}]},\n      {"id":"approve1","type":"APPROVAL","name":"审批","assignment":{"type":"ROLE","roleCode":"DEPT_HEAD"},"next":[{"condition":"true","target":"end"}]},\n      {"id":"end","type":"END","name":"结束"}\n    ]\n  }\n}';
 }
 
 function openCreate() {
@@ -150,6 +153,7 @@ function openEdit(record: ProcessPackageItem) {
   formModel.name = record.name;
   formModel.category = record.category;
   formModel.description = record.description || '';
+  formModel.formDefinitionId = record.formDefinitionId || '';
   formModel.processJson = record.processJson || '';
   formOpen.value = true;
 }
@@ -163,17 +167,30 @@ async function submitForm() {
     message.warning('请输入流程名称');
     return;
   }
+  const validationErrors = validateProcessDefinition(formModel.processJson);
+  if (validationErrors.length > 0) {
+    message.error(validationErrors[0]);
+    return;
+  }
   saving.value = true;
   try {
     if (editing.value) {
-      message.success('流程包已更新（暂只支持编辑草稿）');
+      await updateProcessPackage(editing.value.id, {
+        category: formModel.category,
+        description: formModel.description || undefined,
+        formDefinitionId: formModel.formDefinitionId,
+        name: formModel.name.trim(),
+        processJson: formModel.processJson,
+      });
+      message.success('草稿已更新');
     } else {
       await createProcessPackage({
         processKey: formModel.processKey.trim(),
         name: formModel.name.trim(),
         category: formModel.category,
         description: formModel.description || undefined,
-        processJson: formModel.processJson || undefined,
+        formDefinitionId: formModel.formDefinitionId || undefined,
+        processJson: formModel.processJson,
       });
       message.success('流程包已创建');
     }
@@ -184,9 +201,20 @@ async function submitForm() {
   }
 }
 
-async function handlePublish(id: string) {
-  await publishProcessPackage(id);
+async function handlePublish(record: ProcessPackageItem) {
+  const validationErrors = validateProcessDefinition(record.processJson);
+  if (validationErrors.length > 0) {
+    message.error(validationErrors[0]);
+    return;
+  }
+  await publishProcessPackage(record.id);
   message.success('流程包已发布');
+  await loadRecords();
+}
+
+async function handleNewVersion(id: string) {
+  const draft = await createProcessPackageVersion(id);
+  message.success(`已创建版本 ${draft.version} 草稿`);
   await loadRecords();
 }
 
@@ -250,10 +278,11 @@ onMounted(() => loadRecords(1));
                 <Space>
                   <Button size="small" type="link" @click="openPreview(record as ProcessPackageItem)">预览</Button>
                   <Button v-if="record.status === 'DRAFT' && canUpdate" size="small" type="link" @click="openEdit(record as ProcessPackageItem)">编辑</Button>
-                  <Button v-if="record.status === 'DRAFT' && canPublish" size="small" type="link" @click="handlePublish(record.id)">发布</Button>
+                  <Button v-if="record.status === 'DRAFT' && canPublish" size="small" type="link" @click="handlePublish(record as ProcessPackageItem)">发布</Button>
                   <Button v-if="record.status === 'PUBLISHED' && canOffline" size="small" type="link" @click="handleOffline(record.id)">下架</Button>
+                  <Button v-if="record.status !== 'DRAFT' && canVersion" size="small" type="link" @click="handleNewVersion(record.id)">新版本</Button>
                   <Popconfirm title="确认删除？" @confirm="handleDelete(record.id)">
-                    <Button v-if="canDelete" danger size="small" type="link">删除</Button>
+                    <Button v-if="record.status === 'DRAFT' && canDelete" danger size="small" type="link">删除</Button>
                   </Popconfirm>
                 </Space>
               </template>
@@ -301,6 +330,9 @@ onMounted(() => loadRecords(1));
         </FormItem>
         <FormItem label="描述">
           <Textarea v-model:value="formModel.description" placeholder="流程说明" :rows="2" />
+        </FormItem>
+        <FormItem label="Lowcode 表单定义 ID">
+          <Input v-model:value="formModel.formDefinitionId" allow-clear placeholder="可选；发布时固化表单快照" />
         </FormItem>
         <FormItem label="流程定义 JSON">
           <Textarea v-model:value="formModel.processJson" :rows="12" placeholder="流程包 JSON 定义" />

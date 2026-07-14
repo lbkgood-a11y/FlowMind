@@ -39,6 +39,11 @@ auth:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
 
+triobase:
+  internal:
+    token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine}
+
 # Temporal Worker — 铁律 5：与微服务生命周期共生死
 temporal:
   namespace: default

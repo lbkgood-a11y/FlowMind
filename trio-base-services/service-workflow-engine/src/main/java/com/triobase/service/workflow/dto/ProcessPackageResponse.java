@@ -16,6 +16,10 @@ public class ProcessPackageResponse {
     private String processJson;
     private String formSchema;
     private String formUiSchema;
+    private String formDefinitionId;
+    private Integer formDefinitionVersion;
+    private String sourcePackageId;
+    private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

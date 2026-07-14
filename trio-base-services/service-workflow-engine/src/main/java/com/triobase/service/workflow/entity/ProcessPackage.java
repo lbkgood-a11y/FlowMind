@@ -5,6 +5,8 @@ import com.triobase.common.core.entity.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.time.LocalDateTime;
+
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("wf_process_package")
@@ -18,4 +20,8 @@ public class ProcessPackage extends BaseEntity {
     private String processJson;    // 完整的流程包 JSON
     private String formSchema;     // 抽取的表单 JSON Schema
     private String formUiSchema;   // 抽取的 UI Schema
+    private String formDefinitionId;
+    private Integer formDefinitionVersion;
+    private String sourcePackageId;
+    private LocalDateTime publishedAt;
 }

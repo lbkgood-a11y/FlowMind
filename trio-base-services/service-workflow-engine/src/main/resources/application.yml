@@ -21,24 +21,36 @@ spring:
       discovery:
         enabled: ${NACOS_ENABLED:false}
         server-addr: localhost:8848
+  # Temporal Worker — 铁律 5：Task Queue 与 spring.application.name 强绑定
+  temporal:
+    namespace: default
+    connection:
+      target: ${TEMPORAL_TARGET:127.0.0.1:7233}
+    workers-auto-discovery:
+      packages:
+        - com.triobase.service.workflow
 
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
-# Temporal Worker — 铁律 5：Task Queue 与 spring.application.name 强绑定
-temporal:
-  enabled: true
-  namespace: default
-  task-queue: ${spring.application.name}
-  workers:
-    - task-queue: ${spring.application.name}
-      capacity:
-        max-concurrent-activity-execution-size: 20
-        max-concurrent-workflow-execution-size: 10
+workflow:
+  services:
+    auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+    org-url: ${ORG_SERVICE_URL:http://localhost:8082}
+    lowcode-url: ${LOWCODE_SERVICE_URL:http://localhost:8085}
+  internal:
+    service-name: ${spring.application.name}
+    token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
+  participants:
+    connect-timeout: ${WORKFLOW_PARTICIPANT_CONNECT_TIMEOUT:200ms}
+    read-timeout: ${WORKFLOW_PARTICIPANT_READ_TIMEOUT:400ms}
+    max-candidates: ${WORKFLOW_PARTICIPANT_MAX_CANDIDATES:200}
 
 logging:
   level:
-    root: DEBUG
+    root: INFO
     com.triobase: DEBUG
+    io.temporal: DEBUG
+    io.temporal.spring.boot: TRACE

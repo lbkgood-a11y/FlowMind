@@ -4,6 +4,7 @@ import lombok.Data;
 
 @Data
 public class RejectTaskRequest {
+    private String operationId;
     private String targetNodeId;
     private String comment;
 }

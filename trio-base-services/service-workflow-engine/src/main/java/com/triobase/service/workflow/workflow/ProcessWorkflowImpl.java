@@ -1,8 +1,12 @@
 package com.triobase.service.workflow.workflow;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.triobase.service.workflow.dto.AddSignTaskCommand;
+import com.triobase.service.workflow.dto.ConditionEvaluationResult;
 import com.triobase.service.workflow.dto.ProcessPackageDefinition;
+import com.triobase.service.workflow.dto.RejectTaskCommand;
+import com.triobase.service.workflow.dto.TaskActionCommand;
+import com.triobase.service.workflow.dto.TransferTaskCommand;
 import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
 import io.temporal.spring.boot.WorkflowImpl;
@@ -12,374 +16,373 @@ import lombok.extern.slf4j.Slf4j;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-/**
- * 流程实例 Workflow 实现 — 第二阶段：支持 APPROVAL + COUNTERSIGN + 驳回
- *
- * 铁律 3 遵守：
- * - 使用 Workflow.currentTimeMillis() 而非 System
- * - 不进行任何 I/O（JDBC/Feign/文件）——全部委托给 Activity
- * - 不调用随机数或 UUID
- * - 使用 Workflow.await() 等待 Signal
- */
 @Slf4j
 @WorkflowImpl(taskQueues = "service-workflow-engine")
 public class ProcessWorkflowImpl implements ProcessWorkflow {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    private final ActivityOptions activityOpts = ActivityOptions.newBuilder()
+    private final ActivityOptions activityOptions = ActivityOptions.newBuilder()
             .setStartToCloseTimeout(Duration.ofSeconds(10))
             .setRetryOptions(RetryOptions.newBuilder()
                     .setMaximumAttempts(3)
                     .setInitialInterval(Duration.ofSeconds(1))
                     .build())
             .build();
+    private final ProcessActivity processActivity =
+            Workflow.newActivityStub(ProcessActivity.class, activityOptions);
 
-    private final ProcessActivity processActivity = Workflow.newActivityStub(ProcessActivity.class, activityOpts);
+    private final List<WorkflowCommand> commandQueue = new ArrayList<>();
+    private final Set<String> receivedOperationIds = new HashSet<>();
 
-    // ── Signal 状态 ──
-    // 简单节点（单个审批人）
-    private String pendingTaskId;
-    private volatile boolean signalReceived = false;
-    private String signalAction;
-    private String signalUserId;
-    private String signalUserName;
-    private String signalComment;
-
-    // 会签节点（多人审批）
-    private String countersignNodeId;
-    private int countersignTotalCount;
-    private int countersignApproveCount;
-    private int countersignRejectCount;
-    private volatile boolean countersignComplete = false;
-    private String countersignResult; // APPROVED / REJECTED
-
-    // ── 驳回/回退状态 ──
-    private volatile boolean rejectionSignalReceived = false;
-    private String rejectTargetNodeId;
     @Override
-    public void startProcess(ProcessPackageDefinition packageDef,
+    public void startProcess(ProcessPackageDefinition packageDefinition,
                              String instanceId,
                              String initiatorId,
                              String initiatorName,
                              String formDataJson) {
-
-        log.info("Workflow[{}] started: processKey={}, initiator={}",
-                instanceId, packageDef.getProcessKey(), initiatorName);
-
-        List<ProcessPackageDefinition.NodeSchema> nodes = packageDef.getFlow().getNodes();
-        Map<String, ProcessPackageDefinition.NodeSchema> nodeMap = new HashMap<>();
-
+        List<ProcessPackageDefinition.NodeSchema> nodes = packageDefinition.getFlow().getNodes();
+        Map<String, ProcessPackageDefinition.NodeSchema> nodeById = new HashMap<>();
+        Map<String, Integer> visitCounts = new HashMap<>();
         for (ProcessPackageDefinition.NodeSchema node : nodes) {
-            nodeMap.put(node.getId(), node);
+            nodeById.put(node.getId(), node);
         }
 
-        // ── 从 START 节点开始流转 ──
-        String currentNodeId = findFirstNode(nodes);
-        // 记录所有已走过的节点，用于驳回可选目标
+        String currentNodeId = findStartNode(nodes);
         List<String> visitedNodes = new ArrayList<>();
 
-        while (currentNodeId != null && !"END".equals(getNodeType(nodeMap, currentNodeId))) {
-            ProcessPackageDefinition.NodeSchema node = nodeMap.get(currentNodeId);
-            if (node == null) break;
-
-            String nodeType = node.getType();
-            log.info("Workflow[{}] entering node: {} ({})", instanceId, node.getName(), nodeType);
-
-            processActivity.recordNodeEnter(instanceId, node.getId(), node.getName(), nodeType,
-                    visitedNodes.isEmpty() ? null : visitedNodes.get(visitedNodes.size() - 1));
-
-            switch (nodeType) {
-                case "START":
-                    processActivity.recordNodeExit(instanceId, node.getId(), "{\"autoPass\":true}");
-                    visitedNodes.add(currentNodeId);
-                    currentNodeId = resolveNextNode(node, packageDef, formDataJson);
-                    break;
-
-                case "APPROVAL":
-                    currentNodeId = handleApprovalNode(instanceId, node, formDataJson, packageDef, visitedNodes);
-                    break;
-
-                case "COUNTERSIGN":
-                    currentNodeId = handleCountersignNode(instanceId, node, formDataJson, packageDef, visitedNodes);
-                    break;
-
-                default:
-                    log.warn("Workflow[{}] unsupported node type: {}", instanceId, nodeType);
-                    processActivity.recordNodeExit(instanceId, node.getId(), "{\"skipped\":true}");
-                    visitedNodes.add(currentNodeId);
-                    currentNodeId = resolveNextNode(node, packageDef, formDataJson);
-                    break;
+        while (currentNodeId != null) {
+            ProcessPackageDefinition.NodeSchema node = nodeById.get(currentNodeId);
+            if (node == null) {
+                throw new IllegalStateException("PROCESS_NODE_NOT_FOUND:" + currentNodeId);
             }
 
-            // 如果节点返回 null，说明流程结束
-            if (currentNodeId == null) break;
-        }
+            int visitNo = visitCounts.getOrDefault(currentNodeId, 0) + 1;
+            visitCounts.put(currentNodeId, visitNo);
+            processActivity.recordNodeEnter(
+                    instanceId,
+                    node.getId(),
+                    node.getName() != null ? node.getName() : node.getId(),
+                    node.getType(),
+                    visitedNodes.isEmpty() ? null : visitedNodes.getLast(),
+                    visitNo);
 
-        // ── 流程完成 ──
-        if (currentNodeId != null && "END".equals(getNodeType(nodeMap, currentNodeId))) {
-            processActivity.recordNodeEnter(instanceId, currentNodeId, "结束", "END",
-                    visitedNodes.isEmpty() ? null : visitedNodes.get(visitedNodes.size() - 1));
-            processActivity.recordNodeExit(instanceId, currentNodeId, "{\"completed\":true}");
-        }
+            if ("END".equals(node.getType())) {
+                processActivity.recordNodeExit(instanceId, node.getId(), "{\"completed\":true}");
+                processActivity.completeProcess(instanceId);
+                return;
+            }
 
-        processActivity.completeProcess(instanceId);
-        log.info("Workflow[{}] completed", instanceId);
+            currentNodeId = switch (node.getType()) {
+                case "START" -> handleAutomaticNode(
+                        instanceId, node, packageDefinition, formDataJson, visitedNodes);
+                case "APPROVAL" -> handleApprovalNode(
+                        instanceId, node, packageDefinition, formDataJson,
+                        visitedNodes, visitNo);
+                case "COUNTERSIGN" -> handleCountersignNode(
+                        instanceId, node, packageDefinition, formDataJson,
+                        visitedNodes, visitNo);
+                default -> throw new IllegalStateException(
+                        "UNSUPPORTED_PROCESS_NODE_TYPE:" + node.getType());
+            };
+        }
     }
 
-    /**
-     * 处理普通审批节点
-     */
-    private String handleApprovalNode(String instanceId,
+    private String handleAutomaticNode(String instanceId,
                                        ProcessPackageDefinition.NodeSchema node,
+                                       ProcessPackageDefinition packageDefinition,
                                        String formDataJson,
-                                       ProcessPackageDefinition packageDef,
                                        List<String> visitedNodes) {
-        String assigneeJson = processActivity.resolveAssignee(node.getAssignment(), instanceId);
-        pendingTaskId = processActivity.createTask(instanceId, node.getId(),
-                node.getName(), node.getType(), assigneeJson);
+        processActivity.recordNodeExit(instanceId, node.getId(), "{\"autoPass\":true}");
+        visitedNodes.add(node.getId());
+        return resolveNextNode(instanceId, node, packageDefinition, formDataJson);
+    }
 
-        // 等待审批 Signal
-        resetSignal();
-        rejectionSignalReceived = false;
-        Workflow.await(() -> signalReceived || rejectionSignalReceived);
+    private String handleApprovalNode(String instanceId,
+                                      ProcessPackageDefinition.NodeSchema node,
+                                      ProcessPackageDefinition packageDefinition,
+                                      String formDataJson,
+                                      List<String> visitedNodes,
+                                      int visitNo) {
+        String snapshot = processActivity.resolveAssignee(
+                node.getAssignment(), instanceId, node.getId(), "visit-" + visitNo);
+        String originalTaskId = processActivity.createTask(
+                instanceId, node.getId(), node.getName(), node.getType(), visitNo, snapshot);
 
-        // 处理驳回
-        if (rejectionSignalReceived) {
-            return handleRejection(instanceId, node, formDataJson, packageDef, visitedNodes);
+        Set<String> requiredTaskIds = new LinkedHashSet<>();
+        requiredTaskIds.add(originalTaskId);
+        List<String> approvedTaskIds = new ArrayList<>();
+
+        while (!requiredTaskIds.isEmpty()) {
+            WorkflowCommand command = awaitRelevantCommand(requiredTaskIds);
+            switch (command.type()) {
+                case "APPROVE" -> {
+                    processActivity.completeTask(
+                            command.taskId(), "APPROVE", command.comment());
+                    requiredTaskIds.remove(command.taskId());
+                    approvedTaskIds.add(command.taskId());
+                }
+                case "REJECT" -> {
+                    processActivity.completeTask(
+                            command.taskId(), "REJECT", command.comment());
+                    return handleRejection(
+                            instanceId, node, visitedNodes, command, approvedTaskIds.size());
+                }
+                case "TRANSFER" -> {
+                    requiredTaskIds.remove(command.taskId());
+                    requiredTaskIds.add(command.targetTaskId());
+                }
+                case "ADD_SIGN" -> requiredTaskIds.add(command.targetTaskId());
+                default -> throw new IllegalStateException(
+                        "UNSUPPORTED_WORKFLOW_COMMAND:" + command.type());
+            }
         }
 
-        // 记录审批结果
-        Map<String, String> resultMap = new HashMap<>();
-        resultMap.put("action", signalAction);
-        resultMap.put("comment", signalComment);
-        resultMap.put("operator", signalUserName);
-        try {
-            String resultJson = objectMapper.writeValueAsString(resultMap);
-            processActivity.completeTask(pendingTaskId, signalAction, signalComment);
-            processActivity.recordNodeExit(instanceId, node.getId(), resultJson);
-        } catch (Exception e) {
-            log.error("Workflow[{}] task completion failed", instanceId, e);
-            throw new RuntimeException("Task completion failed", e);
+        processActivity.recordNodeExit(
+                instanceId,
+                node.getId(),
+                writeJson(Map.of(
+                        "result", "APPROVED",
+                        "approvedTaskIds", approvedTaskIds)));
+        visitedNodes.add(node.getId());
+        return resolveNextNode(instanceId, node, packageDefinition, formDataJson);
+    }
+
+    private String handleCountersignNode(String instanceId,
+                                         ProcessPackageDefinition.NodeSchema node,
+                                         ProcessPackageDefinition packageDefinition,
+                                         String formDataJson,
+                                         List<String> visitedNodes,
+                                         int visitNo) {
+        String strategy = node.getStrategy();
+        String snapshot = processActivity.resolveAssignee(
+                node.getAssignment(), instanceId, node.getId(), "visit-" + visitNo);
+        List<String> createdTaskIds = processActivity.createCountersignTasks(
+                instanceId, node.getId(), node.getName(), strategy, visitNo, snapshot);
+        Set<String> pendingTaskIds = new LinkedHashSet<>(createdTaskIds);
+        int approved = 0;
+        int rejected = 0;
+
+        while (!pendingTaskIds.isEmpty()) {
+            WorkflowCommand command = awaitRelevantCommand(pendingTaskIds);
+            if ("REJECT".equals(command.type())) {
+                processActivity.completeCountersignTask(
+                        command.taskId(), "REJECTED", command.comment());
+                pendingTaskIds.remove(command.taskId());
+                rejected++;
+
+                if (command.targetNodeId() != null) {
+                    return handleRejection(
+                            instanceId, node, visitedNodes, command, approved);
+                }
+                if ("ALL".equals(strategy) || pendingTaskIds.isEmpty()) {
+                    processActivity.cancelRemainingCountersignTasks(instanceId, node.getId());
+                    processActivity.recordNodeExit(
+                            instanceId,
+                            node.getId(),
+                            countersignResult("REJECTED", approved, rejected, createdTaskIds.size()));
+                    processActivity.terminateProcess(
+                            instanceId, "REJECTED", "COUNTERSIGN_REJECTED");
+                    return null;
+                }
+                continue;
+            }
+
+            if (!"APPROVE".equals(command.type())) {
+                throw new IllegalStateException(
+                        "COUNTERSIGN_COMMAND_NOT_SUPPORTED:" + command.type());
+            }
+            processActivity.completeCountersignTask(
+                    command.taskId(), "APPROVED", command.comment());
+            pendingTaskIds.remove(command.taskId());
+            approved++;
+
+            if ("ANY".equals(strategy)) {
+                processActivity.cancelRemainingCountersignTasks(instanceId, node.getId());
+                pendingTaskIds.clear();
+            }
         }
 
-        // REJECTED → 终止流程
-        if ("REJECT".equals(signalAction)) {
-            log.info("Workflow[{}] rejected at node: {}", instanceId, node.getName());
-            processActivity.terminateProcess(instanceId, "REJECTED", "驳回：" + signalComment);
+        processActivity.recordNodeExit(
+                instanceId,
+                node.getId(),
+                countersignResult("APPROVED", approved, rejected, createdTaskIds.size()));
+        visitedNodes.add(node.getId());
+        return resolveNextNode(instanceId, node, packageDefinition, formDataJson);
+    }
+
+    private String handleRejection(String instanceId,
+                                   ProcessPackageDefinition.NodeSchema node,
+                                   List<String> visitedNodes,
+                                   WorkflowCommand command,
+                                   int approvedCount) {
+        String targetNodeId = command.targetNodeId();
+        processActivity.recordNodeExit(
+                instanceId,
+                node.getId(),
+                writeJson(Map.of(
+                        "result", targetNodeId == null ? "REJECTED" : "RETURNED",
+                        "operationId", command.operationId(),
+                        "approvedCount", approvedCount,
+                        "targetNodeId", targetNodeId != null ? targetNodeId : "")));
+
+        if (targetNodeId == null) {
+            processActivity.terminateProcess(instanceId, "REJECTED", command.comment());
             return null;
         }
-
-        visitedNodes.add(node.getId());
-        return resolveNextNode(node, packageDef, formDataJson);
-    }
-
-    /**
-     * 处理会签节点（平行会签）
-     * ALL = 全部通过 | ANY = 一人通过即可
-     */
-    private String handleCountersignNode(String instanceId,
-                                          ProcessPackageDefinition.NodeSchema node,
-                                          String formDataJson,
-                                          ProcessPackageDefinition packageDef,
-                                          List<String> visitedNodes) {
-        String strategy = node.getStrategy() != null ? node.getStrategy() : "ALL";
-        int threshold = "ANY".equals(strategy) ? 1 : Integer.MAX_VALUE; // ANY=1票通过, ALL=需要全部
-
-        // 创建会签任务（由 Activity 实现，支持批量参与者解析）
-        countersignNodeId = node.getId();
-        countersignTotalCount = 0;
-        countersignApproveCount = 0;
-        countersignRejectCount = 0;
-        countersignComplete = false;
-        countersignResult = null;
-
-        // 创建会签任务 - 多人任务
-        processActivity.createCountersignTasks(instanceId, node.getId(),
-                node.getName(), strategy, resolveAssigneeJsonList(node.getAssignment(), instanceId));
-
-        // 等待满足会签条件
-        resetSignal();
-        rejectionSignalReceived = false;
-
-        // 动态等待：ALL 策略需要总人数确认后再等待足够票数
-        // 先通过 Activity 获取总人数
-        countersignTotalCount = processActivity.getCountersignTaskCount(instanceId, node.getId());
-
-        if ("ALL".equals(strategy)) {
-            // 等待所有人审批
-            while (countersignApproveCount + countersignRejectCount < countersignTotalCount) {
-                Workflow.await(() -> signalReceived || rejectionSignalReceived);
-                if (signalReceived) {
-                    if ("APPROVE".equals(signalAction)) {
-                        countersignApproveCount++;
-                        processActivity.completeCountersignTask(pendingTaskId, "APPROVED", signalComment);
-                    } else if ("REJECT".equals(signalAction)) {
-                        countersignRejectCount++;
-                        processActivity.completeCountersignTask(pendingTaskId, "REJECTED", signalComment);
-                        // REJECT → 整个会签驳回
-                        log.info("Workflow[{}] countersign rejected at node: {}", instanceId, node.getName());
-                        processActivity.recordNodeExit(instanceId, node.getId(),
-                                "{\"countersignResult\":\"REJECTED\",\"approved\":" + countersignApproveCount
-                                + ",\"total\":" + countersignTotalCount + "}");
-                        processActivity.terminateProcess(instanceId, "REJECTED", "会签驳回");
-                        return null;
-                    }
-                    resetSignal();
-                } else if (rejectionSignalReceived) {
-                    return handleRejection(instanceId, node, formDataJson, packageDef, visitedNodes);
-                }
-            }
-            // 全部通过
-            countersignResult = "APPROVED";
-        } else {
-            // ANY：一人通过即可
-            while (countersignApproveCount < threshold
-                    && countersignApproveCount + countersignRejectCount < countersignTotalCount) {
-                Workflow.await(() -> signalReceived || rejectionSignalReceived);
-                if (signalReceived) {
-                    if ("APPROVE".equals(signalAction)) {
-                        countersignApproveCount++;
-                        processActivity.completeCountersignTask(pendingTaskId, "APPROVED", signalComment);
-                    } else if ("REJECT".equals(signalAction)) {
-                        countersignRejectCount++;
-                        processActivity.completeCountersignTask(pendingTaskId, "REJECTED", signalComment);
-                    }
-                    resetSignal();
-                } else if (rejectionSignalReceived) {
-                    return handleRejection(instanceId, node, formDataJson, packageDef, visitedNodes);
-                }
-            }
-
-            if (countersignApproveCount >= threshold) {
-                countersignResult = "APPROVED";
-                // 取消剩余的代办
-                processActivity.cancelRemainingCountersignTasks(instanceId, node.getId());
-            } else {
-                // 全部驳回
-                countersignResult = "REJECTED";
-                processActivity.terminateProcess(instanceId, "REJECTED", "会签全部驳回");
-                return null;
-            }
+        if (!visitedNodes.contains(targetNodeId)) {
+            String reason = "REJECT_TARGET_NOT_VISITED:" + targetNodeId;
+            processActivity.failNode(instanceId, node.getId(), reason);
+            throw new IllegalStateException(reason);
         }
 
-        processActivity.recordNodeExit(instanceId, node.getId(),
-                "{\"countersignResult\":\"" + countersignResult
-                + "\",\"approved\":" + countersignApproveCount
-                + ",\"total\":" + countersignTotalCount + "}");
-
+        processActivity.rejectToNode(
+                instanceId, node.getId(), targetNodeId, command.comment());
         visitedNodes.add(node.getId());
-        return resolveNextNode(node, packageDef, formDataJson);
+        return targetNodeId;
     }
 
-    /**
-     * 处理驳回（退回指定节点）
-     */
-    private String handleRejection(String instanceId,
-                                    ProcessPackageDefinition.NodeSchema currentNode,
-                                    String formDataJson,
-                                    ProcessPackageDefinition packageDef,
-                                    List<String> visitedNodes) {
-        // 驳回操作由 Activity 取消当前待办，创建被驳回节点的待办
-        processActivity.rejectToNode(instanceId, currentNode.getId(), rejectTargetNodeId, signalComment);
-        processActivity.recordNodeExit(instanceId, currentNode.getId(),
-                "{\"action\":\"REJECT\",\"rejectTo\":\"" + rejectTargetNodeId + "\"}");
-
-        // 重新流转到目标节点
-        visitedNodes.add(currentNode.getId());
-        return rejectTargetNodeId;
-    }
-
-    @Override
-    public void approveTask(String taskId, String action, String userId, String userName, String comment) {
-        log.info("Signal: taskId={}, action={}, operator={}", taskId, action, userName);
-        this.signalAction = action;
-        this.signalUserId = userId;
-        this.signalUserName = userName;
-        this.signalComment = comment;
-        this.pendingTaskId = taskId;
-        this.signalReceived = true;
-    }
-
-    @Override
-    public void rejectToNode(String taskId, String targetNodeId, String comment) {
-        log.info("Rejection signal: taskId={}, targetNodeId={}", taskId, targetNodeId);
-        this.signalAction = "REJECT";
-        this.signalComment = comment;
-        this.pendingTaskId = taskId;
-        this.rejectTargetNodeId = targetNodeId;
-        this.rejectionSignalReceived = true;
-        this.signalReceived = true;
-    }
-
-    // ── 私有方法 ──
-
-    private void resetSignal() {
-        signalReceived = false;
-        signalAction = null;
-        signalUserId = null;
-        signalUserName = null;
-        signalComment = null;
-        pendingTaskId = null;
-    }
-
-    private String findFirstNode(List<ProcessPackageDefinition.NodeSchema> nodes) {
-        for (ProcessPackageDefinition.NodeSchema node : nodes) {
-            if ("START".equals(node.getType())) {
-                return node.getId();
+    private WorkflowCommand awaitRelevantCommand(Set<String> requiredTaskIds) {
+        while (true) {
+            Workflow.await(() -> !commandQueue.isEmpty());
+            WorkflowCommand command = commandQueue.removeFirst();
+            if (requiredTaskIds.contains(command.taskId())) {
+                return command;
             }
+            log.warn("Ignoring command for inactive task: operationId={}, taskId={}",
+                    command.operationId(), command.taskId());
         }
-        return nodes.isEmpty() ? null : nodes.get(0).getId();
     }
 
-    private String resolveNextNode(ProcessPackageDefinition.NodeSchema node,
-                                   ProcessPackageDefinition packageDef,
+    private String resolveNextNode(String instanceId,
+                                   ProcessPackageDefinition.NodeSchema node,
+                                   ProcessPackageDefinition packageDefinition,
                                    String formDataJson) {
         List<ProcessPackageDefinition.NextCondition> next = node.getNext();
         if (next == null || next.isEmpty()) {
-            // 按定义顺序取下一节点
-            List<ProcessPackageDefinition.NodeSchema> nodes = packageDef.getFlow().getNodes();
-            int idx = indexOf(nodes, node.getId());
-            return (idx >= 0 && idx + 1 < nodes.size()) ? nodes.get(idx + 1).getId() : null;
+            List<ProcessPackageDefinition.NodeSchema> nodes = packageDefinition.getFlow().getNodes();
+            int index = indexOf(nodes, node.getId());
+            return index >= 0 && index + 1 < nodes.size()
+                    ? nodes.get(index + 1).getId() : null;
         }
 
-        // 按条件匹配
-        try {
-            Map<String, Object> formData = formDataJson != null
-                    ? objectMapper.readValue(formDataJson, new TypeReference<Map<String, Object>>() {})
-                    : new HashMap<>();
-
-            for (ProcessPackageDefinition.NextCondition nc : next) {
-                if ("true".equals(nc.getCondition().trim())) {
-                    return nc.getTarget();
-                }
+        for (ProcessPackageDefinition.NextCondition condition : next) {
+            ConditionEvaluationResult result = processActivity.evaluateCondition(
+                    condition.getCondition(), formDataJson);
+            if ("ERROR".equals(result.getStatus())) {
+                String reason = "CONDITION_EVALUATION_FAILED:" + result.getErrorCode();
+                processActivity.failNode(instanceId, node.getId(), reason);
+                throw new IllegalStateException(reason);
             }
-        } catch (Exception e) {
-            log.error("Condition evaluation failed, using default path", e);
+            if (result.isMatched()) {
+                return condition.getTarget();
+            }
         }
 
-        return next.get(next.size() - 1).getTarget();
+        String reason = "NO_CONDITION_BRANCH_MATCHED";
+        processActivity.failNode(instanceId, node.getId(), reason);
+        throw new IllegalStateException(reason);
     }
 
-    private String resolveAssigneeJsonList(ProcessPackageDefinition.Assignment assignment, String instanceId) {
-        if (assignment == null) {
-            return "[]";
+    @Override
+    public void approveTask(TaskActionCommand command) {
+        enqueue(new WorkflowCommand(
+                "APPROVE",
+                command.getOperationId(),
+                command.getTaskId(),
+                null,
+                null,
+                command.getComment(),
+                command.getTraceId()));
+    }
+
+    @Override
+    public void rejectTask(RejectTaskCommand command) {
+        enqueue(new WorkflowCommand(
+                "REJECT",
+                command.getOperationId(),
+                command.getTaskId(),
+                null,
+                command.getTargetNodeId(),
+                command.getComment(),
+                command.getTraceId()));
+    }
+
+    @Override
+    public void transferTask(TransferTaskCommand command) {
+        enqueue(new WorkflowCommand(
+                "TRANSFER",
+                command.getOperationId(),
+                command.getSourceTaskId(),
+                command.getTargetTaskId(),
+                null,
+                null,
+                command.getTraceId()));
+    }
+
+    @Override
+    public void addSignTask(AddSignTaskCommand command) {
+        enqueue(new WorkflowCommand(
+                "ADD_SIGN",
+                command.getOperationId(),
+                command.getSourceTaskId(),
+                command.getAddedTaskId(),
+                null,
+                null,
+                command.getTraceId()));
+    }
+
+    private void enqueue(WorkflowCommand command) {
+        if (receivedOperationIds.add(command.operationId())) {
+            commandQueue.add(command);
         }
-        return processActivity.resolveAssignee(assignment, instanceId);
     }
 
-    private String getNodeType(Map<String, ProcessPackageDefinition.NodeSchema> nodeMap, String nodeId) {
-        ProcessPackageDefinition.NodeSchema node = nodeMap.get(nodeId);
-        return node != null ? node.getType() : null;
+    private String findStartNode(List<ProcessPackageDefinition.NodeSchema> nodes) {
+        return nodes.stream()
+                .filter(node -> "START".equals(node.getType()))
+                .findFirst()
+                .map(ProcessPackageDefinition.NodeSchema::getId)
+                .orElseThrow(() -> new IllegalStateException("PROCESS_START_NODE_NOT_FOUND"));
     }
 
     private int indexOf(List<ProcessPackageDefinition.NodeSchema> nodes, String nodeId) {
-        for (int i = 0; i < nodes.size(); i++) {
-            if (nodes.get(i).getId().equals(nodeId)) return i;
+        for (int index = 0; index < nodes.size(); index++) {
+            if (nodes.get(index).getId().equals(nodeId)) {
+                return index;
+            }
         }
         return -1;
+    }
+
+    private String countersignResult(String result, int approved, int rejected, int total) {
+        return writeJson(Map.of(
+                "result", result,
+                "approved", approved,
+                "rejected", rejected,
+                "total", total));
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            throw new IllegalStateException("WORKFLOW_RESULT_SERIALIZATION_FAILED", e);
+        }
+    }
+
+    private record WorkflowCommand(
+            String type,
+            String operationId,
+            String taskId,
+            String targetTaskId,
+            String targetNodeId,
+            String comment,
+            String traceId) {
     }
 }

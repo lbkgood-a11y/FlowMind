@@ -12,7 +12,9 @@ import { Plus } from '@vben/icons';
 
 import {
   Button,
+  Divider,
   Drawer,
+  Empty,
   Form,
   FormItem,
   Input,
@@ -20,19 +22,29 @@ import {
   Pagination,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
   Tooltip,
+  Timeline,
+  TimelineItem,
 } from 'ant-design-vue';
 
 import { getOrgDimensions, getOrgTree } from '#/api';
-import { getProcessInstanceList, getProcessPackageList, startProcessInstance } from '#/api/process';
+import {
+  getProcessHistory,
+  getProcessInstanceList,
+  getProcessPackageList,
+  startProcessInstance,
+} from '#/api/process';
 
-const Textarea = Input.TextArea;
+import DynamicProcessForm from '../components/DynamicProcessForm.vue';
+import { getProcessFormFields, parseFormSchema } from '../components/process-form';
 
 const PERMISSIONS = {
   query: '/api/v1/process-instances:GET',
   start: '/api/v1/process-instances/start:POST',
+  history: '/api/v1/process-instances/*/history:GET',
 } as const;
 
 const ORG_PERMISSIONS = {
@@ -42,6 +54,7 @@ const ORG_PERMISSIONS = {
 const { hasAccessByCodes } = useAccess();
 const canQuery = computed(() => hasAccessByCodes([PERMISSIONS.query]));
 const canStart = computed(() => hasAccessByCodes([PERMISSIONS.start]));
+const canHistory = computed(() => hasAccessByCodes([PERMISSIONS.history]));
 const canQueryOrg = computed(() => hasAccessByCodes([ORG_PERMISSIONS.query]));
 
 const loading = ref(false);
@@ -49,8 +62,12 @@ const saving = ref(false);
 const formOpen = ref(false);
 const detailOpen = ref(false);
 const detailRecord = ref<ProcessApi.ProcessInstance>();
+const detailHistory = ref<ProcessApi.ProcessHistory>();
+const historyLoading = ref(false);
 const instances = ref<ProcessApi.ProcessInstance[]>([]);
 const packageOptions = ref<Array<{ label: string; value: string }>>([]);
+const packages = ref<ProcessApi.ProcessPackage[]>([]);
+const dynamicFormRef = ref<InstanceType<typeof DynamicProcessForm>>();
 const orgDimensions = ref<SystemOrgApi.OrgDimension[]>([]);
 const orgTreeRows = ref<SystemOrgApi.OrgTreeNode[]>([]);
 
@@ -68,10 +85,28 @@ const pagination = reactive({
 const formModel = reactive({
   orgDimensionCode: 'ADMIN',
   orgUnitId: undefined as string | undefined,
-  processKey: '',
+  processPackageId: '',
   title: '',
-  formData: '{}' as string,
+  formData: {} as Record<string, unknown>,
 });
+
+const selectedPackage = computed(() =>
+  packages.value.find((item) => item.id === formModel.processPackageId),
+);
+
+const historyTimelineItems = computed(() =>
+  (detailHistory.value?.nodes ?? []).map((node) => ({
+    children: `${node.enteredAt}${node.exitedAt ? ` - ${node.exitedAt}` : ''}`,
+    color:
+      node.status === 'COMPLETED'
+        ? 'green'
+        : node.status === 'FAILED'
+          ? 'red'
+          : 'blue',
+    key: `${node.id}:${node.visitNo}`,
+    label: `${node.nodeName || node.nodeId} · 第 ${node.visitNo} 次 · ${node.status}`,
+  })),
+);
 
 const statusFilterOptions = [
   { label: '全部', value: undefined },
@@ -193,10 +228,20 @@ async function loadInstances(page = pagination.current) {
 async function loadPackageOptions() {
   try {
     const result = await getProcessPackageList({ size: 100 });
-    packageOptions.value = result.items
-      .filter((p) => p.status === 'PUBLISHED')
-      .map((p) => ({ label: `${p.name} (${p.processKey})`, value: p.processKey }));
+    const latestByKey = new Map<string, ProcessApi.ProcessPackage>();
+    result.items
+      .filter((item) => item.status === 'PUBLISHED')
+      .forEach((item) => {
+        const current = latestByKey.get(item.processKey);
+        if (!current || item.version > current.version) latestByKey.set(item.processKey, item);
+      });
+    packages.value = [...latestByKey.values()];
+    packageOptions.value = packages.value.map((item) => ({
+      label: `${item.name} (${item.processKey}) · v${item.version}`,
+      value: item.id,
+    }));
   } catch {
+    packages.value = [];
     packageOptions.value = [];
   }
 }
@@ -244,63 +289,89 @@ async function changeOrgDimension(value: string) {
 }
 
 async function openStart() {
-  formModel.processKey = '';
+  formModel.processPackageId = '';
   formModel.title = '';
-  formModel.formData = '{}';
+  formModel.formData = {};
   formModel.orgDimensionCode = 'ADMIN';
   formModel.orgUnitId = undefined;
   formOpen.value = true;
   await Promise.all([loadPackageOptions(), ensureOrgContext()]);
 }
 
-function openDetail(record: ProcessApi.ProcessInstance) {
+function changePackage(packageId?: string) {
+  formModel.processPackageId = packageId || '';
+  const pkg = packages.value.find((item) => item.id === packageId);
+  formModel.formData = Object.fromEntries(
+    getProcessFormFields(pkg?.formSchema, pkg?.formUiSchema)
+      .filter((field) => field.schema.default !== undefined)
+      .map((field) => [field.key, field.schema.default]),
+  );
+}
+
+async function openDetail(record: ProcessApi.ProcessInstance) {
   detailRecord.value = record;
+  detailHistory.value = undefined;
   detailOpen.value = true;
+  if (!canHistory.value) return;
+  historyLoading.value = true;
+  try {
+    detailHistory.value = await getProcessHistory(record.id);
+  } finally {
+    historyLoading.value = false;
+  }
 }
 
 async function submitStart() {
-  if (!formModel.processKey) {
+  const pkg = selectedPackage.value;
+  if (!pkg) {
     message.warning('请选择流程');
+    return;
+  }
+  const clientErrors = dynamicFormRef.value?.validate() ?? [];
+  if (clientErrors.length > 0) {
+    message.warning('请修正表单字段后再发起');
     return;
   }
   saving.value = true;
   try {
-    let formDataObj: Record<string, any> = {};
-    try {
-      const parsedFormData = JSON.parse(formModel.formData);
-      if (
-        !parsedFormData ||
-        typeof parsedFormData !== 'object' ||
-        Array.isArray(parsedFormData)
-      ) {
-        message.warning('表单数据必须是 JSON 对象');
-        return;
-      }
-      formDataObj = parsedFormData;
-    } catch {
-      message.warning('表单数据 JSON 格式不正确');
-      return;
-    }
+    const formDataObj: Record<string, unknown> = { ...formModel.formData };
     if (formModel.orgUnitId) {
       if (!selectedOrgUnit.value) {
         message.warning('请选择有效组织');
         return;
       }
-      formDataObj.org = {
-        dimensionCode: formModel.orgDimensionCode,
-        unitCode: selectedOrgUnit.value.unitCode,
-        unitId: selectedOrgUnit.value.id,
-        unitName: selectedOrgUnit.value.unitName,
-      };
+      const schema = parseFormSchema(pkg.formSchema);
+      if (schema?.properties?.dept && formDataObj.dept == null) {
+        formDataObj.dept = selectedOrgUnit.value.unitCode;
+      }
     }
     await startProcessInstance({
-      processKey: formModel.processKey,
+      processKey: pkg.processKey,
+      processPackageId: pkg.id,
       title: formModel.title || undefined,
       formData: formDataObj,
+      version: pkg.version,
     });
     message.success('流程已发起');
     formOpen.value = false;
     await loadInstances();
+  } catch (error: any) {
+    const responseData = error?.response?.data ?? error;
+    if (responseData?.message === 'FORM_DATA_VALIDATION_FAILED') {
+      dynamicFormRef.value?.applyServerErrors(
+        responseData?.data?.fieldErrors ?? [],
+      );
+      return;
+    }
+    if (responseData?.message === 'PROCESS_VERSION_CONFLICT') {
+      const processKey = pkg.processKey;
+      await loadPackageOptions();
+      const latest = packages.value.find((item) => item.processKey === processKey);
+      changePackage(latest?.id);
+      message.warning('流程版本已更新，请确认新表单后重新提交');
+      return;
+    }
+    throw error;
   } finally {
     saving.value = false;
   }
@@ -386,7 +457,12 @@ onMounted(() => loadInstances(1));
     >
       <Form layout="vertical">
         <FormItem label="选择流程" required>
-          <Select v-model:value="formModel.processKey" placeholder="选择已发布的流程" :options="packageOptions" />
+          <Select
+            :options="packageOptions"
+            :value="formModel.processPackageId"
+            placeholder="选择已发布的流程"
+            @change="(value) => changePackage(String(value || ''))"
+          />
         </FormItem>
         <FormItem v-if="canQueryOrg" label="组织维度">
           <Select
@@ -409,9 +485,14 @@ onMounted(() => loadInstances(1));
         <FormItem label="标题">
           <Input v-model:value="formModel.title" placeholder="不填则自动生成" />
         </FormItem>
-        <FormItem label="表单数据 (JSON)">
-          <Textarea v-model:value="formModel.formData" :rows="8" placeholder="{&quot;amount&quot;: 3000, &quot;reason&quot;: &quot;出差费用&quot;, &quot;dept&quot;: &quot;技术部&quot;}" />
-        </FormItem>
+        <DynamicProcessForm
+          v-if="selectedPackage"
+          ref="dynamicFormRef"
+          v-model="formModel.formData"
+          :schema-json="selectedPackage.formSchema"
+          :ui-schema-json="selectedPackage.formUiSchema"
+        />
+        <Empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" />
       </Form>
       <template #footer>
         <Space>
@@ -440,6 +521,33 @@ onMounted(() => loadInstances(1));
           <strong>表单数据：</strong>
           <pre class="json-preview mt-1">{{ detailRecord.formData }}</pre>
         </div>
+        <Divider>审批历史</Divider>
+        <Spin :spinning="historyLoading">
+          <Timeline v-if="historyTimelineItems.length" mode="left">
+            <TimelineItem
+              v-for="item in historyTimelineItems"
+              :key="item.key"
+              :color="item.color"
+              :label="item.label"
+            >
+              {{ item.children }}
+            </TimelineItem>
+          </Timeline>
+          <Empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" />
+          <template v-if="detailHistory?.operations.length">
+            <Divider>任务操作</Divider>
+            <div
+              v-for="operation in detailHistory.operations"
+              :key="operation.operationId"
+              class="operation-row"
+            >
+              <Tag>{{ operation.action }}</Tag>
+              <span>{{ operation.operatorName || operation.operatorId }}</span>
+              <span class="text-muted-foreground">{{ operation.createdAt }}</span>
+              <span v-if="operation.comment">{{ operation.comment }}</span>
+            </div>
+          </template>
+        </Spin>
       </template>
     </Drawer>
   </Page>
@@ -456,5 +564,15 @@ onMounted(() => loadInstances(1));
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.operation-row {
+  display: grid;
+  grid-template-columns: 88px 100px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 12px;
 }
 </style>

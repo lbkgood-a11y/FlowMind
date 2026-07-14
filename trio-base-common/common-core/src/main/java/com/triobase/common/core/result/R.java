@@ -29,6 +29,10 @@ public class R<T> {
         return new R<>(code, message, null);
     }
 
+    public static <T> R<T> fail(int code, String message, T data) {
+        return new R<>(code, message, data);
+    }
+
     public static <T> R<T> fail(ErrorCode errorCode) {
         return fail(errorCode.getCode(), errorCode.getMessage());
     }

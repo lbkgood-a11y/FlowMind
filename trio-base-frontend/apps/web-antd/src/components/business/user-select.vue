@@ -69,6 +69,7 @@ const resolvedMode = computed<SelectMode | undefined>(() =>
 );
 
 const selectedIds = computed(() => normalizeValue(props.value));
+const selectValue = computed<SelectProps['value']>(() => props.value ?? undefined);
 
 const selectOptions = computed<UserSelectOption[]>(() => {
   const ids = new Set<string>();
@@ -219,10 +220,15 @@ function handleSearch(keyword: string) {
   }, props.searchDelay);
 }
 
-function handleChange(value: UserSelectValue) {
-  emit('update:value', value);
-  emit('change', value, getSelectedUsers(value));
-}
+const handleChange: NonNullable<SelectProps['onChange']> = (value) => {
+  const normalizedValue: UserSelectValue = Array.isArray(value)
+    ? value.map(String)
+    : value == null
+      ? undefined
+      : String(value);
+  emit('update:value', normalizedValue);
+  emit('change', normalizedValue, getSelectedUsers(normalizedValue));
+};
 
 function handleDropdownVisibleChange(open: boolean) {
   if (open) {
@@ -245,7 +251,7 @@ function handleDropdownVisibleChange(open: boolean) {
     :show-search="true"
     :size="size"
     :status="status"
-    :value="value"
+    :value="selectValue"
     class="trio-user-select"
     option-filter-prop="label"
     @change="handleChange"

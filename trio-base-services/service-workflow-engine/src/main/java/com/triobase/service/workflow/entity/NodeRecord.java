@@ -15,6 +15,7 @@ public class NodeRecord extends BaseEntity {
     private String nodeId;
     private String nodeName;
     private String nodeType;
+    private Integer visitNo;
     private String status;             // PENDING / ACTIVE / COMPLETED / FAILED / SKIPPED
     private String assigneeSnapshot;   // 参与者快照 JSON
     private String result;             // 执行结果 JSON

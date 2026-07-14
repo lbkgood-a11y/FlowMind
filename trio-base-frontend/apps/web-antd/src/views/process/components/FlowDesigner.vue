@@ -3,21 +3,34 @@
  * X6 流程设计器核心组件
  * 功能：画布拖拽 + 节点配置 + JSON 双向绑定
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 
-import { Button, message, Modal, Select, Space, Tooltip } from 'ant-design-vue';
-import { Graph, Shape, Node, Edge } from '@antv/x6';
-import { Clipboard } from '@antv/x6-plugin-clipboard';
-import { History } from '@antv/x6-plugin-history';
-import { Keyboard } from '@antv/x6-plugin-keyboard';
-import { MiniMap } from '@antv/x6-plugin-minimap';
-import { Scroller } from '@antv/x6-plugin-scroller';
-import { Selection } from '@antv/x6-plugin-selection';
-import { Snapline } from '@antv/x6-plugin-snapline';
-import { Dnd } from '@antv/x6-plugin-dnd';
+import { Button, message, Space, Tooltip } from 'ant-design-vue';
+import {
+  Cell,
+  Clipboard,
+  Dnd,
+  Edge,
+  Graph,
+  History,
+  Keyboard,
+  MiniMap,
+  Node,
+  Scroller,
+  Selection,
+  Shape,
+  Snapline,
+} from '@antv/x6';
+
+import {
+  buildParticipantAssignment,
+  participantAssignmentValue,
+  type ParticipantAssignment,
+  type ParticipantType,
+} from './process-designer';
 
 // ── 节点类型定义 ──
-export interface NodeTypeDef {
+interface NodeTypeDef {
   type: string;
   label: string;
   color: string;
@@ -27,7 +40,7 @@ export interface NodeTypeDef {
   height: number;
 }
 
-export const NODE_TYPES: NodeTypeDef[] = [
+const NODE_TYPES: NodeTypeDef[] = [
   { type: 'START', label: '开始', color: '#8c8c8c', bg: '#fafafa', icon: '▶', width: 50, height: 50 },
   { type: 'APPROVAL', label: '审批', color: '#1677ff', bg: '#e6f4ff', icon: '📋', width: 160, height: 50 },
   { type: 'COUNTERSIGN', label: '会签', color: '#722ed1', bg: '#f9f0ff', icon: '👥', width: 160, height: 50 },
@@ -42,7 +55,7 @@ const NODE_TYPE_MAP = new Map(NODE_TYPES.map((n) => [n.type, n]));
 interface NodeData {
   nodeType: string;
   name: string;
-  assignment?: { type: string; roleCode?: string; deptCode?: string; userId?: string };
+  assignment?: ParticipantAssignment;
   strategy?: string;
   conditionExpr?: string;
 }
@@ -60,7 +73,6 @@ const props = withDefaults(
 );
 
 const containerRef = ref<HTMLDivElement>();
-const stencilRef = ref<HTMLDivElement>();
 const selectedNode = ref<NodeData | null>(null);
 const selectedEdge = ref<{ condition: string } | null>(null);
 const graph = ref<Graph | null>(null);
@@ -68,8 +80,9 @@ let dnd: Dnd | null = null;
 
 // ── 属性面板状态 ──
 const editName = ref('');
-const editAssignmentType = ref('ROLE');
-const editRoleCode = ref('');
+const editAssignmentType = ref<ParticipantType>('ROLE');
+const editAssignmentValue = ref('');
+const editDimensionCode = ref('');
 const editStrategy = ref('ALL');
 const editConditionExpr = ref('');
 
@@ -84,7 +97,7 @@ function registerNodes() {
       shape: `flow-${def.type}`,
       width: def.width,
       height: def.height,
-      html(cell) {
+      html(cell: Cell) {
         const data = cell.getData() as NodeData;
         const name = data?.name || def.label;
         const outer = document.createElement('div');
@@ -139,7 +152,7 @@ function registerNodes() {
 function createGraph() {
   if (!containerRef.value) return;
 
-  const g = new Graph({
+  const g: Graph = new Graph({
     container: containerRef.value,
     autoResize: true,
     background: { color: '#fafafa' },
@@ -155,7 +168,7 @@ function createGraph() {
       allowMulti: false,
       allowLoop: false,
       createEdge() {
-        return g.createEdge({
+        return new Edge({
           attrs: { line: { stroke: '#8c8c8c', strokeWidth: 2, targetMarker: { name: 'classic' } } },
           labels: [{ attrs: { text: { text: '条件' } }, position: { distance: 0.5 } }],
         });
@@ -186,13 +199,14 @@ function createGraph() {
   });
 
   // ── 选中事件 → 填充属性面板 ──
-  g.on('cell:click', ({ cell }) => {
+  g.on('cell:click', ({ cell }: { cell: Cell }) => {
     if (cell.isNode()) {
       const data = (cell.getData() || {}) as NodeData;
       selectedNode.value = { ...data };
       editName.value = data.name || '';
       editAssignmentType.value = data.assignment?.type || 'ROLE';
-      editRoleCode.value = data.assignment?.roleCode || '';
+      editAssignmentValue.value = participantAssignmentValue(data.assignment);
+      editDimensionCode.value = data.assignment?.dimensionCode || '';
       editStrategy.value = data.strategy || 'ALL';
       selectedEdge.value = null;
     } else if (cell.isEdge()) {
@@ -220,7 +234,7 @@ function createGraph() {
     getDropNode(node) {
       return node.clone({ keepId: true });
     },
-    validateNode(droppingNode, options) {
+    validateNode(droppingNode) {
       // 防止重叠
       const existing = g.getNodes().find((n) => {
         const p1 = n.getPosition();
@@ -276,7 +290,7 @@ function loadFromJson(jsonStr: string) {
 
     const xMap: Record<string, number> = {};
     nodes.forEach((n: any, i: number) => {
-      const def = NODE_TYPE_MAP.get(n.type) || NODE_TYPES[1];
+      const def = NODE_TYPE_MAP.get(n.type) ?? NODE_TYPE_MAP.get('APPROVAL')!;
       const nx = n.x ?? 100 + (i % 3) * 200;
       const ny = n.y ?? 40 + Math.floor(i / 3) * 130;
       xMap[n.id] = nx + def.width / 2;
@@ -337,7 +351,7 @@ function toFlowJson(): string {
     if (!source || !target) return;
     if (!edgeMap.has(source)) edgeMap.set(source, []);
     const labels = edge.getLabels();
-    const condition = labels[0]?.attrs?.text?.text || 'true';
+    const condition = String(labels[0]?.attrs?.text?.text || 'true');
     edgeMap.get(source)!.push({ condition, target });
   });
 
@@ -397,7 +411,11 @@ function applyNodeProps() {
 
   // 有人参与的节点需要分配
   if (selectedNode.value.nodeType === 'APPROVAL' || selectedNode.value.nodeType === 'COUNTERSIGN') {
-    data.assignment = { type: editAssignmentType.value, roleCode: editRoleCode.value || undefined };
+    data.assignment = buildParticipantAssignment(
+      editAssignmentType.value,
+      editAssignmentValue.value,
+      editDimensionCode.value,
+    );
     if (data.nodeType === 'COUNTERSIGN') {
       data.strategy = editStrategy.value;
     }
@@ -512,7 +530,11 @@ onUnmounted(() => {
             </div>
             <div class="prop-group">
               <label class="prop-label">{{ editAssignmentType === 'ROLE' ? '角色编码' : editAssignmentType === 'DEPT' ? '部门编码' : '用户ID' }}</label>
-              <input v-model="editRoleCode" class="prop-input" :placeholder="editAssignmentType === 'ROLE' ? '如 DEPT_HEAD' : ''" @blur="applyNodeProps" />
+              <input v-model="editAssignmentValue" class="prop-input" :placeholder="editAssignmentType === 'ROLE' ? '如 DEPT_HEAD' : editAssignmentType === 'DEPT' ? '如 FINANCE' : '用户 ID'" @blur="applyNodeProps" />
+            </div>
+            <div v-if="editAssignmentType === 'DEPT'" class="prop-group">
+              <label class="prop-label">组织维度编码</label>
+              <input v-model="editDimensionCode" class="prop-input" placeholder="如 ADMIN" @blur="applyNodeProps" />
             </div>
           </template>
 

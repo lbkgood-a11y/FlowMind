@@ -34,6 +34,11 @@ mybatis-plus:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
+triobase:
+  internal:
+    token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine}
+
 logging:
   level:
     root: DEBUG

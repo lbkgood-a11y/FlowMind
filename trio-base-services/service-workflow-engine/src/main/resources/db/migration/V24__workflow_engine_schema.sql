@@ -135,7 +135,7 @@ INSERT INTO wf_process_package(id, process_key, name, category, description, ver
   },
   "flow": {
     "nodes": [
-      {"id": "start", "type": "START", "name": "开始", "next": "dept_approve"},
+      {"id": "start", "type": "START", "name": "开始", "next": [{"condition": "true", "target": "dept_approve"}]},
       {"id": "dept_approve", "type": "APPROVAL", "name": "部门审批",
         "assignment": {"type": "ROLE", "roleCode": "DEPT_HEAD"},
         "next": [

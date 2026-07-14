@@ -13,11 +13,14 @@ public class TaskResponse {
     private String nodeId;
     private String nodeName;
     private String nodeType;
+    private Integer nodeVisitNo;
     private String title;
     private String status;
     private String assigneeId;
     private String assigneeName;
     private String assigneeType;
+    private String sourceTaskId;
+    private String rootTaskId;
     private String comment;
     private LocalDateTime claimedAt;
     private LocalDateTime completedAt;

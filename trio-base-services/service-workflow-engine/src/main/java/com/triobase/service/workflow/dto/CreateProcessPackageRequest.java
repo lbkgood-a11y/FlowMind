@@ -9,11 +9,5 @@ public class CreateProcessPackageRequest {
     private String category;
     private String description;
     private String processJson;
-}
-
-@Data
-class UpdateProcessPackageRequest {
-    private String name;
-    private String description;
-    private String processJson;
+    private String formDefinitionId;
 }

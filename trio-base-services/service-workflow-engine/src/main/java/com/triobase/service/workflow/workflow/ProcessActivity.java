@@ -1,6 +1,7 @@
 package com.triobase.service.workflow.workflow;
 
 import com.triobase.service.workflow.dto.ProcessPackageDefinition;
+import com.triobase.service.workflow.dto.ConditionEvaluationResult;
 import io.temporal.activity.ActivityInterface;
 import io.temporal.activity.ActivityMethod;
 
@@ -16,20 +17,28 @@ import io.temporal.activity.ActivityMethod;
 public interface ProcessActivity {
 
     @ActivityMethod
-    String resolveAssignee(ProcessPackageDefinition.Assignment assignment, String instanceId);
+    String resolveAssignee(ProcessPackageDefinition.Assignment assignment,
+                           String instanceId,
+                           String nodeId,
+                           String participantVersion);
 
-    @ActivityMethod
+
+        @ActivityMethod
     String createTask(String instanceId, String nodeId, String nodeName,
-                      String nodeType, String assigneeJson);
+                      String nodeType, int visitNo, String assigneeJson);
 
     @ActivityMethod
     void completeTask(String taskId, String action, String comment);
 
+    @ActivityMethod
+    ConditionEvaluationResult evaluateCondition(String expression, String formDataJson);
+
     // ── 会签 ──
 
     @ActivityMethod
-    void createCountersignTasks(String instanceId, String nodeId, String nodeName,
-                                String strategy, String assigneeListJson);
+    java.util.List<String> createCountersignTasks(String instanceId, String nodeId, String nodeName,
+                                                  String strategy, int visitNo,
+                                                  String assigneeListJson);
 
     @ActivityMethod
     int getCountersignTaskCount(String instanceId, String nodeId);
@@ -57,10 +66,13 @@ public interface ProcessActivity {
 
     @ActivityMethod
     void recordNodeEnter(String instanceId, String nodeId, String nodeName,
-                         String nodeType, String prevNodeId);
+                         String nodeType, String prevNodeId, int visitNo);
 
     @ActivityMethod
     void recordNodeExit(String instanceId, String nodeId, String resultJson);
+
+    @ActivityMethod
+    void failNode(String instanceId, String nodeId, String reason);
 
     @ActivityMethod
     void completeProcess(String instanceId);

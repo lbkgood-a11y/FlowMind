@@ -3,6 +3,7 @@ package com.triobase.service.auth.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.triobase.service.auth.entity.SysUser;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
@@ -25,4 +26,11 @@ public interface UserMapper extends BaseMapper<SysUser> {
             "JOIN sys_user_role ur ON r.id = ur.role_id " +
             "WHERE ur.user_id = #{userId} AND r.status = 1")
     List<String> selectRoleCodesByUserId(String userId);
+
+    @Select("SELECT DISTINCT u.* FROM sys_user u " +
+            "JOIN sys_user_role ur ON ur.user_id = u.id " +
+            "JOIN sys_role r ON r.id = ur.role_id " +
+            "WHERE r.role_code = #{roleCode} AND r.status = 1 AND u.status = 1 " +
+            "ORDER BY u.username")
+    List<SysUser> selectEnabledUsersByRoleCode(@Param("roleCode") String roleCode);
 }

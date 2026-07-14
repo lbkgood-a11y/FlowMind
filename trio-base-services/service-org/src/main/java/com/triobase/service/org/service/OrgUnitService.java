@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
+import com.triobase.common.dto.internal.OrgParticipantsResponse;
+import com.triobase.common.dto.internal.ResolvedUserDto;
 import com.triobase.service.org.dto.CreateOrgUnitRequest;
 import com.triobase.service.org.dto.OrgUnitUserResponse;
 import com.triobase.service.org.dto.OrgTreeNodeResponse;
@@ -33,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.LocalDate;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -364,6 +367,25 @@ public class OrgUnitService {
                         users.get(relation.getUserId())
                 ))
                 .toList();
+    }
+
+    public OrgParticipantsResponse resolveEnabledUsers(String orgUnitId, String dimensionCode) {
+        LocalDate today = LocalDate.now();
+        List<OrgUnitUserResponse> enabledUsers = listOrgUnitUsers(orgUnitId, dimensionCode).stream()
+                .filter(item -> Integer.valueOf(1).equals(item.getUserStatus()))
+                .filter(item -> item.getStatus() == null || item.getStatus() == 1)
+                .filter(item -> item.getEffectiveFrom() == null || !item.getEffectiveFrom().isAfter(today))
+                .filter(item -> item.getEffectiveTo() == null || !item.getEffectiveTo().isBefore(today))
+                .toList();
+
+        OrgParticipantsResponse response = new OrgParticipantsResponse();
+        response.setOrgUnitId(orgUnitId);
+        response.setDimensionCode(enabledUsers.isEmpty() ? dimensionCode : enabledUsers.getFirst().getDimensionCode());
+        response.setUsers(enabledUsers.stream()
+                .map(item -> new ResolvedUserDto(item.getUserId(), item.getUsername()))
+                .distinct()
+                .toList());
+        return response;
     }
 
     @Transactional

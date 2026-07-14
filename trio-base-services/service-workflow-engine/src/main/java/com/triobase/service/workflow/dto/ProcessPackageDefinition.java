@@ -47,6 +47,7 @@ public class ProcessPackageDefinition {
         private String type;       // ROLE / DEPT / USER / DYNAMIC / MANAGER / SYSTEM
         private String roleCode;
         private String deptCode;
+        private String dimensionCode;
         private String userId;
         private String fieldKey;   // DYNAMIC 模式下从表单字段取值
     }

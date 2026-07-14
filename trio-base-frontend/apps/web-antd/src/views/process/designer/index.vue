@@ -8,6 +8,7 @@ import { Button, message, Modal, Space } from 'ant-design-vue';
 import { createProcessPackage } from '#/api/process';
 
 import FlowDesigner from '../components/FlowDesigner.vue';
+import { validateProcessDefinition } from '../components/process-designer';
 
 const designerRef = ref<InstanceType<typeof FlowDesigner>>();
 
@@ -23,13 +24,18 @@ function handleExport() {
 
 async function handleSaveAsPackage() {
   if (!editJson.value) return;
+  const validationErrors = validateProcessDefinition(editJson.value);
+  if (validationErrors.length > 0) {
+    message.error(validationErrors[0]);
+    return;
+  }
   try {
     const pkg = JSON.parse(editJson.value);
-    const processKey = pkg?.flow?.nodes?.[0]?.id || `flow_${Date.now()}`;
+    const processKey = pkg?.processKey || `design_${Date.now()}`;
     const name = pkg?.flow?.nodes?.find((n: any) => n.type === 'START')?.name || '未命名流程';
 
     await createProcessPackage({
-      processKey: `design_${Date.now()}`,
+      processKey,
       name,
       category: 'approval',
       processJson: editJson.value,
@@ -42,7 +48,7 @@ async function handleSaveAsPackage() {
 }
 
 function handleJsonChange(json: string) {
-  // JSON 变化时自动保存到暂存
+  editJson.value = json;
 }
 </script>
 
