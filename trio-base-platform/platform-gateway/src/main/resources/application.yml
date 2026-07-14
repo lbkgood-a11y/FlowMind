@@ -33,6 +33,10 @@ spring:
           uri: ${WF_SERVICE_URL:http://localhost:8086}
           predicates:
             - Path=/api/v1/process-packages,/api/v1/process-packages/**,/api/v1/process-instances,/api/v1/process-instances/**,/api/v1/tasks,/api/v1/tasks/**
+        - id: data-analytics
+          uri: ${DATA_ANALYTICS_URL:http://localhost:8091}
+          predicates:
+            - Path=/api/v1/data,/api/v1/data/**
         - id: ai-llm-gateway
           uri: ${ai.services.llm-gateway.url}
           predicates:

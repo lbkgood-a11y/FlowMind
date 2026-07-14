@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableProps } from 'ant-design-vue';
+import type { LowcodeApi } from '#/api/lowcode';
 import type { ProcessApi } from '#/api/process';
 
 import { computed, h, onMounted, reactive, ref } from 'vue';
@@ -34,6 +35,7 @@ import {
   publishProcessPackage,
   updateProcessPackage,
 } from '#/api/process';
+import { getFormDefinitionList } from '#/api/lowcode';
 
 import { validateProcessDefinition } from '../components/process-designer';
 
@@ -64,6 +66,7 @@ const loading = ref(false);
 const saving = ref(false);
 const formOpen = ref(false);
 const editing = ref<ProcessPackageItem>();
+const formDefinitions = ref<LowcodeApi.FormDefinition[]>([]);
 const records = ref<ProcessPackageItem[]>([]);
 const jsonPreviewOpen = ref(false);
 const previewPackage = ref<ProcessPackageItem>();
@@ -86,6 +89,15 @@ const formModel = reactive({
   formDefinitionId: '',
   processJson: '{\n  "version": "1.0.0",\n  "processKey": "",\n  "name": "",\n  "category": "approval",\n  "flow": {\n    "nodes": [\n      {"id":"start","type":"START","name":"开始","next":[{"condition":"true","target":"approve1"}]},\n      {"id":"approve1","type":"APPROVAL","name":"审批","assignment":{"type":"ROLE","roleCode":"DEPT_HEAD"},"next":[{"condition":"true","target":"end"}]},\n      {"id":"end","type":"END","name":"结束"}\n    ]\n  }\n}',
 });
+
+const publishedFormOptions = computed(() =>
+  formDefinitions.value
+    .filter((item) => item.status === 'PUBLISHED')
+    .map((item) => ({
+      label: `${item.name} (${item.formKey}) · v${item.version}`,
+      value: item.id,
+    })),
+);
 
 const columns: TableProps['columns'] = [
   { dataIndex: 'name', key: 'name', title: '流程名称', width: 180 },
@@ -129,6 +141,15 @@ async function loadRecords(page = pagination.current) {
     pagination.total = result.total;
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadFormDefinitions() {
+  try {
+    const result = await getFormDefinitionList({ page: 1, size: 100 });
+    formDefinitions.value = result.items;
+  } catch {
+    formDefinitions.value = [];
   }
 }
 
@@ -241,6 +262,7 @@ function onPageChange(page: number, pageSize: number) {
 }
 
 onMounted(() => loadRecords(1));
+onMounted(loadFormDefinitions);
 </script>
 
 <template>
@@ -331,8 +353,15 @@ onMounted(() => loadRecords(1));
         <FormItem label="描述">
           <Textarea v-model:value="formModel.description" placeholder="流程说明" :rows="2" />
         </FormItem>
-        <FormItem label="Lowcode 表单定义 ID">
-          <Input v-model:value="formModel.formDefinitionId" allow-clear placeholder="可选；发布时固化表单快照" />
+        <FormItem label="挂载表单">
+          <Select
+            v-model:value="formModel.formDefinitionId"
+            allow-clear
+            show-search
+            :filter-option="(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())"
+            :options="publishedFormOptions"
+            placeholder="选择已发布的快速开发表单；发布时固化快照"
+          />
         </FormItem>
         <FormItem label="流程定义 JSON">
           <Textarea v-model:value="formModel.processJson" :rows="12" placeholder="流程包 JSON 定义" />
