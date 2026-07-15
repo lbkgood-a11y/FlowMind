@@ -26,6 +26,7 @@ import {
 
 import {
   createProcessPackage,
+  createProcessPackageVersion,
   getBusinessObjectCatalog,
   getBusinessObjectCatalogList,
   getProcessPackageById,
@@ -51,7 +52,9 @@ import {
 const loadingCatalog = ref(false);
 const loadingPackage = ref(false);
 const saving = ref(false);
+const creatingVersion = ref(false);
 const technicalPreviewOpen = ref(false);
+const jsonDraft = ref('');
 const configPanelOpen = ref(true);
 const previewPanelOpen = ref(true);
 const businessObjects = ref<ProcessApi.BusinessObjectSummary[]>([]);
@@ -66,6 +69,9 @@ const { hasAccessByCodes } = useAccess();
 const packageId = computed(() => String(route.query.packageId ?? '').trim());
 const canUpdate = computed(() =>
   hasAccessByCodes(['/api/v1/process-packages/*:PUT']),
+);
+const canCreateVersion = computed(() =>
+  hasAccessByCodes(['/api/v1/process-packages/*/versions:POST']),
 );
 const designerMode = computed(() =>
   existingProcessDesignerMode(existingPackage.value?.status, canUpdate.value),
@@ -400,6 +406,10 @@ async function handleSaveAsPackage() {
 }
 
 async function initializeDesigner() {
+  loadError.value = '';
+  catalogError.value = '';
+  catalog.value = undefined;
+  existingPackage.value = undefined;
   if (!packageId.value) {
     try {
       await loadBusinessObjects();
@@ -410,7 +420,6 @@ async function initializeDesigner() {
     return;
   }
   loadingPackage.value = true;
-  loadError.value = '';
   try {
     const loaded = await getProcessPackageById(packageId.value);
     existingPackage.value = loaded;
@@ -451,6 +460,43 @@ async function initializeDesigner() {
   }
 }
 
+function openTechnicalPreview() {
+  jsonDraft.value = generatedJson.value || flowJson.value || '{}';
+  technicalPreviewOpen.value = true;
+}
+
+function applyJsonToDesigner() {
+  const validationErrors = validateProcessDefinition(jsonDraft.value);
+  if (validationErrors.length > 0) {
+    message.error(validationErrors[0]);
+    return;
+  }
+
+  const restored = restoreBusinessClosureDefinition(jsonDraft.value);
+  Object.assign(
+    config,
+    Object.fromEntries(
+      Object.entries(restored.config).filter(([, value]) => value !== undefined),
+    ),
+  );
+  flowJson.value = jsonDraft.value;
+  technicalPreviewOpen.value = false;
+  message.success('JSON 已同步到画布');
+}
+
+async function createEditableVersion() {
+  if (!existingPackage.value) return;
+  creatingVersion.value = true;
+  try {
+    const draft = await createProcessPackageVersion(existingPackage.value.id);
+    await router.replace({ name: 'ProcessDesigner', query: { packageId: draft.id } });
+    await initializeDesigner();
+    message.success(`已创建 v${draft.version} 草稿，可继续设计`);
+  } finally {
+    creatingVersion.value = false;
+  }
+}
+
 function backToPackages() {
   void router.push({ name: 'ProcessPackage' });
 }
@@ -482,7 +528,15 @@ onMounted(initializeDesigner);
             {{ previewPanelOpen ? '隐藏流程预览' : '显示流程预览' }}
           </Button>
           <Button v-if="packageId" @click="backToPackages">返回流程包</Button>
-          <Button @click="technicalPreviewOpen = true">技术预览</Button>
+          <Button
+            v-if="existingPackage && readOnly && canCreateVersion"
+            :loading="creatingVersion"
+            type="primary"
+            @click="createEditableVersion"
+          >
+            创建新版本并设计
+          </Button>
+          <Button @click="openTechnicalPreview">技术预览</Button>
           <Button v-if="canSave" :loading="saving" type="primary" @click="handleSaveAsPackage">
             {{ existingPackage ? '保存草稿' : '保存流程包' }}
           </Button>
@@ -730,8 +784,20 @@ onMounted(initializeDesigner);
       </Spin>
     </div>
 
-    <Modal v-model:open="technicalPreviewOpen" :footer="null" title="技术预览" width="840">
-      <pre class="json-preview">{{ generatedJson }}</pre>
+    <Modal v-model:open="technicalPreviewOpen" title="流程 JSON" width="840">
+      <Input.TextArea
+        v-model:value="jsonDraft"
+        class="json-editor"
+        :readonly="canvasReadOnly"
+        :rows="24"
+        spellcheck="false"
+      />
+      <template #footer>
+        <Button @click="technicalPreviewOpen = false">取消</Button>
+        <Button v-if="!canvasReadOnly" type="primary" @click="applyJsonToDesigner">
+          应用到画布
+        </Button>
+      </template>
     </Modal>
   </Page>
 </template>
@@ -888,7 +954,7 @@ onMounted(initializeDesigner);
   color: #111827;
 }
 
-.json-preview {
+.json-editor {
   max-height: 560px;
   padding: 12px;
   overflow: auto;

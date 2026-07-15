@@ -78,6 +78,10 @@ interface NodeData {
   conditionExpr?: string;
 }
 
+interface EdgeData {
+  condition: string;
+}
+
 const containerRef = ref<HTMLDivElement>();
 const selectedNode = ref<NodeData | null>(null);
 const selectedEdge = ref<null | { condition: string }>(null);
@@ -102,6 +106,37 @@ const ZOOM_STEP = 0.1;
 
 const showPropertyPanel = computed(() => !!selectedNode.value || !!selectedEdge.value);
 
+function conditionLabel(condition: string) {
+  return condition.trim() === 'true' ? '默认分支' : condition.trim();
+}
+
+function edgeCondition(edge: Edge) {
+  return ((edge.getData() || {}) as EdgeData).condition || 'true';
+}
+
+function setEdgeCondition(edge: Edge, condition: string) {
+  const normalized = condition.trim() || 'true';
+  edge.setData({ condition: normalized } as EdgeData);
+  edge.setLabels([
+    {
+      attrs: { text: { text: conditionLabel(normalized) } },
+      position: { distance: 0.5 },
+    },
+  ]);
+}
+
+function conditionExpressionError(condition: string) {
+  const normalized = condition.trim();
+  if (!normalized) return '条件表达式不能为空；无条件分支请填写 true';
+  if (normalized.length > 512) return '条件表达式不能超过 512 个字符';
+  if (/[`@;{}#]|::|->/u.test(normalized)) return '条件表达式包含不支持的符号';
+  if (/(?<![=!<>])=(?!=)/u.test(normalized)) return '判断相等请使用 ==，不能使用单个 =';
+  if (/\b(new|class|runtime|system|import)\b/iu.test(normalized)) {
+    return '条件表达式包含不允许的关键字';
+  }
+  return '';
+}
+
 // ── 注册自定义节点 ──
 function registerNodes() {
   NODE_TYPES.forEach((def) => {
@@ -111,6 +146,38 @@ function registerNodes() {
       shape: `flow-${def.type}`,
       width: def.width,
       height: def.height,
+      ports: {
+        groups: {
+          input: {
+            position: 'left',
+            attrs: {
+              circle: {
+                r: 4,
+                fill: '#fff',
+                magnet: 'passive',
+                stroke: '#1677ff',
+                strokeWidth: 1.5,
+              },
+            },
+          },
+          output: {
+            position: 'right',
+            attrs: {
+              circle: {
+                r: 4,
+                fill: '#fff',
+                magnet: true,
+                stroke: '#1677ff',
+                strokeWidth: 1.5,
+              },
+            },
+          },
+        },
+        items: [
+          ...(def.type === 'START' ? [] : [{ group: 'input', id: 'in' }]),
+          ...(def.type === 'END' ? [] : [{ group: 'output', id: 'out' }]),
+        ],
+      },
       html(cell: Cell) {
         const data = cell.getData() as NodeData;
         const name = data?.name || def.label;
@@ -181,13 +248,20 @@ function createGraph() {
       connector: { name: 'smooth' },
       snap: { radius: 20 },
       allowBlank: false,
+      allowNode: false,
+      allowPort: true,
       allowMulti: false,
       allowLoop: false,
-      validateConnection: () => !props.readonly,
+      highlight: true,
+      validateConnection({ sourcePort, targetPort }) {
+        return !props.readonly && sourcePort === 'out' && targetPort === 'in';
+      },
       createEdge() {
         return new Edge({
           attrs: { line: { stroke: '#8c8c8c', strokeWidth: 2, targetMarker: { name: 'classic' } } },
-          labels: [{ attrs: { text: { text: '条件' } }, position: { distance: 0.5 } }],
+          data: { condition: 'true' } as EdgeData,
+          labels: [],
+          zIndex: 0,
         });
       },
     },
@@ -229,8 +303,7 @@ function createGraph() {
       editStrategy.value = data.strategy || 'ALL';
       selectedEdge.value = null;
     } else if (cell.isEdge()) {
-      const label = cell.getLabels()[0];
-      selectedEdge.value = { condition: (label?.attrs?.text as any)?.text || 'true' };
+      selectedEdge.value = { condition: edgeCondition(cell) };
       editConditionExpr.value = selectedEdge.value.condition;
       selectedNode.value = null;
     }
@@ -277,6 +350,17 @@ function createGraph() {
   g.on('cell:removed', () => emitChange());
   g.on('cell:change:position', () => emitChange());
   g.on('edge:label:change', () => emitChange());
+  g.on('edge:connected', ({ edge }: { edge: Edge }) => {
+    setEdgeCondition(edge, edgeCondition(edge));
+    emitChange();
+  });
+  g.on('edge:change:source', () => emitChange());
+  g.on('edge:change:target', () => emitChange());
+  g.on('edge:mouseup', ({ edge }: { edge: Edge }) => {
+    if (!edge.getSourceCellId() || !edge.getTargetCellId()) {
+      g.removeEdge(edge);
+    }
+  });
 
   // ── 加载初始数据 ──
   if (props.modelValue) {
@@ -299,6 +383,22 @@ function startDrag(type: string, event: DragEvent) {
   });
 
   dnd.start(node, event);
+}
+
+function addNode(type: string) {
+  if (props.readonly || !graph.value) return;
+  const def = NODE_TYPE_MAP.get(type);
+  if (!def) return;
+
+  const count = graph.value.getNodes().length;
+  graph.value.addNode({
+    shape: `flow-${type}`,
+    x: 80 + (count % 4) * 160,
+    y: 70 + Math.floor(count / 4) * 100,
+    width: def.width,
+    height: def.height,
+    data: { nodeType: type, name: def.label } as NodeData,
+  });
 }
 
 function changeZoom(delta: number) {
@@ -355,15 +455,17 @@ function loadFromJson(jsonStr: string) {
       n.next.forEach((nc: any) => {
         if (!nc.target || !xMap[nc.target]) return;
         g.addEdge({
-          source: n.id,
-          target: nc.target,
+          source: { cell: n.id, port: 'out' },
+          target: { cell: nc.target, port: 'in' },
+          data: { condition: nc.condition || 'true' } as EdgeData,
           attrs: { line: { stroke: '#8c8c8c', strokeWidth: 2, targetMarker: { name: 'classic' } } },
           labels: [
             {
-              attrs: { text: { text: nc.condition === 'true' ? '通过' : nc.condition || '条件' } },
+              attrs: { text: { text: conditionLabel(nc.condition || 'true') } },
               position: { distance: 0.5 },
             },
           ],
+          zIndex: 0,
         });
       });
     });
@@ -393,8 +495,7 @@ function toFlowJson(): string {
     const target = edge.getTargetCellId();
     if (!source || !target) return;
     if (!edgeMap.has(source)) edgeMap.set(source, []);
-    const labels = edge.getLabels();
-    const condition = String(labels[0]?.attrs?.text?.text || 'true');
+    const condition = edgeCondition(edge);
     edgeMap.get(source)!.push({ condition, target });
   });
 
@@ -480,9 +581,20 @@ function applyEdgeProps() {
   const edge = cells.find((c) => c.isEdge()) as Edge | undefined;
   if (!edge) return;
 
-  selectedEdge.value.condition = editConditionExpr.value || 'true';
-  edge.setLabels([{ attrs: { text: { text: selectedEdge.value.condition } }, position: { distance: 0.5 } }]);
+  const expressionError = conditionExpressionError(editConditionExpr.value);
+  if (expressionError) {
+    message.warning(expressionError);
+    return;
+  }
+
+  selectedEdge.value.condition = editConditionExpr.value.trim();
+  setEdgeCondition(edge, selectedEdge.value.condition);
   emitChange();
+}
+
+function useDefaultCondition() {
+  editConditionExpr.value = 'true';
+  applyEdgeProps();
 }
 
 // ── 向外暴露方法 ──
@@ -555,7 +667,7 @@ onUnmounted(() => {
     <div class="designer-body">
       <!-- 左侧节点面板 -->
       <div v-if="!readonly && paletteOpen" class="node-palette">
-        <div class="palette-title">节点类型</div>
+        <div class="palette-title">节点类型（拖拽或双击添加）</div>
         <div class="palette-list">
           <div
             v-for="nt in NODE_TYPES"
@@ -563,6 +675,7 @@ onUnmounted(() => {
             class="palette-item"
             :style="{ borderColor: nt.color, background: nt.bg, color: nt.color }"
             draggable="true"
+            @dblclick="addNode(nt.type)"
             @dragstart="startDrag(nt.type, $event)"
           >
             <span class="palette-icon">{{ nt.icon }}</span>
@@ -624,6 +737,16 @@ onUnmounted(() => {
           <div class="prop-group">
             <label class="prop-label">条件表达式</label>
             <input v-model="editConditionExpr" class="prop-input" placeholder="如 amount > 5000，true 为默认" @blur="applyEdgeProps" @keyup.enter="applyEdgeProps" />
+            <button class="condition-default" type="button" @click="useDefaultCondition">
+              设为默认分支
+            </button>
+            <div class="condition-help">
+              <div><code>true</code>：兜底默认分支，建议放在同一节点的最后一条线。</div>
+              <div><code>amount &gt; 5000</code>：数字比较。</div>
+              <div><code>status == 'DRAFT'</code>：文本需要使用单引号或双引号。</div>
+              <div><code>amount &gt; 5000 &amp;&amp; urgent == true</code>：可用 <code>&amp;&amp;</code>、<code>||</code> 组合。</div>
+              <div>字段名来自启动表单提交的 JSON，例如 <code>amount</code>。</div>
+            </div>
           </div>
         </template>
       </div>
@@ -788,5 +911,32 @@ onUnmounted(() => {
   background: #fff;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
+}
+
+.condition-default {
+  align-self: flex-start;
+  padding: 2px 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #1677ff;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #91caff;
+  border-radius: 4px;
+}
+
+.condition-help {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.condition-help code {
+  color: #334155;
+  white-space: normal;
 }
 </style>
