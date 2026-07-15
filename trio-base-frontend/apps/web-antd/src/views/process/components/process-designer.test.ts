@@ -1,14 +1,52 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  buildParticipantAssignment,
   buildBusinessClosureProcessDefinition,
+  buildParticipantAssignment,
+  buildSafeCondition,
   businessClosureCompletionChecks,
   businessClosureValidationIssues,
-  buildSafeCondition,
   catalogFormFields,
+  existingProcessDesignerMode,
+  restoreBusinessClosureDefinition,
   validateProcessDefinition,
 } from './process-designer';
+
+describe('existing process definition restore', () => {
+  it('allows draft editing and keeps published packages read-only', () => {
+    expect(existingProcessDesignerMode('DRAFT', true)).toEqual({
+      canSave: true,
+      readOnly: false,
+    });
+    expect(existingProcessDesignerMode('PUBLISHED', true)).toEqual({
+      canSave: false,
+      readOnly: true,
+    });
+  });
+
+  it('restores business configuration from a saved package', () => {
+    const restored = restoreBusinessClosureDefinition(JSON.stringify({
+      businessObject: { businessRef: { sourceType: 'API_INPUT' }, typeCode: 'EXPENSE' },
+      closurePolicy: { outcomes: { APPROVED: [{ actionCode: 'update', params: { status: 'APPROVED' } }], REJECTED: [{ actionCode: 'update', params: { status: 'REJECTED' } }] } },
+      flow: { nodes: [{ assignment: { roleCode: 'FINANCE_APPROVER', type: 'ROLE' }, next: [{ condition: 'amount > 5000', target: 'end' }], type: 'APPROVAL' }] },
+      launchPolicy: { allowedStatuses: ['DRAFT'], modes: ['EXISTING_DOCUMENT'], startEffects: [{ actionCode: 'update', params: { status: 'IN_APPROVAL' } }], submitActionCode: 'submit' },
+      name: '费用审批',
+      permissionPolicy: { approveActionCode: 'approve', viewActionCode: 'view' },
+      processKey: 'expense_report',
+    }));
+    expect(restored.typeCode).toBe('EXPENSE');
+    expect(restored.config).toMatchObject({
+      approvedStatus: 'APPROVED',
+      conditionFieldKey: 'amount',
+      conditionOperator: 'GT',
+      conditionValue: '5000',
+      participantType: 'ROLE',
+      participantValue: 'FINANCE_APPROVER',
+      processKey: 'expense_report',
+      rejectedStatus: 'REJECTED',
+    });
+  });
+});
 
 describe('process designer validation', () => {
   it('builds ROLE, USER, and DEPT participant payloads', () => {

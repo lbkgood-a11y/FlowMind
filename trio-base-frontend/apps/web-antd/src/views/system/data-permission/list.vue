@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  LowcodeApi,
   SystemDataPolicyApi,
   SystemOrgApi,
   SystemRoleApi,
@@ -32,6 +33,7 @@ import {
   createDataPolicy,
   deleteDataPolicy,
   getDataPolicies,
+  getFormDataResources,
   getOrgDimensions,
   getOrgTree,
   getRoleList,
@@ -100,8 +102,10 @@ const expandedRoleTreeKeys = ref<Array<number | string>>([
 ]);
 const loading = ref(false);
 const saving = ref(false);
+const resourcesLoading = ref(false);
 const formOpen = ref(false);
 const editingPolicy = ref<SystemDataPolicyApi.DataPolicy>();
+const formDataResources = ref<LowcodeApi.FormDataResource[]>([]);
 
 const formModel = reactive<PolicyFormModel>({
   actionCode: 'QUERY',
@@ -114,13 +118,34 @@ const formModel = reactive<PolicyFormModel>({
   status: 1,
 });
 
-const resourceOptions = [
+const builtInResourceOptions = [
   { label: '用户 USER', value: 'USER' },
   { label: '组织 ORG_UNIT', value: 'ORG_UNIT' },
-  { label: '合同 CONTRACT', value: 'CONTRACT' },
-  { label: '费用 EXPENSE', value: 'EXPENSE' },
-  { label: '订单 ORDER', value: 'ORDER' },
 ];
+
+const resourceOptions = computed(() => [
+  {
+    label: '平台内置资源',
+    options: builtInResourceOptions,
+  },
+  {
+    label: '已发布低代码表单',
+    options: formDataResources.value.map((item) => ({
+      label: `${item.resourceName}（${item.formKey}）`,
+      value: item.resourceCode,
+    })),
+  },
+]);
+
+const resourceLabelMap = computed(() =>
+  new Map([
+    ...builtInResourceOptions.map((item) => [item.value, item.label] as const),
+    ...formDataResources.value.map(
+      (item) =>
+        [item.resourceCode, `${item.resourceName}（${item.formKey}）`] as const,
+    ),
+  ]),
+);
 
 const actionOptions = [
   { label: '查询', value: 'QUERY' },
@@ -232,6 +257,18 @@ async function loadPolicies() {
     policies.value = await getDataPolicies(selectedRoleId.value);
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadDataResources() {
+  resourcesLoading.value = true;
+  try {
+    formDataResources.value = await getFormDataResources();
+  } catch {
+    formDataResources.value = [];
+    message.warning('低代码表单资源加载失败，当前仅展示平台内置资源');
+  } finally {
+    resourcesLoading.value = false;
   }
 }
 
@@ -421,12 +458,16 @@ function roleLabel(roleId: string) {
   return role ? `${role.roleName} (${role.roleCode})` : roleId;
 }
 
+function resourceLabel(resourceCode: string) {
+  return resourceLabelMap.value.get(resourceCode) ?? resourceCode;
+}
+
 watch(selectedRoleId, () => {
   loadPolicies();
 });
 
 onMounted(async () => {
-  await Promise.all([loadRoles(), loadDimensions()]);
+  await Promise.all([loadRoles(), loadDimensions(), loadDataResources()]);
   await loadPolicies();
 });
 </script>
@@ -509,6 +550,12 @@ onMounted(async () => {
                 <template v-if="column.key === 'role'">
                   {{ roleLabel(record.roleId) }}
                 </template>
+                <template v-else-if="column.key === 'resourceCode'">
+                  <div class="resource-cell">
+                    <span>{{ resourceLabel(record.resourceCode) }}</span>
+                    <code>{{ record.resourceCode }}</code>
+                  </div>
+                </template>
                 <template v-else-if="column.key === 'effect'">
                   <Tag :color="record.effect === 'DENY' ? 'red' : 'green'">
                     {{ record.effect }}
@@ -564,7 +611,17 @@ onMounted(async () => {
           <Select v-model:value="formModel.roleId" :options="roleOptions" />
         </FormItem>
         <FormItem label="资源" required>
-          <Select v-model:value="formModel.resourceCode" :options="resourceOptions" />
+          <Select
+            v-model:value="formModel.resourceCode"
+            show-search
+            :loading="resourcesLoading"
+            :options="resourceOptions"
+            option-filter-prop="label"
+            placeholder="选择平台资源或已发布表单"
+          />
+          <div class="field-hint">
+            低代码表单发布后会自动出现在此处，策略通过资源编码绑定真实表单。
+          </div>
         </FormItem>
         <FormItem label="动作" required>
           <Select v-model:value="formModel.actionCode" :options="actionOptions" />
@@ -641,21 +698,21 @@ onMounted(async () => {
 <style scoped>
 .data-permission-page {
   display: flex;
-  min-height: 100%;
   flex-direction: column;
   gap: 8px;
+  min-height: 100%;
 }
 
 .policy-workbench {
   display: flex;
   flex: 1;
-  gap: 8px;
+  gap: var(--erp-panel-gap);
   min-height: 0;
 }
 
 .policy-role-panel {
   display: flex;
-  flex: 0 0 260px;
+  flex: 0 0 var(--erp-master-panel-width);
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
@@ -663,25 +720,25 @@ onMounted(async () => {
 
 .role-tree-header {
   display: flex;
+  gap: 8px;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
   padding-bottom: 6px;
   border-bottom: 1px solid #edf0f5;
 }
 
 .role-tree-header h3 {
   margin: 0;
-  color: #111827;
   font-size: 14px;
   font-weight: 700;
   line-height: 20px;
+  color: #111827;
 }
 
 .role-tree-header span {
-  color: #6b7280;
   font-size: 12px;
   line-height: 18px;
+  color: #6b7280;
 }
 
 .role-tree-toolbar {
@@ -692,8 +749,8 @@ onMounted(async () => {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: transparent;
   font-size: 13px;
+  background: transparent;
 }
 
 .policy-role-panel :deep(.ant-tree-treenode) {
@@ -706,8 +763,8 @@ onMounted(async () => {
   min-height: 26px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   line-height: 26px;
+  white-space: nowrap;
   border-radius: 4px;
 }
 
@@ -717,12 +774,12 @@ onMounted(async () => {
 
 .role-tree-hint {
   flex: 0 0 auto;
-  margin-top: 6px;
   padding-top: 6px;
-  color: #6b7280;
-  border-top: 1px solid #edf0f5;
+  margin-top: 6px;
   font-size: 12px;
   line-height: 18px;
+  color: #6b7280;
+  border-top: 1px solid #edf0f5;
 }
 
 .policy-table-panel {
@@ -735,30 +792,41 @@ onMounted(async () => {
 
 .list-header {
   display: flex;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
   margin-bottom: 8px;
 }
 
 .list-title {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
   min-width: 0;
 }
 
 .list-title h2 {
   margin: 0;
-  color: #111827;
   font-size: 14px;
   font-weight: 700;
+  color: #111827;
 }
 
 .table-shell {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+.resource-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.resource-cell code {
+  font-size: 11px;
+  color: #94a3b8;
 }
 
 .form-grid {
@@ -769,6 +837,13 @@ onMounted(async () => {
 
 .form-wide {
   grid-column: 1 / -1;
+}
+
+.field-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #94a3b8;
 }
 
 .scope-header {

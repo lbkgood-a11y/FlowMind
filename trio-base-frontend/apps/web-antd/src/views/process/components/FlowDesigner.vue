@@ -3,9 +3,8 @@
  * X6 流程设计器核心组件
  * 功能：画布拖拽 + 节点配置 + JSON 双向绑定
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
-import { Button, message, Space, Tooltip } from 'ant-design-vue';
 import {
   Cell,
   Clipboard,
@@ -21,13 +20,20 @@ import {
   Shape,
   Snapline,
 } from '@antv/x6';
+import { Button, message, Space, Tooltip } from 'ant-design-vue';
 
 import {
   buildParticipantAssignment,
-  participantAssignmentValue,
   type ParticipantAssignment,
+  participantAssignmentValue,
   type ParticipantType,
 } from './process-designer';
+
+import '@antv/x6-plugin-dnd/es/index.css';
+import '@antv/x6-plugin-minimap/es/index.css';
+import '@antv/x6-plugin-scroller/es/index.css';
+import '@antv/x6-plugin-selection/es/index.css';
+import '@antv/x6-plugin-snapline/es/index.css';
 
 // ── 节点类型定义 ──
 interface NodeTypeDef {
@@ -40,14 +46,26 @@ interface NodeTypeDef {
   height: number;
 }
 
+const props = withDefaults(
+  defineProps<{
+    modelValue?: string;
+    readonly?: boolean;
+  }>(),
+  { modelValue: '', readonly: false },
+);
+
+const emit = defineEmits<{
+  change: [json: string];
+}>();
+
 const NODE_TYPES: NodeTypeDef[] = [
-  { type: 'START', label: '开始', color: '#8c8c8c', bg: '#fafafa', icon: '▶', width: 50, height: 50 },
-  { type: 'APPROVAL', label: '审批', color: '#1677ff', bg: '#e6f4ff', icon: '📋', width: 160, height: 50 },
-  { type: 'COUNTERSIGN', label: '会签', color: '#722ed1', bg: '#f9f0ff', icon: '👥', width: 160, height: 50 },
-  { type: 'CONDITION', label: '条件', color: '#fa8c16', bg: '#fff7e6', icon: '◇', width: 50, height: 50 },
-  { type: 'NOTIFY', label: '抄送', color: '#52c41a', bg: '#f6ffed', icon: '📧', width: 140, height: 50 },
-  { type: 'SERVICE_TASK', label: '服务任务', color: '#eb2f96', bg: '#fff0f6', icon: '⚙', width: 140, height: 50 },
-  { type: 'END', label: '结束', color: '#ff4d4f', bg: '#fff2f0', icon: '⏹', width: 50, height: 50 },
+  { type: 'START', label: '开始', color: '#8c8c8c', bg: '#fafafa', icon: '▶', width: 40, height: 40 },
+  { type: 'APPROVAL', label: '审批', color: '#1677ff', bg: '#e6f4ff', icon: '📋', width: 128, height: 42 },
+  { type: 'COUNTERSIGN', label: '会签', color: '#722ed1', bg: '#f9f0ff', icon: '👥', width: 128, height: 42 },
+  { type: 'CONDITION', label: '条件', color: '#fa8c16', bg: '#fff7e6', icon: '◇', width: 40, height: 40 },
+  { type: 'NOTIFY', label: '抄送', color: '#52c41a', bg: '#f6ffed', icon: '📧', width: 112, height: 42 },
+  { type: 'SERVICE_TASK', label: '服务任务', color: '#eb2f96', bg: '#fff0f6', icon: '⚙', width: 112, height: 42 },
+  { type: 'END', label: '结束', color: '#ff4d4f', bg: '#fff2f0', icon: '⏹', width: 40, height: 40 },
 ];
 
 const NODE_TYPE_MAP = new Map(NODE_TYPES.map((n) => [n.type, n]));
@@ -60,23 +78,13 @@ interface NodeData {
   conditionExpr?: string;
 }
 
-const emit = defineEmits<{
-  change: [json: string];
-}>();
-
-const props = withDefaults(
-  defineProps<{
-    modelValue?: string;
-    readonly?: boolean;
-  }>(),
-  { modelValue: '', readonly: false },
-);
-
 const containerRef = ref<HTMLDivElement>();
 const selectedNode = ref<NodeData | null>(null);
-const selectedEdge = ref<{ condition: string } | null>(null);
+const selectedEdge = ref<null | { condition: string }>(null);
 const graph = ref<Graph | null>(null);
 let dnd: Dnd | null = null;
+let loadingFromModel = false;
+let lastLoadedModel = '';
 
 // ── 属性面板状态 ──
 const editName = ref('');
@@ -85,6 +93,12 @@ const editAssignmentValue = ref('');
 const editDimensionCode = ref('');
 const editStrategy = ref('ALL');
 const editConditionExpr = ref('');
+const paletteOpen = ref(true);
+const zoomPercent = ref(100);
+
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 2;
+const ZOOM_STEP = 0.1;
 
 const showPropertyPanel = computed(() => !!selectedNode.value || !!selectedEdge.value);
 
@@ -102,7 +116,8 @@ function registerNodes() {
         const name = data?.name || def.label;
         const outer = document.createElement('div');
         outer.style.cssText = `
-          width: 100%; height: 100%;
+          width: ${def.width}px; height: ${def.height}px;
+          box-sizing: border-box;
           border-radius: ${isRound ? '50%' : '6px'};
           border: 2px solid ${def.color};
           background: ${def.bg};
@@ -157,6 +172,7 @@ function createGraph() {
     autoResize: true,
     background: { color: '#fafafa' },
     grid: { visible: true, type: 'doubleMesh' },
+    interacting: () => !props.readonly,
     highlighting: {
       nodeAvailable: { name: 'stroke', args: { padding: 4, attrs: { stroke: '#1677ff', strokeWidth: 2 } } },
     },
@@ -167,6 +183,7 @@ function createGraph() {
       allowBlank: false,
       allowMulti: false,
       allowLoop: false,
+      validateConnection: () => !props.readonly,
       createEdge() {
         return new Edge({
           attrs: { line: { stroke: '#8c8c8c', strokeWidth: 2, targetMarker: { name: 'classic' } } },
@@ -186,14 +203,16 @@ function createGraph() {
   g.use(new MiniMap({ container: document.createElement('div'), width: 200, height: 150 }));
 
   // 快捷键
-  g.bindKey('ctrl+z', () => g.undo());
-  g.bindKey('ctrl+shift+z', () => g.redo());
+  g.bindKey('ctrl+z', () => !props.readonly && g.undo());
+  g.bindKey('ctrl+shift+z', () => !props.readonly && g.redo());
   g.bindKey('ctrl+c', () => {
+    if (props.readonly) return;
     const cells = g.getSelectedCells();
     if (cells.length) g.copy(cells);
   });
-  g.bindKey('ctrl+v', () => g.paste());
+  g.bindKey('ctrl+v', () => !props.readonly && g.paste());
   g.bindKey('delete', () => {
+    if (props.readonly) return;
     const cells = g.getSelectedCells();
     if (cells.length) g.removeCells(cells);
   });
@@ -220,6 +239,10 @@ function createGraph() {
   g.on('blank:click', () => {
     selectedNode.value = null;
     selectedEdge.value = null;
+  });
+
+  g.on('scale', ({ sx }: { sx: number }) => {
+    zoomPercent.value = Math.round(sx * 100);
   });
 
   graph.value = g;
@@ -263,6 +286,7 @@ function createGraph() {
 
 // ── 开始拖拽 ──
 function startDrag(type: string, event: DragEvent) {
+  if (props.readonly) return;
   if (!dnd || !graph.value) return;
   const def = NODE_TYPE_MAP.get(type);
   if (!def) return;
@@ -277,10 +301,25 @@ function startDrag(type: string, event: DragEvent) {
   dnd.start(node, event);
 }
 
+function changeZoom(delta: number) {
+  graph.value?.zoom(delta, { maxScale: MAX_ZOOM, minScale: MIN_ZOOM });
+}
+
+function resetZoom() {
+  graph.value?.zoomTo(1, { maxScale: MAX_ZOOM, minScale: MIN_ZOOM });
+  graph.value?.centerContent();
+}
+
+function fitCanvas() {
+  graph.value?.zoomToFit({ maxScale: 1, minScale: MIN_ZOOM, padding: 36 });
+  graph.value?.centerContent();
+}
+
 // ── 流程包 JSON → 画布 ──
 function loadFromJson(jsonStr: string) {
   if (!graph.value) return;
   const g = graph.value;
+  loadingFromModel = true;
   g.clearCells();
 
   try {
@@ -329,9 +368,13 @@ function loadFromJson(jsonStr: string) {
       });
     });
 
+    g.zoomToFit({ maxScale: 1, padding: 36 });
     g.centerContent();
+    lastLoadedModel = jsonStr;
   } catch {
     message.warning('JSON 解析失败');
+  } finally {
+    loadingFromModel = false;
   }
 }
 
@@ -393,11 +436,15 @@ function toFlowJson(): string {
 }
 
 function emitChange() {
-  emit('change', toFlowJson());
+  if (loadingFromModel || props.readonly) return;
+  const json = toFlowJson();
+  lastLoadedModel = json;
+  emit('change', json);
 }
 
 // ── 属性面板操作 ──
 function applyNodeProps() {
+  if (props.readonly) return;
   if (!selectedNode.value || !graph.value) return;
   const cells = graph.value.getSelectedCells();
   const node = cells.find((c) => c.isNode()) as Node | undefined;
@@ -427,6 +474,7 @@ function applyNodeProps() {
 }
 
 function applyEdgeProps() {
+  if (props.readonly) return;
   if (!selectedEdge.value || !graph.value) return;
   const cells = graph.value.getSelectedCells();
   const edge = cells.find((c) => c.isEdge()) as Edge | undefined;
@@ -454,6 +502,13 @@ onMounted(() => {
   createGraph();
 });
 
+watch(
+  () => props.modelValue,
+  (json) => {
+    if (json && json !== lastLoadedModel && graph.value) loadFromJson(json);
+  },
+);
+
 onUnmounted(() => {
   graph.value?.dispose();
 });
@@ -468,10 +523,25 @@ onUnmounted(() => {
       </div>
       <div class="toolbar-right">
         <Space :size="6">
-          <Tooltip title="撤销 (Ctrl+Z)">
+          <Button v-if="!readonly" size="small" @click="paletteOpen = !paletteOpen">
+            {{ paletteOpen ? '隐藏节点库' : '显示节点库' }}
+          </Button>
+          <Tooltip title="缩小画布">
+            <Button size="small" :disabled="zoomPercent <= MIN_ZOOM * 100" @click="changeZoom(-ZOOM_STEP)">−</Button>
+          </Tooltip>
+          <Tooltip title="恢复 100%">
+            <Button class="zoom-value" size="small" @click="resetZoom">{{ zoomPercent }}%</Button>
+          </Tooltip>
+          <Tooltip title="放大画布">
+            <Button size="small" :disabled="zoomPercent >= MAX_ZOOM * 100" @click="changeZoom(ZOOM_STEP)">＋</Button>
+          </Tooltip>
+          <Tooltip title="适应画布">
+            <Button size="small" @click="fitCanvas">适应</Button>
+          </Tooltip>
+          <Tooltip v-if="!readonly" title="撤销 (Ctrl+Z)">
             <Button size="small" :disabled="!graph?.canUndo()" @click="graph?.undo()">↩ 撤销</Button>
           </Tooltip>
-          <Tooltip title="重做 (Ctrl+Shift+Z)">
+          <Tooltip v-if="!readonly" title="重做 (Ctrl+Shift+Z)">
             <Button size="small" :disabled="!graph?.canRedo()" @click="graph?.redo()">↪ 重做</Button>
           </Tooltip>
           <Tooltip title="居中显示">
@@ -484,7 +554,7 @@ onUnmounted(() => {
     <!-- 主体区域 -->
     <div class="designer-body">
       <!-- 左侧节点面板 -->
-      <div class="node-palette">
+      <div v-if="!readonly && paletteOpen" class="node-palette">
         <div class="palette-title">节点类型</div>
         <div class="palette-list">
           <div
@@ -503,13 +573,13 @@ onUnmounted(() => {
 
       <!-- 中间画布 -->
       <div class="canvas-wrapper">
-        <div ref="containerRef" class="canvas-container" />
+        <div ref="containerRef" class="canvas-container"></div>
         <!-- 小地图 -->
-        <div class="minimap-box" />
+        <div class="minimap-box"></div>
       </div>
 
       <!-- 右侧属性面板 -->
-      <div v-if="showPropertyPanel" class="property-panel">
+      <div v-if="showPropertyPanel && !readonly" class="property-panel">
         <div class="panel-title">属性配置</div>
 
         <!-- 节点属性 -->
@@ -566,20 +636,20 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  overflow: hidden;
 }
 
 .designer-toolbar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid #e5e7eb;
   background: #fafafa;
-  flex-shrink: 0;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .designer-body {
@@ -588,17 +658,22 @@ onUnmounted(() => {
   min-height: 0;
 }
 
+.zoom-value {
+  min-width: 58px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 左侧节点面板 */
 .node-palette {
-  width: 130px;
-  flex-shrink: 0;
-  border-right: 1px solid #e5e7eb;
-  padding: 10px;
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
   gap: 6px;
-  background: #fafafa;
+  width: 130px;
+  padding: 10px;
   overflow-y: auto;
+  background: #fafafa;
+  border-right: 1px solid #e5e7eb;
 }
 
 .palette-title {
@@ -617,31 +692,31 @@ onUnmounted(() => {
 
 .palette-item {
   display: flex;
-  align-items: center;
   gap: 6px;
+  align-items: center;
   padding: 6px 8px;
-  border: 1px solid;
-  border-radius: 4px;
   font-size: 12px;
   cursor: grab;
   user-select: none;
+  border: 1px solid;
+  border-radius: 4px;
   transition: box-shadow 0.1s;
 }
 
 .palette-item:hover {
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
 }
 
 .palette-icon {
-  font-size: 14px;
   width: 18px;
+  font-size: 14px;
   text-align: center;
 }
 
 /* 画布 */
 .canvas-wrapper {
-  flex: 1;
   position: relative;
+  flex: 1;
   min-width: 0;
 }
 
@@ -652,26 +727,26 @@ onUnmounted(() => {
 
 .minimap-box {
   position: absolute;
-  bottom: 12px;
   right: 12px;
+  bottom: 12px;
   width: 200px;
   height: 150px;
+  pointer-events: none;
   border: 1px solid #e5e7eb;
   border-radius: 4px;
-  pointer-events: none;
 }
 
 /* 右侧属性面板 */
 .property-panel {
-  width: 240px;
-  flex-shrink: 0;
-  border-left: 1px solid #e5e7eb;
-  padding: 12px;
-  background: #fafafa;
-  overflow-y: auto;
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
   gap: 12px;
+  width: 240px;
+  padding: 12px;
+  overflow-y: auto;
+  background: #fafafa;
+  border-left: 1px solid #e5e7eb;
 }
 
 .panel-title {
@@ -694,24 +769,24 @@ onUnmounted(() => {
 
 .prop-input {
   padding: 6px 8px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
   font-size: 12px;
   outline: none;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
   transition: border-color 0.15s;
 }
 
 .prop-input:focus {
   border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.08);
+  box-shadow: 0 0 0 2px rgb(22 119 255 / 8%);
 }
 
 .prop-select {
   padding: 6px 8px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
   font-size: 12px;
   outline: none;
   background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
 }
 </style>

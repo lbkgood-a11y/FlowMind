@@ -6,6 +6,7 @@ import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.dto.internal.PublishedFormSnapshotResponse;
 import com.triobase.service.lowcode.dto.CreateFormDefinitionRequest;
+import com.triobase.service.lowcode.dto.FormDataResourceResponse;
 import com.triobase.service.lowcode.dto.FormDefinitionResponse;
 import com.triobase.service.lowcode.dto.FormFieldSchemaRequest;
 import com.triobase.service.lowcode.entity.LcFormDefinition;
@@ -20,6 +21,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 @Service
@@ -94,6 +96,15 @@ public class FormDefinitionService {
         return PageResult.of(all.subList(fromIndex, toIndex), all.size(), page, size);
     }
 
+    public List<FormDataResourceResponse> listPublishedDataResources() {
+        return formDefinitionMapper.selectList(new LambdaQueryWrapper<LcFormDefinition>()
+                        .eq(LcFormDefinition::getStatus, STATUS_PUBLISHED)
+                        .orderByAsc(LcFormDefinition::getName))
+                .stream()
+                .map(this::toDataResource)
+                .toList();
+    }
+
     public FormDefinitionResponse getById(String id) {
         LcFormDefinition definition = formDefinitionMapper.selectById(id);
         if (definition == null) {
@@ -161,6 +172,17 @@ public class FormDefinitionService {
         response.setUiSchemaJson(definition.getUiSchemaJson());
         response.setCreatedBy(definition.getCreatedBy());
         response.setCreatedAt(definition.getCreatedAt());
+        return response;
+    }
+
+    private FormDataResourceResponse toDataResource(LcFormDefinition definition) {
+        FormDataResourceResponse response = new FormDataResourceResponse();
+        response.setResourceCode("FORM:" + definition.getFormKey().trim().toUpperCase(Locale.ROOT));
+        response.setResourceName(definition.getName());
+        response.setResourceType("LOWCODE_FORM");
+        response.setBusinessObjectId(definition.getId());
+        response.setFormKey(definition.getFormKey());
+        response.setVersion(definition.getVersion());
         return response;
     }
 

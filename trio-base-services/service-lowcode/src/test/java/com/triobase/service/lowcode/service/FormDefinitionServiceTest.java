@@ -10,9 +10,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 class FormDefinitionServiceTest {
@@ -46,6 +49,21 @@ class FormDefinitionServiceTest {
                 () -> service.getPublishedSnapshot("FORM001"));
 
         assertEquals("FORM_DEFINITION_NOT_PUBLISHED", exception.getMessage());
+    }
+
+    @Test
+    void listPublishedDataResourcesBuildsStableResourceCode() {
+        LcFormDefinition definition = definition("PUBLISHED");
+        definition.setName("费用报销");
+        when(formDefinitionMapper.selectList(any())).thenReturn(List.of(definition));
+
+        var resources = service.listPublishedDataResources();
+
+        assertEquals(1, resources.size());
+        assertEquals("FORM:EXPENSE", resources.get(0).getResourceCode());
+        assertEquals("费用报销", resources.get(0).getResourceName());
+        assertEquals("LOWCODE_FORM", resources.get(0).getResourceType());
+        assertEquals("FORM001", resources.get(0).getBusinessObjectId());
     }
 
     private LcFormDefinition definition(String status) {

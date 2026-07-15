@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SystemOrgApi } from '#/api';
+import type { SystemOrgApi, SystemUserApi } from '#/api';
 import type { TableProps } from 'ant-design-vue';
 
 import { computed, onMounted, reactive, ref, watch } from 'vue';
@@ -16,6 +16,7 @@ import {
   InputNumber,
   message,
   Popconfirm,
+  Radio,
   Select,
   Space,
   Switch,
@@ -34,6 +35,7 @@ import {
   getOrgTree,
   getOrgUnitUsers,
   getUserOrgAssignments,
+  getUserList,
   saveOrgRelation,
   updateOrgUnit,
 } from '#/api';
@@ -84,6 +86,9 @@ const userIdForAssignment = ref('');
 const assignmentOrgUnitIds = ref<string[]>([]);
 const primaryOrgUnitId = ref<string>();
 const assignmentPosition = ref('');
+const selectedAssignmentUser = ref<SystemUserApi.SystemUser>();
+const userSearchLoading = ref(false);
+const userSearchOptions = ref<Array<{ label: string; value: string }>>([]);
 const selectedOrgUnitId = ref<string>();
 const expandedOrgTreeKeys = ref<Array<number | string>>([]);
 
@@ -179,6 +184,45 @@ const parentOptions = computed(() =>
       value: item.id,
     })),
 );
+const selectedAssignmentOrgOptions = computed(() =>
+  parentOptions.value.filter((item) =>
+    assignmentOrgUnitIds.value.includes(String(item.value)),
+  ),
+);
+
+let userSearchSequence = 0;
+let userSearchTimer: ReturnType<typeof setTimeout> | undefined;
+
+function formatUserOption(user: SystemUserApi.SystemUser) {
+  const contacts = [user.email, user.phone].filter(Boolean).join(' · ');
+  return {
+    label: contacts ? `${user.username}（${contacts}）` : user.username,
+    value: user.id,
+  };
+}
+
+async function searchAssignmentUsers(keyword = '') {
+  const sequence = ++userSearchSequence;
+  userSearchLoading.value = true;
+  try {
+    const result = await getUserList({ keyword: keyword.trim() || undefined, page: 1, size: 20 });
+    if (sequence !== userSearchSequence) {
+      return;
+    }
+    userSearchOptions.value = result.items.map(formatUserOption);
+  } finally {
+    if (sequence === userSearchSequence) {
+      userSearchLoading.value = false;
+    }
+  }
+}
+
+function handleUserSearch(keyword: string) {
+  if (userSearchTimer) {
+    clearTimeout(userSearchTimer);
+  }
+  userSearchTimer = setTimeout(() => searchAssignmentUsers(keyword), 300);
+}
 
 function flattenTree(list: SystemOrgApi.OrgTreeNode[]) {
   const result: SystemOrgApi.OrgTreeNode[] = [];
@@ -423,25 +467,51 @@ async function removeNode(record: SystemOrgApi.OrgTreeNode) {
 
 async function openAssignment(record: SystemOrgApi.OrgTreeNode) {
   userIdForAssignment.value = '';
+  selectedAssignmentUser.value = undefined;
+  userSearchOptions.value = [];
   assignmentOrgUnitIds.value = [record.id];
   primaryOrgUnitId.value = record.id;
   assignmentPosition.value = '';
   assignmentOpen.value = true;
+  await searchAssignmentUsers();
 }
 
 async function loadUserAssignments() {
-  if (!userIdForAssignment.value.trim()) {
-    message.warning('请输入用户ID');
+  const userId = userIdForAssignment.value.trim();
+  if (!userId) {
+    message.warning('请先选择用户');
     return;
   }
-  const assignments = await getUserOrgAssignments(
-    userIdForAssignment.value.trim(),
-    activeDimension.value,
-  );
-  assignmentOrgUnitIds.value = assignments.map((item) => item.orgUnitId);
-  primaryOrgUnitId.value =
-    assignments.find((item) => item.primary)?.orgUnitId ?? assignments[0]?.orgUnitId;
-  assignmentPosition.value = assignments[0]?.positionName ?? '';
+  const assignments = await getUserOrgAssignments(userId, activeDimension.value);
+  if (assignments.length > 0) {
+    assignmentOrgUnitIds.value = assignments.map((item) => item.orgUnitId);
+    primaryOrgUnitId.value =
+      assignments.find((item) => item.primary)?.orgUnitId ?? assignments[0]?.orgUnitId;
+    assignmentPosition.value = assignments[0]?.positionName ?? '';
+    return;
+  }
+
+  assignmentOrgUnitIds.value = selectedOrgUnitId.value ? [selectedOrgUnitId.value] : [];
+  primaryOrgUnitId.value = assignmentOrgUnitIds.value[0];
+  assignmentPosition.value = '';
+}
+
+async function handleAssignmentUserChange(userValue: unknown) {
+  const userId =
+    typeof userValue === 'string' || typeof userValue === 'number'
+      ? String(userValue)
+      : undefined;
+  selectedAssignmentUser.value = undefined;
+  if (!userId) {
+    assignmentOrgUnitIds.value = selectedOrgUnitId.value ? [selectedOrgUnitId.value] : [];
+    primaryOrgUnitId.value = assignmentOrgUnitIds.value[0];
+    assignmentPosition.value = '';
+    return;
+  }
+
+  const result = await getUserList({ page: 1, size: 1, userId });
+  selectedAssignmentUser.value = result.items[0];
+  await loadUserAssignments();
 }
 
 async function submitAssignment() {
@@ -450,7 +520,7 @@ async function submitAssignment() {
     return;
   }
   if (!userIdForAssignment.value.trim()) {
-    message.warning('请输入用户ID');
+    message.warning('请先选择用户');
     return;
   }
   if (assignmentOrgUnitIds.value.length === 0) {
@@ -475,6 +545,16 @@ async function submitAssignment() {
 watch([selectedOrgUnitId, activeDimension], () => {
   loadOrgUsers();
 });
+
+watch(
+  assignmentOrgUnitIds,
+  (orgUnitIds) => {
+    if (!orgUnitIds.includes(primaryOrgUnitId.value ?? '')) {
+      primaryOrgUnitId.value = orgUnitIds[0];
+    }
+  },
+  { deep: true },
+);
 
 onMounted(async () => {
   await loadDimensions();
@@ -757,49 +837,107 @@ onMounted(async () => {
 
     <Drawer
       v-model:open="assignmentOpen"
-      title="用户组织归属"
+      title="配置用户组织归属"
       placement="right"
       width="720"
     >
-      <div class="form-grid">
-        <FormItem label="用户ID" required>
-          <Input
+      <div class="assignment-guide">
+        先搜索并确认要配置的用户，再设置该用户在“{{ activeDimensionName }}”中的组织归属。
+      </div>
+
+      <section class="assignment-section">
+        <div class="assignment-section-title">
+          <span class="assignment-step">1</span>
+          <div>
+            <strong>选择用户</strong>
+            <p>支持按用户名、手机号或邮箱搜索，选择后自动加载已有归属。</p>
+          </div>
+        </div>
+        <FormItem label="用户" required>
+          <Select
             v-model:value="userIdForAssignment"
-            placeholder="请输入用户ID"
-            @press-enter="loadUserAssignments"
+            allow-clear
+            show-search
+            :filter-option="false"
+            :loading="userSearchLoading"
+            :options="userSearchOptions"
+            placeholder="搜索用户名、手机号或邮箱"
+            @change="handleAssignmentUserChange"
+            @search="handleUserSearch"
           />
         </FormItem>
-        <FormItem label="读取归属">
-          <Button :disabled="!userIdForAssignment" @click="loadUserAssignments">
-            加载已有归属
-          </Button>
-        </FormItem>
-        <FormItem class="form-wide" label="组织范围" required>
+
+        <div v-if="selectedAssignmentUser" class="selected-user-card">
+          <div>
+            <strong>{{ selectedAssignmentUser.username }}</strong>
+            <Tag :color="selectedAssignmentUser.status === 1 ? 'green' : 'default'">
+              {{ selectedAssignmentUser.status === 1 ? '启用' : '停用' }}
+            </Tag>
+          </div>
+          <span>
+            {{ selectedAssignmentUser.email || '未填写邮箱' }} ·
+            {{ selectedAssignmentUser.phone || '未填写手机号' }}
+          </span>
+        </div>
+      </section>
+
+      <section class="assignment-section" :class="{ 'is-disabled': !userIdForAssignment }">
+        <div class="assignment-section-title">
+          <span class="assignment-step">2</span>
+          <div>
+            <strong>配置组织</strong>
+            <p>选择用户所属的一个或多个组织。</p>
+          </div>
+        </div>
+        <FormItem label="归属组织" required>
           <Select
             v-model:value="assignmentOrgUnitIds"
+            :disabled="!userIdForAssignment"
             mode="multiple"
             :options="parentOptions"
-            placeholder="请选择组织"
+            placeholder="请选择归属组织"
+            show-search
           />
         </FormItem>
-        <FormItem label="主组织">
-          <Select
+
+        <FormItem label="主组织" required>
+          <Radio.Group
             v-model:value="primaryOrgUnitId"
-            allow-clear
-            :options="
-              parentOptions.filter((item) => assignmentOrgUnitIds.includes(String(item.value)))
-            "
+            class="primary-org-options"
+            :disabled="!userIdForAssignment || assignmentOrgUnitIds.length === 0"
+          >
+            <Radio
+              v-for="option in selectedAssignmentOrgOptions"
+              :key="String(option.value)"
+              :value="String(option.value)"
+            >
+              {{ option.label }}
+            </Radio>
+          </Radio.Group>
+          <div v-if="assignmentOrgUnitIds.length === 0" class="field-hint">
+            请先选择归属组织；首个组织会自动设为主组织。
+          </div>
+        </FormItem>
+
+        <FormItem label="岗位">
+          <Input
+            v-model:value="assignmentPosition"
+            :disabled="!userIdForAssignment"
+            placeholder="例如：部门负责人（选填）"
           />
         </FormItem>
-        <FormItem label="岗位">
-          <Input v-model:value="assignmentPosition" placeholder="例如：部门负责人" />
-        </FormItem>
-      </div>
+      </section>
 
       <template #footer>
         <Space>
           <Button @click="assignmentOpen = false">取消</Button>
-          <Button type="primary" @click="submitAssignment">保存</Button>
+          <Button
+            type="primary"
+            :disabled="!userIdForAssignment || assignmentOrgUnitIds.length === 0"
+            @click="submitAssignment"
+          >
+            保存归属
+          </Button>
         </Space>
       </template>
     </Drawer>
@@ -809,21 +947,21 @@ onMounted(async () => {
 <style scoped>
 .org-page {
   display: flex;
-  min-height: 100%;
   flex-direction: column;
   gap: 8px;
+  min-height: 100%;
 }
 
 .org-workbench {
   display: flex;
   flex: 1;
-  gap: 8px;
+  gap: var(--erp-panel-gap);
   min-height: 0;
 }
 
 .org-tree-panel {
   display: flex;
-  flex: 0 0 260px;
+  flex: 0 0 var(--erp-master-panel-width);
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
@@ -831,45 +969,45 @@ onMounted(async () => {
 
 .org-tree-header {
   display: flex;
+  gap: 8px;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
   padding-bottom: 6px;
   border-bottom: 1px solid #edf0f5;
 }
 
 .org-tree-header h3 {
   margin: 0;
-  color: #111827;
   font-size: 14px;
   font-weight: 700;
   line-height: 20px;
+  color: #111827;
 }
 
 .org-tree-header span {
-  color: #6b7280;
   font-size: 12px;
   line-height: 18px;
+  color: #6b7280;
 }
 
 .org-tree-toolbar {
   display: flex;
-  align-items: center;
   gap: 6px;
+  align-items: center;
   padding: 6px 0;
 }
 
 .dimension-select {
-  min-width: 0;
   flex: 1;
+  min-width: 0;
 }
 
 .org-tree-panel :deep(.ant-tree) {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: transparent;
   font-size: 13px;
+  background: transparent;
 }
 
 .org-tree-panel :deep(.ant-tree-treenode) {
@@ -882,8 +1020,8 @@ onMounted(async () => {
   min-height: 26px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   line-height: 26px;
+  white-space: nowrap;
   border-radius: 4px;
 }
 
@@ -893,12 +1031,12 @@ onMounted(async () => {
 
 .org-tree-hint {
   flex: 0 0 auto;
-  margin-top: 6px;
   padding-top: 6px;
-  color: #6b7280;
-  border-top: 1px solid #edf0f5;
+  margin-top: 6px;
   font-size: 12px;
   line-height: 18px;
+  color: #6b7280;
+  border-top: 1px solid #edf0f5;
 }
 
 .org-table-panel {
@@ -928,24 +1066,24 @@ onMounted(async () => {
 
 .list-header {
   display: flex;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
   margin-bottom: 8px;
 }
 
 .list-title {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
   min-width: 0;
 }
 
 .list-title h2 {
   margin: 0;
-  color: #111827;
   font-size: 14px;
   font-weight: 700;
+  color: #111827;
 }
 
 .table-frame {
@@ -955,8 +1093,8 @@ onMounted(async () => {
 }
 
 .table-frame :deep(.is-current-org-row > td) {
-  background: rgb(230 244 255 / 70%) !important;
   font-weight: 600;
+  background: rgb(230 244 255 / 70%) !important;
 }
 
 .form-grid {
@@ -969,6 +1107,93 @@ onMounted(async () => {
   grid-column: 1 / -1;
 }
 
+.assignment-guide {
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 20px;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.assignment-section {
+  padding: 16px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.assignment-section.is-disabled {
+  background: #fafafa;
+}
+
+.assignment-section-title {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.assignment-section-title strong {
+  font-size: 14px;
+  color: #111827;
+}
+
+.assignment-section-title p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: #6b7280;
+}
+
+.assignment-step {
+  display: inline-flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: #1677ff;
+  border-radius: 50%;
+}
+
+.selected-user-card {
+  padding: 10px 12px;
+  margin-left: 92px;
+  font-size: 12px;
+  color: #64748b;
+  background: #f0f7ff;
+  border: 1px solid #bae0ff;
+  border-radius: 6px;
+}
+
+.selected-user-card > div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 14px;
+  color: #111827;
+}
+
+.primary-org-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-hint {
+  font-size: 12px;
+  line-height: 20px;
+  color: #94a3b8;
+}
+
 @media (max-width: 720px) {
   .org-workbench {
     flex-direction: column;
@@ -977,6 +1202,10 @@ onMounted(async () => {
   .org-tree-panel {
     flex: 0 0 auto;
     max-height: 260px;
+  }
+
+  .selected-user-card {
+    margin-left: 0;
   }
 
   .org-table-panel {

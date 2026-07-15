@@ -12,5 +12,8 @@ public class FormInstanceResponse {
     private String status;
     private String dataJson;
     private String submittedBy;
+    private String processKey;
+    private String processInstanceId;
+    private String workflowStatus;
     private LocalDateTime submittedAt;
 }

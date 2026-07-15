@@ -40,7 +40,7 @@ public class BusinessLaunchRuntimeService {
                                               String operatorId) {
         if (!StringUtils.hasText(pkg.getBusinessBindingSnapshot())
                 || !StringUtils.hasText(pkg.getLaunchPlanJson())) {
-            return BusinessLaunchResult.empty();
+            return legacyBusinessReference(request);
         }
 
         JsonNode binding = readTree(pkg.getBusinessBindingSnapshot(), "INVALID_BUSINESS_BINDING_SNAPSHOT");
@@ -73,6 +73,23 @@ public class BusinessLaunchRuntimeService {
         }
         executeStartEffects(businessType, businessId, launchPlan, request, operatorId);
         return new BusinessLaunchResult(businessType, businessId, launchMode);
+    }
+
+    private BusinessLaunchResult legacyBusinessReference(StartProcessRequest request) {
+        String businessId = firstText(request.getBusinessId(), readBusinessRefFromForm(request));
+        String businessType = normalizeText(request.getBusinessType());
+        if (!StringUtils.hasText(businessId) && !StringUtils.hasText(businessType)) {
+            return BusinessLaunchResult.empty();
+        }
+        if (!StringUtils.hasText(businessId) || !StringUtils.hasText(businessType)) {
+            throw new BizException(40000, "LEGACY_BUSINESS_REFERENCE_INCOMPLETE");
+        }
+        String launchMode = firstText(request.getLaunchMode(), EXISTING_DOCUMENT);
+        return new BusinessLaunchResult(businessType, businessId, launchMode.trim().toUpperCase());
+    }
+
+    private String normalizeText(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private void requireSubmitPermission(JsonNode launchPlan) {

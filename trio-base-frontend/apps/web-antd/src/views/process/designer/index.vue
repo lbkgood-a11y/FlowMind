@@ -2,10 +2,13 @@
 import type { ProcessApi } from '#/api/process';
 
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 
 import {
+  Alert,
   Button,
   Empty,
   Form,
@@ -17,6 +20,7 @@ import {
   RadioGroup,
   Select,
   Space,
+  Spin,
   Tag,
 } from 'ant-design-vue';
 
@@ -24,28 +28,53 @@ import {
   createProcessPackage,
   getBusinessObjectCatalog,
   getBusinessObjectCatalogList,
+  getProcessPackageById,
+  updateProcessPackage,
 } from '#/api/process';
 
 import FlowDesigner from '../components/FlowDesigner.vue';
 import {
-  businessActionDisplayName,
   buildBusinessClosureProcessDefinition,
-  businessClosureCompletionChecks,
-  businessClosureValidationIssues,
   buildSafeCondition,
-  catalogFormFields,
-  participantDisplayName,
-  validateProcessDefinition,
+  businessActionDisplayName,
+  businessClosureCompletionChecks,
   type BusinessClosureDesignerConfig,
+  businessClosureValidationIssues,
+  catalogFormFields,
+  existingProcessDesignerMode,
+  participantDisplayName,
   type ParticipantType,
+  restoreBusinessClosureDefinition,
+  validateProcessDefinition,
 } from '../components/process-designer';
 
 const loadingCatalog = ref(false);
+const loadingPackage = ref(false);
 const saving = ref(false);
 const technicalPreviewOpen = ref(false);
+const configPanelOpen = ref(true);
+const previewPanelOpen = ref(true);
 const businessObjects = ref<ProcessApi.BusinessObjectSummary[]>([]);
 const catalog = ref<ProcessApi.BusinessObjectCatalog>();
 const flowJson = ref('');
+const existingPackage = ref<ProcessApi.ProcessPackage>();
+const loadError = ref('');
+const catalogError = ref('');
+const route = useRoute();
+const router = useRouter();
+const { hasAccessByCodes } = useAccess();
+const packageId = computed(() => String(route.query.packageId ?? '').trim());
+const canUpdate = computed(() =>
+  hasAccessByCodes(['/api/v1/process-packages/*:PUT']),
+);
+const designerMode = computed(() =>
+  existingProcessDesignerMode(existingPackage.value?.status, canUpdate.value),
+);
+const readOnly = computed(() => designerMode.value.readOnly);
+const canvasReadOnly = computed(() => readOnly.value || Boolean(catalogError.value));
+const canSave = computed(() =>
+  !loadError.value && !catalogError.value && designerMode.value.canSave,
+);
 
 const config = reactive<BusinessClosureDesignerConfig>({
   agentActionCode: undefined,
@@ -206,12 +235,14 @@ function actionOptionsByType(actionType: string) {
     }));
 }
 
-async function loadBusinessObjects() {
+async function loadBusinessObjects(preferredTypeCode?: string) {
   loadingCatalog.value = true;
   try {
     businessObjects.value = await getBusinessObjectCatalogList();
-    if (!catalog.value && businessObjects.value[0]) {
-      await handleBusinessObjectChange(businessObjects.value[0].typeCode);
+    const selectedType = preferredTypeCode
+      ?? businessObjects.value[0]?.typeCode;
+    if (selectedType) {
+      await handleBusinessObjectChange(selectedType);
     }
   } finally {
     loadingCatalog.value = false;
@@ -345,19 +376,86 @@ async function handleSaveAsPackage() {
   }
   saving.value = true;
   try {
-    await createProcessPackage({
-      category: 'business',
-      name: config.name.trim(),
-      processJson: generatedJson.value,
-      processKey: config.processKey.trim(),
-    });
-    message.success('流程包已保存');
+    if (existingPackage.value) {
+      await updateProcessPackage(existingPackage.value.id, {
+        category: existingPackage.value.category,
+        description: existingPackage.value.description,
+        name: config.name.trim(),
+        processJson: generatedJson.value,
+      });
+      message.success('流程草稿已保存');
+      existingPackage.value = await getProcessPackageById(existingPackage.value.id);
+    } else {
+      await createProcessPackage({
+        category: 'business',
+        name: config.name.trim(),
+        processJson: generatedJson.value,
+        processKey: config.processKey.trim(),
+      });
+      message.success('流程包已保存');
+    }
   } finally {
     saving.value = false;
   }
 }
 
-onMounted(loadBusinessObjects);
+async function initializeDesigner() {
+  if (!packageId.value) {
+    try {
+      await loadBusinessObjects();
+    } catch {
+      catalogError.value = '业务对象目录加载失败，暂时无法新建设计';
+      message.error(catalogError.value);
+    }
+    return;
+  }
+  loadingPackage.value = true;
+  loadError.value = '';
+  try {
+    const loaded = await getProcessPackageById(packageId.value);
+    existingPackage.value = loaded;
+    flowJson.value = loaded.processJson;
+    const restored = restoreBusinessClosureDefinition(loaded.processJson);
+    Object.assign(
+      config,
+      Object.fromEntries(
+        Object.entries(restored.config).filter(([, value]) => value !== undefined),
+      ),
+      {
+        name: restored.config.name || loaded.name,
+        processKey: restored.config.processKey || loaded.processKey,
+      },
+    );
+    try {
+      await loadBusinessObjects(restored.typeCode);
+      Object.assign(
+        config,
+        Object.fromEntries(
+          Object.entries(restored.config).filter(([, value]) => value !== undefined),
+        ),
+        {
+          name: restored.config.name || loaded.name,
+          processKey: restored.config.processKey || loaded.processKey,
+        },
+      );
+    } catch {
+      catalogError.value = '关联业务对象目录不可用，当前仍可只读查看流程图';
+      message.warning(catalogError.value);
+    }
+  } catch {
+    existingPackage.value = undefined;
+    loadError.value = '流程包加载失败或已不存在';
+    message.error(loadError.value);
+  } finally {
+    loadingPackage.value = false;
+  }
+}
+
+function backToPackages() {
+  void router.push({ name: 'ProcessPackage' });
+}
+
+onMounted(initializeDesigner);
 </script>
 
 <template>
@@ -366,17 +464,52 @@ onMounted(loadBusinessObjects);
       <div class="designer-header">
         <div>
           <h2>流程设计器</h2>
-          <div class="designer-subtitle">{{ catalog?.object.displayName || '业务对象' }}</div>
+          <div class="designer-subtitle">
+            {{ catalog?.object.displayName || '业务对象' }}
+            <template v-if="existingPackage">
+              · v{{ existingPackage.version }}
+              <Tag :color="existingPackage.status === 'DRAFT' ? 'default' : existingPackage.status === 'PUBLISHED' ? 'success' : 'warning'">
+                {{ existingPackage.status === 'DRAFT' ? '草稿' : existingPackage.status === 'PUBLISHED' ? '已发布' : '已下架' }}
+              </Tag>
+            </template>
+          </div>
         </div>
         <Space>
+          <Button @click="configPanelOpen = !configPanelOpen">
+            {{ configPanelOpen ? '隐藏业务配置' : '显示业务配置' }}
+          </Button>
+          <Button @click="previewPanelOpen = !previewPanelOpen">
+            {{ previewPanelOpen ? '隐藏流程预览' : '显示流程预览' }}
+          </Button>
+          <Button v-if="packageId" @click="backToPackages">返回流程包</Button>
           <Button @click="technicalPreviewOpen = true">技术预览</Button>
-          <Button :loading="saving" type="primary" @click="handleSaveAsPackage">保存流程包</Button>
+          <Button v-if="canSave" :loading="saving" type="primary" @click="handleSaveAsPackage">
+            {{ existingPackage ? '保存草稿' : '保存流程包' }}
+          </Button>
         </Space>
       </div>
 
-      <div class="designer-grid">
-        <section class="config-panel">
-          <Form layout="vertical" size="small">
+      <Empty v-if="loadError" :description="loadError">
+        <Button type="primary" @click="backToPackages">返回流程包管理</Button>
+      </Empty>
+
+      <Spin v-else :spinning="loadingPackage" class="designer-loading">
+      <Alert
+        v-if="catalogError"
+        class="catalog-alert"
+        :message="catalogError"
+        show-icon
+        type="warning"
+      />
+      <div
+        class="designer-grid"
+        :class="{
+          'config-collapsed': !configPanelOpen,
+          'preview-collapsed': !previewPanelOpen,
+        }"
+      >
+        <section v-if="configPanelOpen" class="config-panel">
+          <Form :disabled="canvasReadOnly" layout="vertical" size="small">
             <div class="config-section">
               <div class="section-title">业务对象</div>
               <FormItem label="对象">
@@ -527,10 +660,10 @@ onMounted(loadBusinessObjects);
         </section>
 
         <section class="canvas-panel">
-          <FlowDesigner @change="handleFlowChange" />
+          <FlowDesigner :model-value="flowJson" :readonly="canvasReadOnly" @change="handleFlowChange" />
         </section>
 
-        <section class="preview-panel">
+        <section v-if="previewPanelOpen" class="preview-panel">
           <div class="viz-block">
             <div class="section-title">单据状态图</div>
             <div class="status-chain">
@@ -594,6 +727,7 @@ onMounted(loadBusinessObjects);
           <Empty v-if="!catalog" :image="Empty.PRESENTED_IMAGE_SIMPLE" />
         </section>
       </div>
+      </Spin>
     </div>
 
     <Modal v-model:open="technicalPreviewOpen" :footer="null" title="技术预览" width="840">
@@ -606,8 +740,8 @@ onMounted(loadBusinessObjects);
 .business-designer {
   display: flex;
   flex-direction: column;
-  height: 100%;
   gap: 10px;
+  height: 100%;
   padding: 12px;
 }
 
@@ -626,30 +760,58 @@ onMounted(loadBusinessObjects);
 
 .designer-subtitle {
   margin-top: 3px;
-  color: #64748b;
   font-size: 12px;
+  color: #64748b;
+}
+
+.designer-loading {
+  flex: 1;
+  min-height: 0;
+}
+
+.designer-loading :deep(.ant-spin-container) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.catalog-alert {
+  flex: 0 0 auto;
+  margin-bottom: 8px;
 }
 
 .designer-grid {
   display: grid;
+  flex: 1;
   grid-template-columns: 300px minmax(520px, 1fr) 340px;
   gap: 10px;
   min-height: 0;
-  flex: 1;
+}
+
+.designer-grid.config-collapsed {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+.designer-grid.preview-collapsed {
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+
+.designer-grid.config-collapsed.preview-collapsed {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .config-panel,
 .canvas-panel,
 .preview-panel {
   min-height: 0;
-  border: 1px solid #e5e7eb;
   background: #fff;
+  border: 1px solid #e5e7eb;
 }
 
 .config-panel,
 .preview-panel {
-  overflow: auto;
   padding: 12px;
+  overflow: auto;
 }
 
 .canvas-panel {
@@ -663,16 +825,16 @@ onMounted(loadBusinessObjects);
 
 .section-title {
   margin-bottom: 8px;
-  color: #334155;
   font-size: 13px;
   font-weight: 600;
+  color: #334155;
 }
 
 .status-chain {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 6px;
+  align-items: center;
 }
 
 .check-list,
@@ -686,16 +848,16 @@ onMounted(loadBusinessObjects);
   grid-template-columns: 82px 1fr;
   gap: 6px;
   align-items: center;
-  color: #475569;
   font-size: 12px;
   line-height: 1.5;
+  color: #475569;
 }
 
 .issue-list {
   margin-top: 8px;
-  color: #b45309;
   font-size: 12px;
   line-height: 1.5;
+  color: #b45309;
 }
 
 .chain-arrow {
@@ -705,9 +867,9 @@ onMounted(loadBusinessObjects);
 .action-chain {
   display: grid;
   gap: 6px;
-  color: #334155;
   font-size: 12px;
   line-height: 1.6;
+  color: #334155;
 }
 
 .permission-grid {
@@ -722,21 +884,21 @@ onMounted(loadBusinessObjects);
 }
 
 .permission-grid strong {
-  color: #111827;
   font-weight: 500;
+  color: #111827;
 }
 
 .json-preview {
   max-height: 560px;
-  overflow: auto;
   padding: 12px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
+  white-space: pre-wrap;
   background: #f8fafc;
   border: 1px solid #e5e7eb;
   border-radius: 4px;
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
 }
 
 @media (max-width: 1280px) {

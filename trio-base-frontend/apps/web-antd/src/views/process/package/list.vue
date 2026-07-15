@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { TableProps } from 'ant-design-vue';
+
 import type { LowcodeApi } from '#/api/lowcode';
 import type { ProcessApi } from '#/api/process';
 
 import { computed, h, onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
@@ -26,6 +28,7 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
+import { getFormDefinitionList } from '#/api/lowcode';
 import {
   createProcessPackage,
   createProcessPackageVersion,
@@ -35,7 +38,6 @@ import {
   publishProcessPackage,
   updateProcessPackage,
 } from '#/api/process';
-import { getFormDefinitionList } from '#/api/lowcode';
 
 import { validateProcessDefinition } from '../components/process-designer';
 
@@ -52,6 +54,7 @@ const PERMISSIONS = {
 } as const;
 
 const { hasAccessByCodes } = useAccess();
+const router = useRouter();
 const canQuery = computed(() => hasAccessByCodes([PERMISSIONS.query]));
 const canCreate = computed(() => hasAccessByCodes([PERMISSIONS.create]));
 const canUpdate = computed(() => hasAccessByCodes([PERMISSIONS.update]));
@@ -120,7 +123,7 @@ const columns: TableProps['columns'] = [
   },
   { dataIndex: 'description', key: 'description', title: '描述', width: 200, ellipsis: true },
   { dataIndex: 'updatedAt', key: 'updatedAt', title: '更新时间', width: 180, align: 'center' },
-  { key: 'action', title: '操作', width: 280, align: 'center', fixed: 'right' },
+  { key: 'action', title: '操作', width: 350, align: 'center', fixed: 'right' },
 ];
 
 async function loadRecords(page = pagination.current) {
@@ -256,6 +259,13 @@ function openPreview(record: ProcessPackageItem) {
   jsonPreviewOpen.value = true;
 }
 
+function openDesigner(record: ProcessPackageItem) {
+  void router.push({
+    name: 'ProcessDesigner',
+    query: { packageId: record.id },
+  });
+}
+
 function onPageChange(page: number, pageSize: number) {
   pagination.pageSize = pageSize;
   loadRecords(page);
@@ -298,6 +308,9 @@ onMounted(loadFormDefinitions);
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'action'">
                 <Space>
+                  <Button size="small" type="link" @click="openDesigner(record as ProcessPackageItem)">
+                    {{ record.status === 'DRAFT' && canUpdate ? '设计' : '查看设计图' }}
+                  </Button>
                   <Button size="small" type="link" @click="openPreview(record as ProcessPackageItem)">预览</Button>
                   <Button v-if="record.status === 'DRAFT' && canUpdate" size="small" type="link" @click="openEdit(record as ProcessPackageItem)">编辑</Button>
                   <Button v-if="record.status === 'DRAFT' && canPublish" size="small" type="link" @click="handlePublish(record as ProcessPackageItem)">发布</Button>
@@ -344,11 +357,13 @@ onMounted(loadFormDefinitions);
           <Input v-model:value="formModel.name" placeholder="如 费用报销" />
         </FormItem>
         <FormItem label="分类">
-          <Select v-model:value="formModel.category" :options="[
+          <Select
+v-model:value="formModel.category" :options="[
             { label: '审批流', value: 'approval' },
             { label: '业务流', value: 'business' },
             { label: '集成流', value: 'integration' },
-          ]" />
+          ]"
+/>
         </FormItem>
         <FormItem label="描述">
           <Textarea v-model:value="formModel.description" placeholder="流程说明" :rows="2" />
@@ -384,13 +399,13 @@ onMounted(loadFormDefinitions);
 <style scoped>
 .json-preview {
   max-height: 500px;
-  overflow: auto;
   padding: 12px;
-  background: #f5f5f5;
-  border-radius: 4px;
+  overflow: auto;
   font-size: 12px;
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-all;
+  white-space: pre-wrap;
+  background: #f5f5f5;
+  border-radius: 4px;
 }
 </style>

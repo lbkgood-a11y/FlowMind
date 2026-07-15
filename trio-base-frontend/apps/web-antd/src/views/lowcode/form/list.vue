@@ -198,7 +198,7 @@ async function submitForm() {
 
 async function handlePublish(id: string) {
   await publishFormDefinition(id);
-  message.success('表单已发布，可挂载到流程');
+  message.success('表单已发布，可挂载到流程并配置数据权限');
   await loadRecords();
 }
 
@@ -356,7 +356,7 @@ onMounted(() => loadRecords(1));
 }
 
 .table-total {
-  color: #606b7b;
   font-size: 13px;
+  color: #606b7b;
 }
 </style>

@@ -1096,9 +1096,8 @@ onMounted(async () => {
 
 .query-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(280px, 1fr));
-  column-gap: 12px;
-  row-gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
   align-items: center;
 }
 
@@ -1122,14 +1121,15 @@ onMounted(async () => {
 
 .query-actions {
   display: flex;
-  justify-content: flex-end;
+  grid-column: -2 / -1;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .list-panel {
   display: flex;
-  flex-direction: column;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
   padding: 8px;
 }
@@ -1143,15 +1143,15 @@ onMounted(async () => {
 
 .list-title {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
 }
 
 .list-header h2 {
   margin: 0;
-  color: #111827;
   font-size: 14px;
   font-weight: 700;
+  color: #111827;
 }
 
 .column-setting-trigger.is-active {
@@ -1195,9 +1195,9 @@ onMounted(async () => {
 }
 
 .list-panel :deep(.ant-table-thead > tr > th) {
-  background: #f5f5f5;
-  color: #2b3340;
   font-weight: 600;
+  color: #2b3340;
+  background: #f5f5f5;
 }
 
 .table-frame :deep(.ant-empty) {
@@ -1213,8 +1213,8 @@ onMounted(async () => {
 }
 
 .table-total {
-  color: #111827;
   font-size: 13px;
+  color: #111827;
 }
 
 :global(.user-column-popover .ant-popover-inner) {
@@ -1232,8 +1232,8 @@ onMounted(async () => {
   align-items: center;
   height: 32px;
   padding: 0 14px;
-  color: #3164f4;
   font-weight: 600;
+  color: #3164f4;
 }
 
 .column-setting-list {
@@ -1243,10 +1243,10 @@ onMounted(async () => {
 .column-setting-item {
   display: grid;
   grid-template-columns: 18px 18px 1fr 24px 24px;
+  column-gap: 4px;
   align-items: center;
   height: 26px;
   padding: 0 12px;
-  column-gap: 4px;
   font-size: 14px;
 }
 
@@ -1307,12 +1307,12 @@ onMounted(async () => {
 
 .drawer-section-header {
   display: flex;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
   margin-bottom: 8px;
-  color: #111827;
   font-size: 13px;
+  color: #111827;
 }
 
 @media (max-width: 1100px) {
@@ -1327,8 +1327,5 @@ onMounted(async () => {
     grid-template-columns: 1fr;
   }
 
-  .query-actions {
-    justify-content: flex-start;
-  }
 }
 </style>

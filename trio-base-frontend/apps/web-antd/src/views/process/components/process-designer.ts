@@ -75,6 +75,108 @@ export interface BusinessClosureCheck {
   ok: boolean;
 }
 
+export interface RestoredBusinessClosureDefinition {
+  config: Partial<BusinessClosureDesignerConfig>;
+  typeCode?: string;
+}
+
+export function existingProcessDesignerMode(
+  status: string | undefined,
+  canUpdate: boolean,
+) {
+  const existing = Boolean(status);
+  const readOnly = existing && status !== 'DRAFT';
+  return {
+    canSave: !existing || (status === 'DRAFT' && canUpdate),
+    readOnly,
+  };
+}
+
+export function restoreBusinessClosureDefinition(
+  processJson: string,
+): RestoredBusinessClosureDefinition {
+  try {
+    const root = JSON.parse(processJson);
+    const launch = root?.launchPolicy ?? {};
+    const permissions = root?.permissionPolicy ?? {};
+    const businessRef = root?.businessObject?.businessRef ?? launch?.businessRef ?? {};
+    const approved = root?.closurePolicy?.outcomes?.APPROVED ?? [];
+    const rejected = root?.closurePolicy?.outcomes?.REJECTED ?? [];
+    const approvedStatusEffect = approved.find((item: any) => item?.params?.status);
+    const rejectedStatusEffect = rejected.find((item: any) => item?.params?.status);
+    const approvedEvent = approved.find((item: any) => item?.eventCode);
+    const rejectedEvent = rejected.find((item: any) => item?.eventCode);
+    const notify = approved.find(
+      (item: any) => item?.actionCode && !item?.params?.status,
+    );
+    const agent = approved.find((item: any) => item?.agentActionCode);
+    const approvalNode = root?.flow?.nodes?.find(
+      (item: any) => item?.type === 'APPROVAL' || item?.type === 'COUNTERSIGN',
+    );
+    const assignment = approvalNode?.assignment as ParticipantAssignment | undefined;
+    const condition = root?.flow?.nodes
+      ?.flatMap((item: any) => item?.next ?? [])
+      .map((item: any) => item?.condition)
+      .find((item: unknown) => typeof item === 'string' && item !== 'true');
+    const parsedCondition = parseCondition(String(condition ?? ''));
+    return {
+      config: {
+        agentActionCode: agent?.agentActionCode,
+        allowedStatuses: Array.isArray(launch.allowedStatuses)
+          ? launch.allowedStatuses
+          : undefined,
+        approvedEventCode: approvedEvent?.eventCode,
+        approvedStatus: approvedStatusEffect?.params?.status,
+        approveActionCode: permissions.approveActionCode,
+        businessRefContextKey: businessRef.contextKey,
+        businessRefFieldKey: businessRef.fieldKey,
+        businessRefFixedValue: businessRef.fixedValue,
+        businessRefSourceType: businessRef.sourceType,
+        conditionFieldKey: parsedCondition?.fieldKey,
+        conditionOperator: parsedCondition?.operator,
+        conditionValue: parsedCondition?.value,
+        createActionCode: launch.createActionCode,
+        launchMode: launch.modes?.[0],
+        name: root?.name,
+        notifyActionCode: notify?.actionCode,
+        participantDimensionCode: assignment?.dimensionCode,
+        participantType: assignment?.type,
+        participantValue: participantAssignmentValue(assignment),
+        processKey: root?.processKey,
+        rejectedEventCode: rejectedEvent?.eventCode,
+        rejectedStatus: rejectedStatusEffect?.params?.status,
+        retryClosureActionCode: permissions.retryClosureActionCode,
+        startStatus: launch.startEffects?.[0]?.params?.status,
+        submitActionCode: launch.submitActionCode ?? permissions.submitActionCode,
+        updateStatusActionCode:
+          approvedStatusEffect?.actionCode ?? launch.startEffects?.[0]?.actionCode,
+        viewActionCode: permissions.viewActionCode,
+      },
+      typeCode: root?.businessObject?.typeCode ?? launch?.businessObjectType,
+    };
+  } catch {
+    return { config: {} };
+  }
+}
+
+function parseCondition(condition: string) {
+  const match = condition.match(/^\s*([\w.]+)\s*(==|!=|>=|<=|>|<)\s*(.+?)\s*$/);
+  if (!match) return undefined;
+  const operator = {
+    '!=': 'NE',
+    '<': 'LT',
+    '<=': 'LTE',
+    '==': 'EQ',
+    '>': 'GT',
+    '>=': 'GTE',
+  }[match[2]!] as ConditionOperator;
+  return {
+    fieldKey: match[1],
+    operator,
+    value: match[3]?.replace(/^['"]|['"]$/g, ''),
+  };
+}
+
 const SUPPORTED_NODE_TYPES = new Set([
   'APPROVAL',
   'COUNTERSIGN',

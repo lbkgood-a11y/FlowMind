@@ -43,6 +43,7 @@ const routes: RouteRecordRaw[] = [
         path: 'designer',
         name: 'ProcessDesigner',
         meta: {
+          hideInMenu: true,
           icon: 'mdi:vector-polyline-edit',
           title: $t('process.designer.title'),
         },

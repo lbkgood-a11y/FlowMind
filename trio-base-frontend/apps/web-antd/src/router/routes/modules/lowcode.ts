@@ -21,6 +21,15 @@ const routes: RouteRecordRaw[] = [
         },
         component: () => import('#/views/lowcode/form/list.vue'),
       },
+      {
+        path: 'expense',
+        name: 'LowcodeExpense',
+        meta: {
+          icon: 'mdi:receipt-text-edit-outline',
+          title: '费用报销',
+        },
+        component: () => import('#/views/lowcode/expense/list.vue'),
+      },
     ],
   },
 ];

@@ -1023,9 +1023,8 @@ onMounted(() => {
 
 .query-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(260px, 1fr));
-  column-gap: 12px;
-  row-gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
   align-items: center;
 }
 
@@ -1036,13 +1035,13 @@ onMounted(() => {
 .role-workbench {
   display: flex;
   flex: 1;
-  gap: 8px;
+  gap: var(--erp-panel-gap);
   min-height: 0;
 }
 
 .role-tree-panel {
   display: flex;
-  flex: 0 0 238px;
+  flex: 0 0 var(--erp-master-panel-width);
   flex-direction: column;
   min-height: 0;
   padding: 8px;
@@ -1053,9 +1052,9 @@ onMounted(() => {
 
 .role-tree-header {
   display: flex;
+  gap: 8px;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
   min-height: 38px;
   padding-bottom: 6px;
   border-bottom: 1px solid #edf0f5;
@@ -1063,16 +1062,16 @@ onMounted(() => {
 
 .role-tree-header h3 {
   margin: 0;
-  color: #111827;
   font-size: 14px;
   font-weight: 700;
   line-height: 20px;
+  color: #111827;
 }
 
 .role-tree-header span {
-  color: #6b7280;
   font-size: 12px;
   line-height: 18px;
+  color: #6b7280;
 }
 
 .role-tree-panel :deep(.ant-tree) {
@@ -1080,8 +1079,8 @@ onMounted(() => {
   min-height: 0;
   margin-top: 6px;
   overflow: auto;
-  background: transparent;
   font-size: 13px;
+  background: transparent;
 }
 
 .role-tree-panel :deep(.ant-tree-treenode) {
@@ -1102,12 +1101,12 @@ onMounted(() => {
 
 .role-tree-hint {
   flex: 0 0 auto;
-  margin-top: 6px;
   padding-top: 6px;
-  color: #6b7280;
-  border-top: 1px solid #edf0f5;
+  margin-top: 6px;
   font-size: 12px;
   line-height: 18px;
+  color: #6b7280;
+  border-top: 1px solid #edf0f5;
 }
 
 .query-grid :deep(.ant-form-item-label) {
@@ -1122,14 +1121,15 @@ onMounted(() => {
 
 .query-actions {
   display: flex;
-  justify-content: flex-end;
+  grid-column: -2 / -1;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .list-panel {
   display: flex;
-  flex-direction: column;
   flex: 1;
+  flex-direction: column;
   width: 0;
   min-height: 0;
   padding: 8px;
@@ -1144,15 +1144,15 @@ onMounted(() => {
 
 .list-title {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
 }
 
 .list-header h2 {
   margin: 0;
-  color: #111827;
   font-size: 14px;
   font-weight: 700;
+  color: #111827;
 }
 
 .column-setting-trigger.is-active {
@@ -1185,9 +1185,9 @@ onMounted(() => {
 }
 
 .table-frame :deep(.ant-table-thead > tr > th) {
-  background: #f5f5f5;
-  color: #2b3340;
   font-weight: 600;
+  color: #2b3340;
+  background: #f5f5f5;
 }
 
 .table-frame :deep(.ant-table-cell) {
@@ -1200,8 +1200,8 @@ onMounted(() => {
 
 .role-name-cell {
   display: inline-flex;
-  align-items: center;
   gap: 6px;
+  align-items: center;
 }
 
 .table-footer {
@@ -1213,8 +1213,8 @@ onMounted(() => {
 }
 
 .table-total {
-  color: #111827;
   font-size: 13px;
+  color: #111827;
 }
 
 .role-form :deep(.ant-form-item-label) {
@@ -1257,8 +1257,8 @@ onMounted(() => {
   align-items: center;
   height: 32px;
   padding: 0 14px;
-  color: #3164f4;
   font-weight: 600;
+  color: #3164f4;
 }
 
 .column-setting-list {
@@ -1268,10 +1268,10 @@ onMounted(() => {
 .column-setting-item {
   display: grid;
   grid-template-columns: 18px 18px 1fr;
+  column-gap: 4px;
   align-items: center;
   height: 28px;
   padding: 0 12px;
-  column-gap: 4px;
   font-size: 14px;
 }
 
@@ -1326,14 +1326,10 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .query-actions {
-    justify-content: flex-start;
-  }
-
   .table-footer {
-    align-items: flex-start;
     flex-direction: column;
     gap: 8px;
+    align-items: flex-start;
   }
 }
 </style>
