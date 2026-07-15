@@ -40,6 +40,8 @@ import type {
 } from '@vben/common-ui';
 import type { Sortable } from '@vben/hooks';
 import type { Recordable } from '@vben/types';
+
+import type PagedSelectSfc from '#/components/business/paged-select.vue';
 import type UserSelectSfc from '#/components/business/user-select.vue';
 
 import {
@@ -130,6 +132,9 @@ const Upload = defineAsyncComponent(() => import('ant-design-vue/es/upload'));
 const Image = defineAsyncComponent(() => import('ant-design-vue/es/image'));
 const PreviewGroup = defineAsyncComponent(() =>
   import('ant-design-vue/es/image').then((res) => res.ImagePreviewGroup),
+);
+const PagedSelect = defineAsyncComponent(
+  () => import('#/components/business/paged-select.vue'),
 );
 const UserSelect = defineAsyncComponent(
   () => import('#/components/business/user-select.vue'),
@@ -616,6 +621,7 @@ export type ComponentType =
   | 'InputNumber'
   | 'InputPassword'
   | 'Mentions'
+  | 'PagedSelect'
   | 'PrimaryButton'
   | 'Radio'
   | 'RadioGroup'
@@ -627,8 +633,8 @@ export type ComponentType =
   | 'Textarea'
   | 'TimePicker'
   | 'TreeSelect'
-  | 'UserSelect'
   | 'Upload'
+  | 'UserSelect'
   | BaseFormComponentType;
 
 /**
@@ -650,6 +656,7 @@ export interface ComponentPropsMap {
   InputNumber: InputNumberProps;
   InputPassword: InputProps;
   Mentions: MentionsProps;
+  PagedSelect: InstanceType<typeof PagedSelectSfc>['$props'];
   PrimaryButton: ButtonProps;
   Radio: RadioProps;
   RadioGroup: RadioGroupProps;
@@ -713,6 +720,7 @@ async function initComponentAdapter() {
     }),
     InputPassword: withDefaultPlaceholder(InputPassword, 'input'),
     Mentions: withDefaultPlaceholder(Mentions, 'input'),
+    PagedSelect: withDefaultPlaceholder(PagedSelect, 'select'),
     // 自定义主要按钮
     PrimaryButton: (props, { attrs, slots }) => {
       return h(Button, { ...props, attrs, type: 'primary' }, slots);

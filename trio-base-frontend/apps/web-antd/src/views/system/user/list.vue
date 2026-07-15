@@ -1,7 +1,8 @@
 <script lang="ts" setup>
-import type { SystemOrgApi, SystemRoleApi, SystemUserApi } from '#/api';
 import type { TableProps } from 'ant-design-vue';
 import type { Dayjs } from 'dayjs';
+
+import type { SystemOrgApi, SystemRoleApi, SystemUserApi } from '#/api';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -43,11 +44,13 @@ import {
   getOrgDimensions,
   getOrgTree,
   getRoleList,
-  getUserOrgAssignments,
+  getRolePage,
   getUserList,
+  getUserOrgAssignments,
   updateUser,
   updateUserStatus,
 } from '#/api';
+import { PagedSelect } from '#/components/business';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
 
 const RangePicker = DatePicker.RangePicker;
@@ -172,12 +175,6 @@ const formModel = reactive<UserFormModel>({
   username: '',
 });
 
-const roleOptions = computed(() =>
-  roles.value.map((role) => ({
-    label: `${role.roleName} (${role.roleCode})`,
-    value: role.id,
-  })),
-);
 const roleLabelMap = computed(
   () => new Map(roles.value.map((role) => [role.roleCode, role.roleName])),
 );
@@ -259,6 +256,19 @@ async function loadRoles() {
     return;
   }
   roles.value = await getRoleList({ status: 1 });
+}
+
+function fetchActiveRolePage(params: { keyword?: string; page?: number; size?: number }) {
+  return getRolePage({
+    keyword: params.keyword,
+    page: params.page,
+    size: params.size,
+    status: 1,
+  });
+}
+
+function formatRoleOptionLabel(role: Record<string, any>) {
+  return `${role.roleName} (${role.roleCode})`;
 }
 
 function buildOrgTree(list: SystemOrgApi.OrgTreeNode[]) {
@@ -949,11 +959,16 @@ onMounted(async () => {
           </RadioGroup>
         </FormItem>
         <FormItem v-if="canQueryRoles" label="角色">
-          <Select
+          <PagedSelect
             v-model:value="formModel.roleIds"
             mode="multiple"
             placeholder="选择角色"
-            :options="roleOptions"
+            :api="fetchActiveRolePage"
+            :label-fn="formatRoleOptionLabel"
+            :selected-options="roles"
+            result-field="items"
+            total-field="total"
+            value-field="id"
           />
         </FormItem>
 

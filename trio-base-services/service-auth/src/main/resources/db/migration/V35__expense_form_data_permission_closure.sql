@@ -1,5 +1,16 @@
 -- Expense form closed loop: published form fixture, menu permissions and baseline data policies.
 
+-- 兼容已有表缺少审计列的情况（lc_form_definition/lc_form_field_definition 由 lowcode 模块创建）
+ALTER TABLE IF EXISTS lc_form_definition
+    ADD COLUMN IF NOT EXISTS created_by VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS updated_by VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE IF EXISTS lc_form_field_definition
+    ADD COLUMN IF NOT EXISTS created_by VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS updated_by VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
 CREATE TABLE IF NOT EXISTS lc_form_definition (
     id             VARCHAR(32) PRIMARY KEY,
     form_key       VARCHAR(128) NOT NULL,
