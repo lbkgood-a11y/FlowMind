@@ -1,4 +1,5 @@
 # TrioBase Harness CI Pipeline — 铁律门禁
+# Build/runtime target: Java 25 LTS
 pipeline:
   name: TrioBase CI Gate
   identifier: triobase_ci_gate

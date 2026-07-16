@@ -22,6 +22,7 @@
         <module>service-tenant</module>
         <module>service-billing</module>
         <module>service-lowcode</module>
+        <module>service-openapi</module>
         <module>service-workflow-engine</module>
     </modules>
 

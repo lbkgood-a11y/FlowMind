@@ -1,0 +1,85 @@
+server:
+  port: ${OPENAPI_SERVICE_PORT:8088}
+  shutdown: graceful
+
+spring:
+  application:
+    name: service-openapi
+  config:
+    import: optional:nacos:${spring.application.name}.yml
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  datasource:
+    url: ${OPENAPI_DB_URL:jdbc:postgresql://localhost:5433/triobase}
+    username: ${OPENAPI_DB_USERNAME:triobase}
+    password: ${OPENAPI_DB_PASSWORD:triobase123}
+    driver-class-name: org.postgresql.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+  flyway:
+    enabled: ${OPENAPI_FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+    table: flyway_schema_history_openapi
+    validate-on-migrate: true
+    baseline-on-migrate: true
+    baseline-version: 0
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+  cloud:
+    nacos:
+      discovery:
+        enabled: ${NACOS_ENABLED:false}
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+      config:
+        enabled: ${NACOS_ENABLED:false}
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        file-extension: yml
+  temporal:
+    namespace: ${TEMPORAL_NAMESPACE:default}
+    connection:
+      target: ${TEMPORAL_TARGET:127.0.0.1:7233}
+    workers-auto-discovery:
+      packages:
+        - com.triobase.service.openapi
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_uuid
+
+triobase:
+  openapi:
+    runtime:
+      enabled: ${OPENAPI_RUNTIME_ENABLED:false}
+    retention:
+      execution-days: ${OPENAPI_EXECUTION_RETENTION_DAYS:180}
+      diagnostic-body-days: ${OPENAPI_DIAGNOSTIC_BODY_RETENTION_DAYS:7}
+    temporal:
+      task-queue: ${spring.application.name}
+    credentials:
+      provider: ${OPENAPI_CREDENTIAL_PROVIDER:local}
+      vault:
+        address: ${VAULT_ADDR:http://localhost:8200}
+        token: ${VAULT_TOKEN:}
+
+logging:
+  level:
+    root: INFO
+    com.triobase.service.openapi: DEBUG
+    io.temporal: INFO
