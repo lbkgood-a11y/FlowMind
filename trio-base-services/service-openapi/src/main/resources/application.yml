@@ -39,6 +39,7 @@ spring:
         file-extension: yml
   temporal:
     namespace: ${TEMPORAL_NAMESPACE:default}
+    start-workers: ${TEMPORAL_WORKERS_ENABLED:false}
     connection:
       target: ${TEMPORAL_TARGET:127.0.0.1:7233}
     workers-auto-discovery:
@@ -72,11 +73,15 @@ triobase:
       diagnostic-body-days: ${OPENAPI_DIAGNOSTIC_BODY_RETENTION_DAYS:7}
     temporal:
       task-queue: ${spring.application.name}
+      max-concurrent-activities: ${OPENAPI_TEMPORAL_MAX_CONCURRENT_ACTIVITIES:100}
+      max-concurrent-workflow-tasks: ${OPENAPI_TEMPORAL_MAX_CONCURRENT_WORKFLOW_TASKS:50}
     credentials:
       provider: ${OPENAPI_CREDENTIAL_PROVIDER:local}
       vault:
         address: ${VAULT_ADDR:http://localhost:8200}
         token: ${VAULT_TOKEN:}
+    policy:
+      signing-secret-reference: ${OPENAPI_POLICY_SIGNING_SECRET_REFERENCE:policy-signing}
 
 logging:
   level:

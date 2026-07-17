@@ -27,7 +27,15 @@ public class MybatisPlusConfig {
             "oa_release_snapshot",
             "oa_idempotency_record",
             "oa_execution",
-            "oa_audit_event"
+            "oa_audit_event",
+            "oa_api_scope",
+            "oa_api_product",
+            "oa_application",
+            "oa_application_client",
+            "oa_asset_approval",
+            "oa_product_subscription",
+            "oa_traffic_policy_version",
+            "oa_policy_enforcement_state"
     );
 
     @Bean

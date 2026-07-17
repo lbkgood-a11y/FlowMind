@@ -1,5 +1,4 @@
-# TrioBase Harness CI Pipeline — 铁律门禁
-# Build/runtime target: Java 25 LTS
+# TrioBase CI quality gate. Build/runtime baseline: Java 21 and Node 22.18+.
 pipeline:
   name: TrioBase CI Gate
   identifier: triobase_ci_gate
@@ -12,40 +11,39 @@ pipeline:
           execution:
             steps:
               - step:
-                  name: Checkstyle
+                  name: Compile and unit/integration tests
                   type: Run
                   spec:
-                    command: mvn checkstyle:check -pl trio-base-services
-              - step:
-                  name: Unit Test + Jacoco Coverage
-                  type: Run
-                  spec:
-                    command: mvn verify -pl trio-base-services,trio-base-data
+                    command: mvn -B -ntp -pl trio-base-platform/platform-gateway,trio-base-services/service-openapi -am verify
                     reports:
                       - type: JUnit
-                        paths:
-                          - "**/target/surefire-reports/*.xml"
+                        paths: ["**/target/surefire-reports/*.xml"]
               - step:
-                  name: ArchUnit Gate
+                  name: OpenAPI architecture migration and contract gates
                   type: Run
                   spec:
-                    command: mvn test -pl trio-base-common/common-archunit -Dtest=TemporalDeterministicRuleTest,FeignCallScopeRuleTest,ActivityRetryPolicyRuleTest
+                    command: bash cicd/scripts/verify-openapi-contract.sh
               - step:
-                  name: SonarQube Scan
+                  name: OpenAPI delivery acceptance
                   type: Run
                   spec:
-                    command: mvn sonar:sonar -Dsonar.projectKey=triobase -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.token=${SONAR_TOKEN}
+                    command: bash cicd/scripts/verify-openapi-acceptance.sh
               - step:
-                  name: Frontend Lint + Type Check
+                  name: JaCoCo report and SonarQube gate
                   type: Run
                   spec:
-                    command: cd trio-base-frontend && npm run lint && npm run type-check
+                    command: mvn jacoco:report sonar:sonar -Dsonar.projectKey=triobase -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.token=${SONAR_TOKEN}
               - step:
-                  name: Frontend Build
+                  name: Dependency and secret security scan
                   type: Run
                   spec:
-                    command: cd trio-base-frontend && npm run build
+                    command: trivy fs --exit-code 1 --severity HIGH,CRITICAL --scanners vuln,secret --skip-dirs trio-base-frontend/node_modules .
+              - step:
+                  name: Frontend lint type check and build
+                  type: Run
+                  spec:
+                    command: cd trio-base-frontend && pnpm lint && pnpm typecheck && pnpm build
         failure:
           - type: Pipeline
             action: Block
-            message: "铁律门禁未通过，部署已阻止。请检查 CI 报告并修复违规项。"
+            message: "Quality gate failed; public OpenAPI routes remain disabled."

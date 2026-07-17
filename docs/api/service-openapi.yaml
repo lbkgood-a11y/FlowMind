@@ -1,0 +1,133 @@
+openapi: 3.1.0
+info:
+  title: TrioBase Governed OpenAPI Integration Service
+  version: 0.1.0
+  license:
+    name: Proprietary
+servers:
+  - url: /api/v1/openapi
+security:
+  - applicationCredential: []
+paths:
+  /runtime/{routeKey}:
+    parameters:
+      - $ref: '#/components/parameters/RouteKey'
+    post:
+      operationId: invokeSynchronousRoute
+      summary: Invoke an eligible synchronous integration route
+      responses:
+        '200': { description: Successful canonical response }
+        '409': { description: Route requires orchestration }
+  /runtime/{routeKey}/orchestrations:
+    parameters:
+      - $ref: '#/components/parameters/RouteKey'
+    post:
+      operationId: startOrchestration
+      summary: Start or attach to a durable orchestration
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, maxLength: 256 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payload]
+              properties: { payload: {} }
+      responses:
+        '200': { description: Execution reference }
+        '429': { description: Active workflow capacity exhausted }
+  /runtime/orchestrations/{executionId}:
+    get:
+      operationId: getOrchestrationStatus
+      summary: Query orchestration status
+      parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
+      responses:
+        '200': { description: Execution status }
+        '404': { description: Execution not found }
+  /runtime/orchestrations/{executionId}/result:
+    get:
+      operationId: getOrchestrationResult
+      summary: Query orchestration result
+      parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
+      responses:
+        '200': { description: Sanitized result }
+        '404': { description: Execution not found }
+  /runtime/orchestrations/{executionId}/cancel:
+    post:
+      operationId: cancelOrchestration
+      summary: Request deterministic cancellation and compensation
+      parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
+      responses:
+        '200': { description: Cancellation accepted }
+        '409': { description: Execution cannot be cancelled }
+  /callbacks/{callbackKey}:
+    post:
+      operationId: receivePartnerCallback
+      security:
+        - callbackSignature: []
+      summary: Receive a signed, versioned partner callback
+      parameters:
+        - name: callbackKey
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-Signature-Timestamp
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-Signature-Nonce
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-Signature
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        '202': { description: Durably accepted or idempotent duplicate }
+        '401': { description: Invalid signature or expired timestamp }
+        '429': { description: Callback quota exceeded }
+  /management/executions:
+    get:
+      operationId: searchExecutions
+      summary: Search tenant-scoped integration executions
+      responses:
+        '200': { description: Paged execution summaries }
+        '403': { description: Permission denied }
+  /management/callback-quarantine:
+    get:
+      operationId: listCallbackQuarantine
+      summary: List quarantined callbacks
+      responses:
+        '200': { description: Quarantined callback records }
+        '403': { description: Permission denied }
+components:
+  securitySchemes:
+    applicationCredential:
+      type: apiKey
+      in: header
+      name: X-Client-Credential
+      description: Gateway-authenticated application credential plus active subscription and policy.
+    callbackSignature:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: HMAC or RSA signature validated with timestamp and nonce replay protection.
+  parameters:
+    RouteKey:
+      name: routeKey
+      in: path
+      required: true
+      schema: { type: string }
+    ExecutionId:
+      name: executionId
+      in: path
+      required: true
+      schema: { type: string }

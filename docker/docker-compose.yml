@@ -82,6 +82,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   temporal-web:
     image: temporalio/web:2.33.0
@@ -98,6 +103,57 @@ services:
     container_name: triobase-redis
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  openapi-migrate:
+    image: flyway/flyway:10.20.1
+    profiles: ["openapi"]
+    command:
+      - -url=jdbc:postgresql://postgres:5432/triobase
+      - -user=triobase
+      - -password=triobase123
+      - -locations=filesystem:/flyway/sql
+      - -table=flyway_schema_history_openapi
+      - -validateMigrationNaming=true
+      - migrate
+    volumes:
+      - ../trio-base-services/service-openapi/src/main/resources/db/migration:/flyway/sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  service-openapi:
+    profiles: ["openapi"]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service-openapi
+    container_name: triobase-service-openapi
+    environment:
+      OPENAPI_DB_URL: jdbc:postgresql://postgres:5432/triobase
+      OPENAPI_DB_USERNAME: triobase
+      OPENAPI_DB_PASSWORD: triobase123
+      OPENAPI_FLYWAY_ENABLED: "false"
+      REDIS_HOST: redis
+      NACOS_ENABLED: "true"
+      NACOS_SERVER_ADDR: nacos:8848
+      TEMPORAL_TARGET: temporal:7233
+      TEMPORAL_WORKERS_ENABLED: "true"
+      OPENAPI_RUNTIME_ENABLED: "false"
+    ports:
+      - "8089:8088"
+    depends_on:
+      openapi-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
 
   jaeger:
     image: jaegertracing/all-in-one:1.63
@@ -144,3 +200,4 @@ volumes:
   neo4j-data:
   kafka-data:
   ch-data:
+  redis-data:

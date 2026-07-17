@@ -11,6 +11,7 @@ import com.triobase.service.openapi.domain.enums.AssetLifecycleState;
 import com.triobase.service.openapi.domain.enums.AuthenticationType;
 import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
 import com.triobase.service.openapi.dto.ConnectorVersionResponse;
+import com.triobase.service.openapi.dto.ConnectorVersionMutationRequest;
 import com.triobase.service.openapi.dto.CreateConnectorRequest;
 import com.triobase.service.openapi.infrastructure.mapper.ConnectorEndpointMapper;
 import com.triobase.service.openapi.infrastructure.mapper.ConnectorVersionMapper;
@@ -86,6 +87,59 @@ public class ConnectorRegistryService {
     }
 
     @Transactional
+    public ConnectorVersionResponse createDraft(String connectorId, ConnectorVersionMutationRequest request) {
+        ConnectorEndpoint endpoint = requireEndpoint(connectorId);
+        if (endpoint.getLifecycleState() != AssetLifecycleState.ACTIVE) {
+            throw new BizException(40932, "OPENAPI_CONNECTOR_ARCHIVED");
+        }
+        validate(request);
+        targetPolicy.validate(request.baseUrl(), request.networkPolicy());
+        if (versionMapper.selectCount(new LambdaQueryWrapper<ConnectorVersion>()
+                .eq(ConnectorVersion::getConnectorEndpointId, connectorId)
+                .eq(ConnectorVersion::getLifecycleState, VersionLifecycleState.DRAFT)) > 0) {
+            throw new BizException(40932, "OPENAPI_CONNECTOR_DRAFT_ALREADY_EXISTS");
+        }
+        ConnectorVersion latest = versionMapper.selectOne(new LambdaQueryWrapper<ConnectorVersion>()
+                .eq(ConnectorVersion::getConnectorEndpointId, connectorId)
+                .orderByDesc(ConnectorVersion::getVersionNumber)
+                .last("LIMIT 1"));
+        ConnectorVersion version = new ConnectorVersion();
+        version.setId(UlidGenerator.nextUlid());
+        version.setConnectorEndpointId(connectorId);
+        version.setVersionNumber(latest == null ? 1 : latest.getVersionNumber() + 1);
+        version.setLifecycleState(VersionLifecycleState.DRAFT);
+        apply(version, request);
+        LocalDateTime now = LocalDateTime.now();
+        version.setRowVersion(0L);
+        version.setCreatedBy(currentOperator());
+        version.setCreatedAt(now);
+        version.setUpdatedBy(currentOperator());
+        version.setUpdatedAt(now);
+        versionMapper.insert(version);
+        auditService.success("CONNECTOR_DRAFT_CREATED", "CONNECTOR_VERSION", version.getId(),
+                JsonNodeFactory.instance.objectNode().put("connectorId", connectorId));
+        return toResponse(endpoint, version);
+    }
+
+    @Transactional
+    public ConnectorVersionResponse updateDraft(String versionId, ConnectorVersionMutationRequest request) {
+        validate(request);
+        ConnectorVersion version = requireVersion(versionId);
+        ConnectorEndpoint endpoint = requireEndpoint(version.getConnectorEndpointId());
+        requireDraft(version);
+        targetPolicy.validate(request.baseUrl(), request.networkPolicy());
+        apply(version, request);
+        version.setUpdatedBy(currentOperator());
+        version.setUpdatedAt(LocalDateTime.now());
+        if (versionMapper.updateById(version) != 1) {
+            throw new BizException(40931, "OPENAPI_CONNECTOR_VERSION_CONFLICT");
+        }
+        auditService.success("CONNECTOR_DRAFT_UPDATED", "CONNECTOR_VERSION", versionId,
+                JsonNodeFactory.instance.objectNode());
+        return toResponse(endpoint, version);
+    }
+
+    @Transactional
     public ConnectorVersionResponse publish(String versionId) {
         ConnectorVersion version = requireVersion(versionId);
         ConnectorEndpoint endpoint = requireEndpoint(version.getConnectorEndpointId());
@@ -104,6 +158,53 @@ public class ConnectorRegistryService {
         auditService.success("CONNECTOR_PUBLISHED", "CONNECTOR_VERSION", versionId,
                 JsonNodeFactory.instance.objectNode());
         return toResponse(endpoint, version);
+    }
+
+    @Transactional
+    public ConnectorVersionResponse deprecate(String versionId) {
+        ConnectorVersion version = requireVersion(versionId);
+        ConnectorEndpoint endpoint = requireEndpoint(version.getConnectorEndpointId());
+        if (version.getLifecycleState() != VersionLifecycleState.PUBLISHED) {
+            throw new BizException(40931, "OPENAPI_ONLY_PUBLISHED_CONNECTOR_CAN_BE_DEPRECATED");
+        }
+        version.setLifecycleState(VersionLifecycleState.DEPRECATED);
+        touch(version);
+        versionMapper.updateById(version);
+        auditService.success("CONNECTOR_DEPRECATED", "CONNECTOR_VERSION", versionId,
+                JsonNodeFactory.instance.objectNode());
+        return toResponse(endpoint, version);
+    }
+
+    @Transactional
+    public ConnectorVersionResponse archiveVersion(String versionId) {
+        ConnectorVersion version = requireVersion(versionId);
+        ConnectorEndpoint endpoint = requireEndpoint(version.getConnectorEndpointId());
+        if (version.getLifecycleState() == VersionLifecycleState.PUBLISHED) {
+            throw new BizException(40931, "OPENAPI_PUBLISHED_CONNECTOR_MUST_BE_DEPRECATED_FIRST");
+        }
+        version.setLifecycleState(VersionLifecycleState.ARCHIVED);
+        touch(version);
+        versionMapper.updateById(version);
+        auditService.success("CONNECTOR_VERSION_ARCHIVED", "CONNECTOR_VERSION", versionId,
+                JsonNodeFactory.instance.objectNode());
+        return toResponse(endpoint, version);
+    }
+
+    @Transactional
+    public void archiveConnector(String connectorId) {
+        ConnectorEndpoint endpoint = requireEndpoint(connectorId);
+        if (versionMapper.selectCount(new LambdaQueryWrapper<ConnectorVersion>()
+                .eq(ConnectorVersion::getConnectorEndpointId, connectorId)
+                .in(ConnectorVersion::getLifecycleState,
+                        VersionLifecycleState.DRAFT, VersionLifecycleState.PUBLISHED)) > 0) {
+            throw new BizException(40932, "OPENAPI_CONNECTOR_HAS_ACTIVE_VERSIONS");
+        }
+        endpoint.setLifecycleState(AssetLifecycleState.ARCHIVED);
+        endpoint.setUpdatedBy(currentOperator());
+        endpoint.setUpdatedAt(LocalDateTime.now());
+        endpointMapper.updateById(endpoint);
+        auditService.success("CONNECTOR_ARCHIVED", "CONNECTOR", connectorId,
+                JsonNodeFactory.instance.objectNode());
     }
 
     public ConnectorVersionResponse getVersion(String versionId) {
@@ -125,6 +226,44 @@ public class ConnectorRegistryService {
                 && !StringUtils.hasText(request.secretReference()))) {
             throw new BizException(40031, "OPENAPI_CONNECTOR_REQUEST_INVALID");
         }
+    }
+
+    private void validate(ConnectorVersionMutationRequest request) {
+        if (request == null || !StringUtils.hasText(request.baseUrl())
+                || !StringUtils.hasText(request.operationPath()) || !request.operationPath().startsWith("/")
+                || request.operationPath().contains("..") || !StringUtils.hasText(request.httpMethod())
+                || !METHODS.contains(request.httpMethod().toUpperCase(Locale.ROOT))
+                || request.timeoutMillis() <= 0 || request.timeoutMillis() > 120_000
+                || request.responseSizeLimit() <= 0 || request.responseSizeLimit() > 50L * 1024 * 1024
+                || request.operationClass() == null || request.authenticationType() == null
+                || (request.authenticationType() != AuthenticationType.NONE
+                && !StringUtils.hasText(request.secretReference()))) {
+            throw new BizException(40031, "OPENAPI_CONNECTOR_REQUEST_INVALID");
+        }
+    }
+
+    private void apply(ConnectorVersion version, ConnectorVersionMutationRequest request) {
+        version.setBaseUrl(request.baseUrl());
+        version.setOperationPath(request.operationPath());
+        version.setHttpMethod(request.httpMethod().toUpperCase(Locale.ROOT));
+        version.setTimeoutMillis(request.timeoutMillis());
+        version.setOperationClass(request.operationClass());
+        version.setAuthenticationType(request.authenticationType());
+        version.setSecretReference(request.secretReference());
+        version.setNetworkPolicy(request.networkPolicy() == null
+                ? JsonNodeFactory.instance.objectNode() : request.networkPolicy().deepCopy());
+        version.setResponseSizeLimit(request.responseSizeLimit());
+    }
+
+    private void requireDraft(ConnectorVersion version) {
+        if (version.getLifecycleState() != VersionLifecycleState.DRAFT) {
+            throw new BizException(40931, "OPENAPI_PUBLISHED_CONNECTOR_IMMUTABLE");
+        }
+    }
+
+    private void touch(ConnectorVersion version) {
+        version.setUpdatedBy(currentOperator());
+        version.setUpdatedAt(LocalDateTime.now());
     }
 
     private ConnectorVersion requireVersion(String id) {

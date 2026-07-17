@@ -478,7 +478,8 @@ public class MenuService {
         if (TYPE_LINK.equals(menuType)) {
             return "/external/" + toRoutePathSegment(normalizeRouteName(menu));
         }
-        return null;
+        String routeName = normalizeRouteName(menu);
+        return routeName != null ? "/" + toRoutePathSegment(routeName) : null;
     }
 
     private String toRoutePathSegment(String value) {

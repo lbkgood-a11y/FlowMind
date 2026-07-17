@@ -1,0 +1,42 @@
+{
+  "publicRuntimeEnabled": false,
+  "application": {
+    "applicationKey": "pilot-erp",
+    "tenantId": "tenant-pilot",
+    "environment": "PROD",
+    "clientKey": "pilot-erp-prod",
+    "state": "ACTIVE",
+    "credential": {
+      "type": "HMAC",
+      "secretReference": "vault:openapi/pilot-erp/prod"
+    }
+  },
+  "product": {
+    "productKey": "pilot-order-integration",
+    "version": "1.0.0",
+    "subscriptionState": "ACTIVE",
+    "scopes": ["orders.read", "orders.write"]
+  },
+  "canonicalContracts": [
+    {"key": "triobase.order-query", "version": 1, "state": "PUBLISHED"},
+    {"key": "triobase.order-command", "version": 1, "state": "PUBLISHED"},
+    {"key": "triobase.order-result-callback", "version": 1, "state": "PUBLISHED"}
+  ],
+  "routes": [
+    {
+      "routeKey": "pilot.orders.get",
+      "mode": "SYNCHRONOUS",
+      "operationClass": "READ_ONLY",
+      "timeoutMillis": 400,
+      "storedContractTests": ["query-mapping-valid", "query-response-valid"]
+    },
+    {
+      "routeKey": "pilot.orders.submit",
+      "mode": "ORCHESTRATED",
+      "operationClass": "STATE_CHANGING",
+      "steps": ["transform", "invoke", "wait-callback", "finalize"],
+      "callbackKey": "cb_pilot_order_result",
+      "storedContractTests": ["command-mapping-valid", "callback-mapping-valid", "compensation-valid"]
+    }
+  ]
+}

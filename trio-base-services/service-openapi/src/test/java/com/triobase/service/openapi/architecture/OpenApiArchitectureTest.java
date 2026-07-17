@@ -13,6 +13,12 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
         importOptions = ImportOption.DoNotIncludeTests.class)
 class OpenApiArchitectureTest {
 
+    @org.junit.jupiter.api.Test
+    void temporalWorkflowsRemainDeterministicAndFreeOfIo() {
+        com.triobase.common.archunit.TemporalDeterministicRule.verify(
+                "com.triobase.service.openapi.temporal");
+    }
+
     @ArchTest
     static final ArchRule REST_CONTROLLERS_STAY_IN_CONTROLLER_PACKAGE = classes()
             .that().areAnnotatedWith(RestController.class)

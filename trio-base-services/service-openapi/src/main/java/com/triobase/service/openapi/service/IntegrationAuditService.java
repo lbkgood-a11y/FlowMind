@@ -27,6 +27,10 @@ public class IntegrationAuditService {
         record(action, resourceType, resourceId, "DENIED", reason, JsonNodeFactory.instance.objectNode());
     }
 
+    public void failure(String action, String resourceType, String resourceId, String reason, JsonNode summary) {
+        record(action, resourceType, resourceId, "FAILED", reason, summary);
+    }
+
     private void record(
             String action,
             String resourceType,

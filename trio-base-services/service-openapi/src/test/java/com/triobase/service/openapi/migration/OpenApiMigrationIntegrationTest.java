@@ -24,7 +24,7 @@ class OpenApiMigrationIntegrationTest extends PostgreSqlIntegrationTestSupport {
 
         MigrateResult result = flyway.migrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(4);
+        assertThat(result.migrationsExecuted).isEqualTo(8);
         try (Connection connection = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              Statement statement = connection.createStatement();
@@ -32,7 +32,7 @@ class OpenApiMigrationIntegrationTest extends PostgreSqlIntegrationTestSupport {
                      "SELECT count(*) FROM information_schema.tables "
                              + "WHERE table_schema = 'public' AND table_name LIKE 'oa_%'")) {
             assertThat(resultSet.next()).isTrue();
-            assertThat(resultSet.getInt(1)).isGreaterThanOrEqualTo(20);
+            assertThat(resultSet.getInt(1)).isGreaterThanOrEqualTo(41);
         }
     }
 }

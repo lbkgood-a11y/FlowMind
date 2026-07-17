@@ -2,8 +2,10 @@ package com.triobase.common.core.result;
 
 import com.triobase.common.core.exception.ErrorCode;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
+@NoArgsConstructor
 public class R<T> {
 
     private int code;

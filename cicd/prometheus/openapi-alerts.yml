@@ -1,0 +1,40 @@
+groups:
+  - name: triobase-openapi
+    rules:
+      - alert: OpenApiPolicyLag
+        expr: triobase_openapi_policy_lag > 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "OpenAPI enforcement point has policy drift" }
+      - alert: OpenApiApplicationDenialSpike
+        expr: increase(triobase_openapi_application_denials[5m]) > 20
+        labels: { severity: warning }
+        annotations: { summary: "External application denials increased" }
+      - alert: OpenApiRouteFailureRate
+        expr: triobase_openapi_route_failures > 10
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Integration route failures are elevated" }
+      - alert: OpenApiCallbackBacklog
+        expr: triobase_openapi_callback_backlog > 100
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "Callback signal backlog is growing" }
+      - alert: OpenApiCallbackQuarantine
+        expr: triobase_openapi_callback_quarantine > 20
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Callbacks require operator resolution" }
+      - alert: OpenApiPartnerFailures
+        expr: triobase_openapi_partner_failures > 20
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Partner endpoint failures are elevated" }
+      - alert: OpenApiCompensationFailure
+        expr: triobase_openapi_compensation_failures > 0
+        labels: { severity: critical }
+        annotations: { summary: "At least one orchestration compensation failed" }
+      - alert: OpenApiCacheErrors
+        expr: increase(triobase_openapi_cache_error_total[5m]) > 5
+        labels: { severity: warning }
+        annotations: { summary: "Compiled release cache is unstable" }

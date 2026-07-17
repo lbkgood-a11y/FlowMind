@@ -76,7 +76,7 @@ spring:
 auth:
   service:
     url: ${AUTH_SERVICE_URL:http://localhost:8081}
-  whitelist-paths: /api/v1/auth/**,/health,/actuator/**
+  whitelist-paths: /api/v1/auth/**,/api/v1/openapi/runtime/**,/api/v1/openapi/callbacks/**,/health,/actuator/**
 
 triobase:
   openapi:
