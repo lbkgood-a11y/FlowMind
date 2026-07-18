@@ -67,6 +67,19 @@ public class ProcessPackageService {
         return toResponse(pkg);
     }
 
+    public boolean hasPublishedPackage(String processKey, Integer version) {
+        if (!StringUtils.hasText(processKey)) {
+            return false;
+        }
+        LambdaQueryWrapper<ProcessPackage> wrapper = new LambdaQueryWrapper<ProcessPackage>()
+                .eq(ProcessPackage::getProcessKey, processKey.trim())
+                .eq(ProcessPackage::getStatus, STATUS_PUBLISHED);
+        if (version != null) {
+            wrapper.eq(ProcessPackage::getVersion, version);
+        }
+        return processPackageMapper.selectCount(wrapper) > 0;
+    }
+
     @Transactional
     public ProcessPackageResponse create(CreateProcessPackageRequest request) {
         if (!StringUtils.hasText(request.getProcessKey())
@@ -323,7 +336,16 @@ public class ProcessPackageService {
 
     private FormSnapshot loadPublishedFormSnapshot(String formDefinitionId) {
         R<PublishedFormSnapshotResponse> response = lowcodeFormClient.getPublishedForm(formDefinitionId);
-        if (response == null || response.getCode() != 0 || response.getData() == null) {
+        if (response == null) {
+            throw new BizException(50200, "PUBLISHED_FORM_SNAPSHOT_UNAVAILABLE");
+        }
+        if (response.getCode() != 0) {
+            String message = StringUtils.hasText(response.getMessage())
+                    ? response.getMessage()
+                    : "PUBLISHED_FORM_SNAPSHOT_UNAVAILABLE";
+            throw new BizException(response.getCode(), message);
+        }
+        if (response.getData() == null) {
             throw new BizException(50200, "PUBLISHED_FORM_SNAPSHOT_UNAVAILABLE");
         }
         PublishedFormSnapshotResponse form = response.getData();

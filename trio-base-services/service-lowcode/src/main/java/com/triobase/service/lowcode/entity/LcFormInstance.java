@@ -11,7 +11,10 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 @TableName("lc_form_instance")
 public class LcFormInstance extends BaseEntity {
+    private String tenantId;
     private String formDefinitionId;
+    private Integer formDefinitionVersion;
+    private String schemaHash;
     private String formKey;
     private String status;
     private String dataJson;
@@ -19,5 +22,8 @@ public class LcFormInstance extends BaseEntity {
     private String processKey;
     private String processInstanceId;
     private String workflowStatus;
+    private LocalDateTime workflowBoundAt;
+    private LocalDateTime workflowStatusUpdatedAt;
+    private String processBindingTraceId;
     private LocalDateTime submittedAt;
 }

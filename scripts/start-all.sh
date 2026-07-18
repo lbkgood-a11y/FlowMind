@@ -18,7 +18,7 @@ mkdir -p "${LOG_DIR}"
 REBUILD=false
 if [ "${1:-}" = "--rebuild" ]; then REBUILD=true; fi
 
-SERVICES_LIST="trio-base-services/service-auth,trio-base-services/service-org,trio-base-services/service-lowcode,trio-base-services/service-workflow-engine,trio-base-platform/platform-gateway"
+SERVICES_LIST="trio-base-services/service-auth,trio-base-services/service-org,trio-base-services/service-lowcode,trio-base-services/service-workflow-engine,trio-base-services/service-openapi,trio-base-services/service-ops,trio-base-platform/platform-gateway"
 
 # ── 前置检查 ──────────────────────────────────────────
 if ! docker info &>/dev/null; then
@@ -51,11 +51,13 @@ fi
 pkill -f "triobase.*SNAPSHOT.jar" 2>/dev/null || true
 sleep 1
 
-info "并行启动 5 个服务..."
+info "并行启动 7 个服务..."
 nohup java -jar "${ROOT_DIR}/trio-base-services/service-auth/target/service-auth-0.1.0-SNAPSHOT.jar" > "${LOG_DIR}/service-auth.log" 2>&1 &
 nohup java -jar "${ROOT_DIR}/trio-base-services/service-org/target/service-org-0.1.0-SNAPSHOT.jar" > "${LOG_DIR}/service-org.log" 2>&1 &
 nohup java -jar "${ROOT_DIR}/trio-base-services/service-lowcode/target/service-lowcode-0.1.0-SNAPSHOT.jar" > "${LOG_DIR}/service-lowcode.log" 2>&1 &
 nohup java -jar "${ROOT_DIR}/trio-base-services/service-workflow-engine/target/service-workflow-engine-0.1.0-SNAPSHOT.jar" > "${LOG_DIR}/service-workflow-engine.log" 2>&1 &
+nohup java -jar "${ROOT_DIR}/trio-base-services/service-openapi/target/service-openapi-0.1.0-SNAPSHOT.jar" > "${LOG_DIR}/service-openapi.log" 2>&1 &
+nohup java -jar "${ROOT_DIR}/trio-base-services/service-ops/target/service-ops-0.1.0-SNAPSHOT.jar" > "${LOG_DIR}/service-ops.log" 2>&1 &
 nohup java -jar "${ROOT_DIR}/trio-base-platform/platform-gateway/target/platform-gateway-0.1.0-SNAPSHOT.jar" > "${LOG_DIR}/platform-gateway.log" 2>&1 &
 
 # 等 Gateway 就绪作为启动完成标志
@@ -75,6 +77,8 @@ echo "    Auth    (8081):  $(curl -s -o /dev/null -w '%{http_code}' http://local
 echo "    Org     (8082):  $(curl -s -o /dev/null -w '%{http_code}' http://localhost:8082 2>/dev/null || echo 'DOWN')"
 echo "    Lowcode (8085):  $(curl -s -o /dev/null -w '%{http_code}' http://localhost:8085 2>/dev/null || echo 'DOWN')"
 echo "    Workflow(8086):  $(curl -s -o /dev/null -w '%{http_code}' http://localhost:8086 2>/dev/null || echo 'DOWN')"
+echo "    Ops     (8087):  $(curl -s -o /dev/null -w '%{http_code}' http://localhost:8087 2>/dev/null || echo 'DOWN')"
+echo "    OpenAPI (8088):  $(curl -s -o /dev/null -w '%{http_code}' http://localhost:8088 2>/dev/null || echo 'DOWN')"
 echo ""
 echo "  🔗  前端:   http://localhost:5173"
 echo "  🔑  登录:   admin / admin123"

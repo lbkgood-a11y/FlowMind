@@ -3,6 +3,8 @@ package com.triobase.service.openapi.controller;
 import com.triobase.service.openapi.domain.enums.Environment;
 import com.triobase.service.openapi.dto.CallbackAcknowledgement;
 import com.triobase.service.openapi.service.CallbackRuntimeService;
+import com.triobase.service.openapi.service.GatewayTrustVerifier;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class CallbackRuntimeController {
     private final CallbackRuntimeService service;
+    private final GatewayTrustVerifier gatewayTrustVerifier;
 
     @PostMapping("/{callbackKey}")
     public ResponseEntity<String> receive(
@@ -29,12 +32,12 @@ public class CallbackRuntimeController {
             @RequestHeader(value = "X-Signature-Nonce", required = false) String nonce,
             @RequestHeader(value = "X-Signature", required = false) String signature,
             @RequestHeader(value = "X-Content-SHA256", required = false) String bodyHash,
-            @RequestHeader(value = "X-Gateway-Authenticated", defaultValue = "false") boolean gatewayAuthenticated,
-            @RequestBody(required = false) byte[] rawBody) {
+            @RequestBody(required = false) byte[] rawBody,
+            HttpServletRequest request) {
         CallbackAcknowledgement acknowledgement = service.receive(
                 callbackKey, tenantId, environment, applicationClientId, rawBody,
                 new CallbackRuntimeService.CallbackHeaders(
-                        timestamp, nonce, signature, bodyHash, gatewayAuthenticated));
+                        timestamp, nonce, signature, bodyHash, gatewayTrustVerifier.trusted(request)));
         return ResponseEntity.status(acknowledgement.status())
                 .contentType(MediaType.parseMediaType(acknowledgement.contentType()))
                 .header("X-Callback-Inbox-Id", acknowledgement.inboxId())

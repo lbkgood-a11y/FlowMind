@@ -7,4 +7,5 @@ public class BindFormProcessRequest {
     private String processKey;
     private String processInstanceId;
     private String workflowStatus;
+    private String traceId;
 }

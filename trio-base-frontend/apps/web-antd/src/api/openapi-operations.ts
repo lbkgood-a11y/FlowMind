@@ -84,6 +84,10 @@ async function getLifecycleReadiness() {
   );
 }
 
+async function getOpenApiLifecycleData<T = Record<string, any>>(url: string) {
+  return requestClient.get<T>(url);
+}
+
 async function invokeOpenApiLifecycleAction(
   method: 'POST' | 'PUT',
   url: string,
@@ -120,6 +124,7 @@ export {
   getCallbackQuarantine,
   getLifecycleAssets,
   getLifecycleReadiness,
+  getOpenApiLifecycleData,
   getOpenApiExecutions,
   invokeOpenApiLifecycleAction,
   resolveCallbackQuarantine,

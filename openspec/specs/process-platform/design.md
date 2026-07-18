@@ -494,9 +494,10 @@
 现有服务              底座新职责              未来上层消费
 ──────────────────────────────────────────────────────────────
 
-service-lowcode ── 流程包定义管理 (CRUD/版本/发布)
+service-lowcode ── 可复用表单定义管理 (租户/版本/发布/下线)
                    表单运行时 (渲染/校验/数据联动)
-                   表单实例管理
+                   表单实例与流程绑定管理
+                   快速应用元数据 (应用/页面/动作)
                    └→ 扩展：打印引擎（或新建 service-print）
 
 service-auth ──── 为流程平台注册菜单/按钮/API 权限码
@@ -512,7 +513,8 @@ service-org ───── 参与者解析器 (部门→用户列表)
 service-ops ───── 通知引擎 (复用站内信/消息能力)
                   附件服务 (复用文件中心能力)
 
-service-workflow-engine ── 流程运行时引擎 (核心!)
+service-workflow-engine ── 流程包定义管理 (CRUD/版本/发布/下线)
+                           流程运行时引擎 (核心!)
                            节点解析器/参与者解析器
                            待办任务管理/超时升级
                            驳回回退/SAGA/事件等待
@@ -586,8 +588,8 @@ wms-service ──── (新建) WMS 业务逻辑         本次不建
 | `service-auth` | 认证/权限/参与者解析直接调用 | 小（注册流程相关权限码+菜单） |
 | `service-org` | 组织树查询/部门参与解析直接调用 | 小（接口已够） |
 | `service-ops` | 消息→通知引擎，文件→附件服务 | 小（业务流程中调 API） |
-| `service-lowcode` | 表单定义→流程包的子集 | 中（需增加流程包实体+关联字段） |
-| `service-workflow-engine` | 流程运行时引擎 | 大（从零建设核心） |
+| `service-lowcode` | 表单定义、表单实例、低代码应用元数据 | 中（强化租户/版本/发布快照/泛化运行时） |
+| `service-workflow-engine` | 流程包生命周期、流程运行时、业务闭环执行 | 大（核心流程编排与发布快照） |
 | `platform-gateway` | Token 校验/用户上下文透传 | 无（已完备） |
 
 ---
@@ -603,8 +605,8 @@ wms-service ──── (新建) WMS 业务逻辑         本次不建
 时长估算: 2-3 周
 
 后端（2 周）:
-  ├─ 流程包表设计 + CRUD API（含版本/发布/下架）
-  │   └─ service-lowcode 扩展，新增 wf_process_package 表
+  ├─ service-workflow-engine 流程包表设计 + CRUD API（含版本/发布/下架）
+  ├─ service-lowcode 表单定义与已发布表单快照只读接口
   ├─ service-workflow-engine 骨架搭建
   │   ├─ 启用 Temporal Worker（temporal.enabled=true）
   │   ├─ 第一个 Workflow: ProcessWorkflow

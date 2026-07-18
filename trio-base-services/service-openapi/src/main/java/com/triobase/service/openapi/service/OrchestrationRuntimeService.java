@@ -17,6 +17,7 @@ import com.triobase.service.openapi.domain.enums.ExecutionMode;
 import com.triobase.service.openapi.domain.enums.ExecutionState;
 import com.triobase.service.openapi.dto.CompiledRouteRelease;
 import com.triobase.service.openapi.dto.OrchestrationExecutionResponse;
+import com.triobase.service.openapi.dto.RuntimeAdmissionContext;
 import com.triobase.service.openapi.infrastructure.mapper.IdempotencyRecordMapper;
 import com.triobase.service.openapi.infrastructure.mapper.IntegrationExecutionMapper;
 import com.triobase.service.openapi.infrastructure.mapper.RouteVersionMapper;
@@ -51,6 +52,7 @@ public class OrchestrationRuntimeService {
     private final IntegrationExecutionMapper executionMapper;
     private final IdempotencyRecordMapper idempotencyMapper;
     private final RuntimeBudgetService runtimeBudgetService;
+    private final ProductSubscriptionService subscriptions;
     private final WorkflowClient workflowClient;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
@@ -62,6 +64,7 @@ public class OrchestrationRuntimeService {
             IntegrationExecutionMapper executionMapper,
             IdempotencyRecordMapper idempotencyMapper,
             RuntimeBudgetService runtimeBudgetService,
+            ProductSubscriptionService subscriptions,
             WorkflowClient workflowClient,
             ObjectMapper objectMapper,
             PlatformTransactionManager transactionManager,
@@ -71,6 +74,7 @@ public class OrchestrationRuntimeService {
         this.executionMapper = executionMapper;
         this.idempotencyMapper = idempotencyMapper;
         this.runtimeBudgetService = runtimeBudgetService;
+        this.subscriptions = subscriptions;
         this.workflowClient = workflowClient;
         this.objectMapper = objectMapper;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -78,46 +82,49 @@ public class OrchestrationRuntimeService {
     }
 
     public OrchestrationExecutionResponse start(
-            String routeKey, Environment environment, String applicationClientId,
-            String subscriptionId, String idempotencyKey, long maxActiveWorkflows, JsonNode payload) {
-        requireAdmission(applicationClientId, subscriptionId, idempotencyKey);
-        CompiledRouteRelease release = releases.resolveActive(routeKey, environment);
+            String routeKey, Environment environment, RuntimeAdmissionContext admission,
+            String operation, String idempotencyKey, JsonNode payload) {
+        requireAdmission(admission, environment, idempotencyKey);
+        CompiledRouteRelease release = releases.resolveActive(admission.tenantId(), routeKey, environment);
+        requireReleaseAllowed(release, admission);
         RouteVersion route = routeMapper.selectById(release.routeVersionId());
         if (route == null || route.getExecutionMode() != ExecutionMode.ORCHESTRATED
                 || !StringUtils.hasText(route.getOrchestrationVersionId())) {
             throw new BizException(40960, "OPENAPI_ROUTE_NOT_ORCHESTRATED");
         }
+        subscriptions.requireRuntimeAccess(admission.applicationClientId(), admission.subscriptionId(),
+                routeKey, operation, LocalDateTime.now());
         String requestHash = hash(payload == null ? objectMapper.createObjectNode() : payload);
         IdempotencyRecord existing = findIdempotency(
-                release, environment, applicationClientId, idempotencyKey);
+                release, environment, admission.applicationClientId(), idempotencyKey);
         if (existing != null) {
             return attachExisting(existing, requestHash);
         }
 
-        runtimeBudgetService.reserveWorkflow(release.tenantId(), applicationClientId,
-                release.routeId(), Math.max(1, maxActiveWorkflows));
+        runtimeBudgetService.reserveWorkflow(release.tenantId(), admission.applicationClientId(),
+                release.routeId(), Math.max(1, admission.maxActiveWorkflows()));
         Reservation reservation;
         try {
             reservation = transactionTemplate.execute(status -> reserve(
-                    release, environment, applicationClientId, idempotencyKey, requestHash));
+                    release, environment, admission.applicationClientId(), idempotencyKey, requestHash));
         } catch (DuplicateKeyException duplicate) {
             runtimeBudgetService.releaseWorkflow(
-                    release.tenantId(), applicationClientId, release.routeId());
+                    release.tenantId(), admission.applicationClientId(), release.routeId());
             IdempotencyRecord raced = findIdempotency(
-                    release, environment, applicationClientId, idempotencyKey);
+                    release, environment, admission.applicationClientId(), idempotencyKey);
             if (raced == null) {
                 throw duplicate;
             }
             return attachExisting(raced, requestHash);
         } catch (RuntimeException failure) {
             runtimeBudgetService.releaseWorkflow(
-                    release.tenantId(), applicationClientId, release.routeId());
+                    release.tenantId(), admission.applicationClientId(), release.routeId());
             throw failure;
         }
 
         Map<String, String> context = OpenApiTemporalContext.of(
-                TraceUtil.getTraceId(), release.tenantId(), applicationClientId,
-                caller(applicationClientId), release.releaseId(), idempotencyKey);
+                TraceUtil.getTraceId(), release.tenantId(), admission.applicationClientId(),
+                caller(admission.applicationClientId()), release.releaseId(), idempotencyKey);
         String commandJson = command(reservation.execution().getId(), release.releaseId(), payload, context);
         IntegrationOrchestrationWorkflow workflow = workflowClient.newWorkflowStub(
                 IntegrationOrchestrationWorkflow.class,
@@ -148,7 +155,7 @@ public class OrchestrationRuntimeService {
         } catch (RuntimeException failure) {
             transactionTemplate.executeWithoutResult(status -> markStartFailed(reservation, failure));
             runtimeBudgetService.releaseWorkflow(
-                    release.tenantId(), applicationClientId, release.routeId());
+                    release.tenantId(), admission.applicationClientId(), release.routeId());
             throw new BizException(50360, "OPENAPI_TEMPORAL_START_FAILED");
         } finally {
             OpenApiTemporalContext.clear();
@@ -327,13 +334,21 @@ public class OrchestrationRuntimeService {
         return command.toString();
     }
 
-    private void requireAdmission(String applicationClientId, String subscriptionId,
+    private void requireAdmission(RuntimeAdmissionContext admission, Environment environment,
                                   String idempotencyKey) {
-        if (!StringUtils.hasText(applicationClientId) || !StringUtils.hasText(subscriptionId)) {
+        if (admission == null || !StringUtils.hasText(admission.applicationClientId())
+                || !StringUtils.hasText(admission.subscriptionId()) || admission.environment() != environment) {
             throw new BizException(40130, "OPENAPI_RUNTIME_ADMISSION_CONTEXT_REQUIRED");
         }
         if (!StringUtils.hasText(idempotencyKey) || idempotencyKey.length() > 256) {
             throw new BizException(40060, "OPENAPI_IDEMPOTENCY_KEY_REQUIRED");
+        }
+    }
+
+    private void requireReleaseAllowed(CompiledRouteRelease release, RuntimeAdmissionContext admission) {
+        if (release == null || !StringUtils.hasText(release.tenantId())
+                || !release.tenantId().equals(admission.tenantId())) {
+            throw new BizException(40380, "OPENAPI_SUBSCRIPTION_ACCESS_DENIED");
         }
     }
 

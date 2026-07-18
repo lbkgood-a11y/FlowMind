@@ -270,7 +270,7 @@ public class CallbackProfileService {
                 profile.getCallbackKey(), profile.getDisplayName(), profile.getOwnerId(),
                 version.getVersionNumber(), version.getLifecycleState(), version.getEnvironment(),
                 version.getApplicationClientId(), version.getAuthenticationType(),
-                version.getRequestStructureVersionId(), version.getInboundMappingVersionId(),
+                version.getSecretReference(), version.getRequestStructureVersionId(), version.getInboundMappingVersionId(),
                 version.getPartnerEventIdPointer(), version.getCorrelationPointer(),
                 version.getCorrelationType(), version.getSignalName(), version.getReplayWindowSeconds(),
                 version.getMaxBodyBytes(), version.getCallbackPerMinute(),

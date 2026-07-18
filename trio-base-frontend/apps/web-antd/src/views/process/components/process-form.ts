@@ -67,7 +67,7 @@ export const FORM_WIDGET_REGISTRY: Readonly<Record<FormWidget, FormWidget>> =
     textarea: 'textarea',
   });
 
-const ajv = new Ajv({ allErrors: true, strict: false });
+const ajv = new Ajv({ allErrors: true, strictSchema: false });
 
 export function parseFormSchema(schemaJson?: string): ProcessFormSchema | undefined {
   if (!schemaJson) return undefined;
@@ -172,7 +172,11 @@ function toClientError(error: ErrorObject): ClientFormError {
   const suffix = String(
     params.missingProperty ?? params.additionalProperty ?? '',
   );
-  const base = error.instancePath.replace(/^\//, '').replaceAll('/', '.');
+  const instancePath =
+    'instancePath' in error
+      ? error.instancePath
+      : ((error as { dataPath?: string }).dataPath ?? '');
+  const base = instancePath.replace(/^\//, '').replaceAll('/', '.');
   const field = suffix ? [base, suffix].filter(Boolean).join('.') : base;
   return {
     code: clientErrorCode(error.keyword),

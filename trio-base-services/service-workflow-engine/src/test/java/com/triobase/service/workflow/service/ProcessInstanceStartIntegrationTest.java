@@ -26,6 +26,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import java.util.List;
 import java.util.Map;
@@ -74,8 +75,12 @@ class ProcessInstanceStartIntegrationTest {
             }
             """;
 
+    private static final DockerImageName POSTGRES_IMAGE = DockerImageName
+            .parse(System.getProperty("test.postgres.image", "postgres:15-alpine"))
+            .asCompatibleSubstituteFor("postgres");
+
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine")
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(POSTGRES_IMAGE)
             .withDatabaseName("triobase_test")
             .withUsername("triobase")
             .withPassword("triobase");

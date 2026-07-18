@@ -4,8 +4,11 @@ import com.triobase.common.core.result.R;
 import com.triobase.service.openapi.domain.enums.Environment;
 import com.triobase.service.openapi.dto.CancelOrchestrationRequest;
 import com.triobase.service.openapi.dto.OrchestrationExecutionResponse;
+import com.triobase.service.openapi.dto.RuntimeAdmissionContext;
 import com.triobase.service.openapi.dto.StartOrchestrationRequest;
+import com.triobase.service.openapi.service.RuntimeAdmissionContextResolver;
 import com.triobase.service.openapi.service.OrchestrationRuntimeService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,18 +25,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrchestrationRuntimeController {
 
     private final OrchestrationRuntimeService service;
+    private final RuntimeAdmissionContextResolver admissionContextResolver;
 
     @PostMapping("/{routeKey}/orchestrations")
     public R<OrchestrationExecutionResponse> start(
             @PathVariable String routeKey,
             @RequestHeader("X-Environment") Environment environment,
-            @RequestHeader("X-Application-Client-Id") String clientId,
-            @RequestHeader("X-Subscription-Id") String subscriptionId,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
-            @RequestHeader(value = "X-Max-Active-Workflows", defaultValue = "20") long maxWorkflows,
-            @Valid @RequestBody StartOrchestrationRequest request) {
-        return R.ok(service.start(routeKey, environment, clientId, subscriptionId,
-                idempotencyKey, maxWorkflows, request.payload()));
+            @Valid @RequestBody StartOrchestrationRequest body,
+            HttpServletRequest request) {
+        RuntimeAdmissionContext admission = admissionContextResolver.resolve(
+                request, routeKey, environment, request.getMethod());
+        return R.ok(service.start(routeKey, environment, admission,
+                request.getMethod(), idempotencyKey, body.payload()));
     }
 
     @GetMapping("/orchestrations/{executionId}")

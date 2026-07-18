@@ -24,10 +24,19 @@ most one draft, while multiple immutable published versions may coexist.
 | auth | `GET /internal/v1/participants/roles/{roleCode}/users` | Enabled users for a role |
 | auth | `POST /internal/v1/participants/users/validate` | Enabled direct users |
 | org | `GET /internal/v1/org/units/{unitCode}/users` | Enabled users for an organization unit/dimension |
-| lowcode | `GET /internal/v1/forms/{id}/published` | Published Schema and UI Schema snapshot |
+| lowcode | `GET /internal/v1/process-forms/{id}` | Published form version snapshot |
 
 The workflow Activity uses sub-500ms timeouts, bounded retries, and TraceId
 propagation. Resolution results are persisted as immutable node snapshots.
+
+Lowcode form snapshots are publish-only. The response contains
+`formDefinitionId`, `tenantId`, `formKey`, `version`, `schemaHash`,
+`schemaJson`, `uiSchemaJson`, and `publishedAt`. `service-workflow-engine`
+stores the schema, UI schema, and form version on the process package at
+publish time. Later lowcode drafts, offline transitions, or newly published form
+versions do not mutate an already published process package. Draft and offline
+form references are rejected by lowcode with `FORM_DEFINITION_NOT_PUBLISHED`
+and must fail workflow package publication.
 
 ## Process Start And Form Errors
 

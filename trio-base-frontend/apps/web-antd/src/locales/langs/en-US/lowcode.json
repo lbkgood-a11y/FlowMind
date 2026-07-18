@@ -3,6 +3,10 @@
     "title": "Low-Code",
     "form": {
       "title": "Form Management"
+    },
+    "runtime": {
+      "app": "Runtime App",
+      "title": "Application Center"
     }
   }
 }

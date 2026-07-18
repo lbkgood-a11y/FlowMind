@@ -15,6 +15,7 @@ import { message } from 'ant-design-vue';
 import { useAuthStore } from '#/store';
 
 import { refreshTokenApi } from './core';
+import { formatApiErrorMessage } from './error-messages';
 
 const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
 const AUTH_EXPIRED_CODES = new Set([1004, 1005]);
@@ -116,7 +117,11 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
       }
       const responseData = error?.response?.data ?? error ?? {};
       const errorMessage = responseData?.error ?? responseData?.message ?? '';
-      message.error(errorMessage || msg);
+      message.error(
+        formatApiErrorMessage(errorMessage || msg, responseData?.data) ||
+          errorMessage ||
+          msg,
+      );
     }),
   );
 

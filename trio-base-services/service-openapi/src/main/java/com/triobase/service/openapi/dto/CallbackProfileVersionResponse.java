@@ -20,6 +20,7 @@ public record CallbackProfileVersionResponse(
         Environment environment,
         String applicationClientId,
         AuthenticationType authenticationType,
+        String secretReference,
         String requestStructureVersionId,
         String inboundMappingVersionId,
         String partnerEventIdPointer,

@@ -9,6 +9,7 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 @TableName("lc_form_field_definition")
 public class LcFormFieldDefinition extends BaseEntity {
+    private String tenantId;
     private String formDefinitionId;
     private String fieldKey;
     private String label;

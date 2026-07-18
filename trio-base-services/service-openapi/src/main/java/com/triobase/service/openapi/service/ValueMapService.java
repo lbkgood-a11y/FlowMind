@@ -12,6 +12,7 @@ import com.triobase.service.openapi.domain.enums.AssetLifecycleState;
 import com.triobase.service.openapi.domain.enums.UnmappedValuePolicy;
 import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
 import com.triobase.service.openapi.dto.CreateValueMapRequest;
+import com.triobase.service.openapi.dto.ValueMapVersionResponse;
 import com.triobase.service.openapi.dto.ValueMapVersionRequest;
 import com.triobase.service.openapi.infrastructure.mapper.ValueMapEntryMapper;
 import com.triobase.service.openapi.infrastructure.mapper.ValueMapSetMapper;
@@ -181,6 +182,23 @@ public class ValueMapService {
                     ? version.getDefaultExternalValue() : version.getDefaultCanonicalValue();
             case FAIL -> throw new BizException(VALUE_UNMAPPED, "OPENAPI_VALUE_MAP_VALUE_UNMAPPED");
         };
+    }
+
+    public ValueMapVersionResponse getVersion(String versionId) {
+        ValueMapVersion version = requireVersion(versionId);
+        ValueMapSet set = requireSet(version.getValueMapSetId());
+        List<CreateValueMapRequest.Entry> entries = entryMapper.selectList(new LambdaQueryWrapper<ValueMapEntry>()
+                        .eq(ValueMapEntry::getValueMapVersionId, versionId)
+                        .orderByAsc(ValueMapEntry::getEntryOrder))
+                .stream()
+                .map(entry -> new CreateValueMapRequest.Entry(
+                        entry.getCanonicalValue(), entry.getExternalValue(), entry.getEntryOrder()))
+                .toList();
+        return new ValueMapVersionResponse(set.getId(), version.getId(), set.getTenantId(),
+                set.getValueMapKey(), set.getDisplayName(), set.getOwnerId(), version.getVersionNumber(),
+                version.getLifecycleState(), Boolean.TRUE.equals(version.getCaseSensitive()),
+                version.getUnmappedPolicy(), version.getDefaultCanonicalValue(),
+                version.getDefaultExternalValue(), entries);
     }
 
     private void validateRequest(CreateValueMapRequest request) {

@@ -184,6 +184,10 @@ public class ReleaseManagementService {
 
     public CompiledRouteRelease resolveActive(String routeKey, Environment environment) {
         String tenantId = SecurityContextHolder.getTenantId();
+        return resolveActive(tenantId, routeKey, environment);
+    }
+
+    public CompiledRouteRelease resolveActive(String tenantId, String routeKey, Environment environment) {
         return cache.get(tenantId, environment, routeKey).orElseGet(() -> {
             RouteDefinition route = routeDefinitionMapper.selectOne(new LambdaQueryWrapper<RouteDefinition>()
                     .eq(RouteDefinition::getRouteKey, routeKey)

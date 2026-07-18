@@ -14,6 +14,7 @@ import com.triobase.service.openapi.dto.MappingVersionResponse;
 import com.triobase.service.openapi.dto.SaveMappingContractTestRequest;
 import com.triobase.service.openapi.dto.UpdateMappingRulesRequest;
 import com.triobase.service.openapi.dto.ValueMapLookupRequest;
+import com.triobase.service.openapi.dto.ValueMapVersionResponse;
 import com.triobase.service.openapi.dto.ValueMapVersionRequest;
 import com.triobase.service.openapi.service.MappingContractTestService;
 import com.triobase.service.openapi.service.MappingPreviewService;
@@ -106,6 +107,12 @@ public class MappingManagementController {
             @PathVariable String valueMapSetId,
             @Valid @RequestBody ValueMapVersionRequest request) {
         return R.ok(valueMapService.createDraft(valueMapSetId, request));
+    }
+
+    @GetMapping("/value-maps/versions/{versionId}")
+    @RequirePermission(MAPPING_READ)
+    public R<ValueMapVersionResponse> getValueMapVersion(@PathVariable String versionId) {
+        return R.ok(valueMapService.getVersion(versionId));
     }
 
     @PutMapping("/value-maps/versions/{versionId}")

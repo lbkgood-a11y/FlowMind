@@ -11,6 +11,8 @@ export default defineConfig(async () => {
             rewrite: (path) => path.replace(/^\/api/, '/api/v1'),
             target: 'http://localhost:8080',
             ws: true,
+            proxyTimeout: 120000,
+            timeout: 120000,
           },
         },
       },

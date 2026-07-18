@@ -81,6 +81,7 @@ auth:
 triobase:
   openapi:
     service-url: ${OPENAPI_SERVICE_URL:http://localhost:8088}
+    gateway-auth-secret: ${OPENAPI_GATEWAY_AUTH_SECRET:}
     runtime:
       enabled: ${OPENAPI_RUNTIME_ROUTE_ENABLED:false}
 

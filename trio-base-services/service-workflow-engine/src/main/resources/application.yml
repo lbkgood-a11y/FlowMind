@@ -48,6 +48,11 @@ workflow:
     read-timeout: ${WORKFLOW_PARTICIPANT_READ_TIMEOUT:400ms}
     max-candidates: ${WORKFLOW_PARTICIPANT_MAX_CANDIDATES:200}
 
+triobase:
+  internal:
+    token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-lowcode}
+
 logging:
   level:
     root: INFO

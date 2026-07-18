@@ -11,6 +11,7 @@ import com.triobase.service.openapi.domain.enums.Environment;
 import com.triobase.service.openapi.domain.enums.ExecutionMode;
 import com.triobase.service.openapi.domain.enums.ExecutionState;
 import com.triobase.service.openapi.dto.CompiledRouteRelease;
+import com.triobase.service.openapi.dto.RuntimeAdmissionContext;
 import com.triobase.service.openapi.infrastructure.mapper.IdempotencyRecordMapper;
 import com.triobase.service.openapi.infrastructure.mapper.IntegrationExecutionMapper;
 import com.triobase.service.openapi.infrastructure.mapper.RouteVersionMapper;
@@ -41,6 +42,7 @@ class OrchestrationRuntimeServiceTest {
     @Mock private IntegrationExecutionMapper executionMapper;
     @Mock private IdempotencyRecordMapper idempotencyMapper;
     @Mock private RuntimeBudgetService budgets;
+    @Mock private ProductSubscriptionService subscriptions;
     @Mock private WorkflowClient workflowClient;
     @Mock private PlatformTransactionManager transactionManager;
     private OrchestrationRuntimeService service;
@@ -48,12 +50,12 @@ class OrchestrationRuntimeServiceTest {
     @BeforeEach
     void setUp() throws Exception {
         service = new OrchestrationRuntimeService(releases, routeMapper, executionMapper,
-                idempotencyMapper, budgets, workflowClient, new ObjectMapper(),
+                idempotencyMapper, budgets, subscriptions, workflowClient, new ObjectMapper(),
                 transactionManager, "service-openapi");
         SecurityContextHolder.set(new SecurityContextHolder.SecurityContext(
                 "APP:client-a", "client-a", "tenant-a", List.of("EXTERNAL_APPLICATION"),
                 List.of(), 1L, 1L, 1L));
-        when(releases.resolveActive("orders.submit", Environment.PROD)).thenReturn(release());
+        when(releases.resolveActive("tenant-a", "orders.submit", Environment.PROD)).thenReturn(release());
         when(routeMapper.selectById("route-version-1")).thenReturn(route());
     }
 
@@ -71,8 +73,8 @@ class OrchestrationRuntimeServiceTest {
         ObjectMapper mapper = new ObjectMapper();
         record.setRequestHash(hash(mapper, mapper.readTree("{\"amount\":1}")));
 
-        var response = service.start("orders.submit", Environment.PROD, "client-a",
-                "subscription-1", "idem-1", 10, mapper.readTree("{\"amount\":1}"));
+        var response = service.start("orders.submit", Environment.PROD, admission(),
+                "POST", "idem-1", mapper.readTree("{\"amount\":1}"));
 
         assertThat(response.attachedToExisting()).isTrue();
         assertThat(response.executionId()).isEqualTo("execution-1");
@@ -85,8 +87,8 @@ class OrchestrationRuntimeServiceTest {
         ObjectMapper mapper = new ObjectMapper();
         when(idempotencyMapper.selectOne(any(Wrapper.class))).thenReturn(idempotency("different"));
 
-        assertThatThrownBy(() -> service.start("orders.submit", Environment.PROD, "client-a",
-                "subscription-1", "idem-1", 10, mapper.readTree("{\"amount\":2}")))
+        assertThatThrownBy(() -> service.start("orders.submit", Environment.PROD, admission(),
+                "POST", "idem-1", mapper.readTree("{\"amount\":2}")))
                 .isInstanceOf(BizException.class)
                 .hasMessage("OPENAPI_IDEMPOTENCY_KEY_PAYLOAD_MISMATCH");
     }
@@ -95,6 +97,11 @@ class OrchestrationRuntimeServiceTest {
         return new CompiledRouteRelease("tenant-a", Environment.PROD, "orders.submit",
                 "route-1", "route-version-1", "release-1", 1L, "hash",
                 new ObjectMapper().createObjectNode());
+    }
+
+    private RuntimeAdmissionContext admission() {
+        return new RuntimeAdmissionContext("tenant-a", Environment.PROD,
+                "client-a", "subscription-1", 7L, 10L, 10L);
     }
 
     private RouteVersion route() {

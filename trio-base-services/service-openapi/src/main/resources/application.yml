@@ -58,6 +58,7 @@ management:
       show-details: when_authorized
 
 mybatis-plus:
+  type-handlers-package: com.triobase.service.openapi.infrastructure.persistence
   configuration:
     map-underscore-to-camel-case: true
   global-config:
@@ -66,6 +67,7 @@ mybatis-plus:
 
 triobase:
   openapi:
+    gateway-auth-secret: ${OPENAPI_GATEWAY_AUTH_SECRET:}
     runtime:
       enabled: ${OPENAPI_RUNTIME_ENABLED:false}
     retention:
@@ -77,6 +79,9 @@ triobase:
       max-concurrent-workflow-tasks: ${OPENAPI_TEMPORAL_MAX_CONCURRENT_WORKFLOW_TASKS:50}
     credentials:
       provider: ${OPENAPI_CREDENTIAL_PROVIDER:local}
+      local:
+        secrets:
+          policy-signing: '{"signingKey":"local-dev-policy-signing-key-change-me"}'
       vault:
         address: ${VAULT_ADDR:http://localhost:8200}
         token: ${VAULT_TOKEN:}

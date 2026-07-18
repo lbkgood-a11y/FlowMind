@@ -17,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +40,21 @@ public class PermissionService {
                         .orderByAsc(SysPermission::getResource)
                         .orderByAsc(SysPermission::getAction));
         return PageResult.of(permPage.getRecords(), permPage.getTotal(), pageNo, pageSize);
+    }
+
+    public List<String> missingRegisteredCodes(List<String> codes) {
+        Set<String> requested = normalizeCodes(codes);
+        if (requested.isEmpty()) {
+            return List.of();
+        }
+        Set<String> registered = permissionMapper.selectList(null).stream()
+                .filter(permission -> StringUtils.hasText(permission.getResource())
+                        && StringUtils.hasText(permission.getAction()))
+                .map(permission -> permission.getResource().trim() + ":" + permission.getAction().trim())
+                .collect(Collectors.toSet());
+        return requested.stream()
+                .filter(code -> !registered.contains(code))
+                .toList();
     }
 
     @Transactional
@@ -72,5 +90,15 @@ public class PermissionService {
             throw new BizException(40023, "PERMISSION_BOUND_TO_MENU");
         }
         permissionMapper.deleteById(id);
+    }
+
+    private Set<String> normalizeCodes(List<String> codes) {
+        if (codes == null) {
+            return Set.of();
+        }
+        return codes.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .collect(Collectors.toCollection(TreeSet::new));
     }
 }

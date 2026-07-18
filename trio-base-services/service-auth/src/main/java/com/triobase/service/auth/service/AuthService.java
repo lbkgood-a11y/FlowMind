@@ -33,6 +33,7 @@ public class AuthService {
     private static final String REFRESH_KEY_PREFIX = "refresh:";
     private static final String REVOKED_KEY_PREFIX = "revoked:";
     private static final String DEFAULT_ROLE_CODE = "USER";
+    private static final String DEFAULT_TENANT_ID = "default";
 
     private final UserMapper userMapper;
     private final UserRoleMapper userRoleMapper;
@@ -136,8 +137,10 @@ public class AuthService {
         if (loginSessionService.isAccessJtiInactive(payload.jti())) {
             return TokenValidateResult.fail("会话已失效");
         }
+        List<String> roles = userMapper.selectRoleCodesByUserId(payload.userId());
         List<String> permissions = userMapper.selectPermissionsByUserId(payload.userId());
-        return TokenValidateResult.success(payload.userId(), payload.username(), permissions);
+        return TokenValidateResult.success(payload.userId(), payload.username(), DEFAULT_TENANT_ID,
+                roles, permissions, null, null, null);
     }
 
     public void logout(String accessToken, String refreshToken) {

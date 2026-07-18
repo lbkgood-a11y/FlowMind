@@ -20,7 +20,7 @@ import java.util.List;
 
 /**
  * JWT 鉴权全局过滤器 — 铁律 8（TraceId 透传）。
- * 从请求头提取 Bearer Token → 调用 service-auth /validate → 注入 X-User-Id / X-User-Permissions 头到下游。
+ * 从请求头提取 Bearer Token → 调用 service-auth /validate → 注入用户、租户和权限上下文头到下游。
  */
 @Component
 public class JwtAuthFilter implements GlobalFilter, Ordered {
@@ -67,11 +67,18 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
                         return exchange.getResponse().setComplete();
                     }
                     ServerWebExchange mutated = exchange.mutate()
-                            .request(r -> r.header("X-User-Id", result.getUserId())
-                                    .header("X-Username", result.getUsername())
-                                    .header("X-User-Permissions",
-                                            String.join(",", result.getPermissions() != null
-                                                    ? result.getPermissions() : List.of())))
+                            .request(r -> r.headers(headers -> {
+                                headers.set("X-User-Id", result.getUserId());
+                                headers.set("X-Username", result.getUsername());
+                                setIfPresent(headers, "X-Tenant-Id", result.getTenantId());
+                                headers.set("X-User-Roles", String.join(",", result.getRoles() != null
+                                        ? result.getRoles() : List.of()));
+                                headers.set("X-User-Permissions", String.join(",", result.getPermissions() != null
+                                        ? result.getPermissions() : List.of()));
+                                setIfPresent(headers, "X-Auth-Version", result.getAuthVersion());
+                                setIfPresent(headers, "X-Role-Version", result.getRoleVersion());
+                                setIfPresent(headers, "X-Data-Policy-Version", result.getDataPolicyVersion());
+                            }))
                             .build();
                     return chain.filter(mutated);
                 })
@@ -90,6 +97,18 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             }
             return path.equals(pattern);
         });
+    }
+
+    private void setIfPresent(HttpHeaders headers, String name, String value) {
+        if (value != null && !value.isBlank()) {
+            headers.set(name, value);
+        }
+    }
+
+    private void setIfPresent(HttpHeaders headers, String name, Long value) {
+        if (value != null) {
+            headers.set(name, value.toString());
+        }
     }
 
     @Override

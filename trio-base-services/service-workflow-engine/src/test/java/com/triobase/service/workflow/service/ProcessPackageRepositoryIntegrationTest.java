@@ -22,6 +22,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -51,8 +52,12 @@ class ProcessPackageRepositoryIntegrationTest {
             }
             """;
 
+    private static final DockerImageName POSTGRES_IMAGE = DockerImageName
+            .parse(System.getProperty("test.postgres.image", "postgres:15-alpine"))
+            .asCompatibleSubstituteFor("postgres");
+
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine")
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(POSTGRES_IMAGE)
             .withDatabaseName("triobase_test")
             .withUsername("triobase")
             .withPassword("triobase");
@@ -165,6 +170,70 @@ class ProcessPackageRepositoryIntegrationTest {
     }
 
     @Test
+    void publishedLowcodeSnapshotRemainsImmutableWhenNewFormVersionIsPublished() {
+        PublishedFormSnapshotResponse versionOneForm = publishedForm(
+                "form-v1",
+                "expense",
+                1,
+                "{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"}}}",
+                "{\"amount\":{\"ui:widget\":\"money\"}}");
+        PublishedFormSnapshotResponse versionTwoForm = publishedForm(
+                "form-v2",
+                "expense",
+                2,
+                "{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"},\"reason\":{\"type\":\"string\"}}}",
+                "{\"amount\":{\"ui:widget\":\"money\"},\"reason\":{\"ui:widget\":\"textarea\"}}");
+        when(lowcodeFormClient.getPublishedForm("form-v1")).thenReturn(R.ok(versionOneForm));
+        when(lowcodeFormClient.getPublishedForm("form-v2")).thenReturn(R.ok(versionTwoForm));
+
+        CreateProcessPackageRequest create = new CreateProcessPackageRequest();
+        create.setProcessKey("lowcode_snapshot_immutable");
+        create.setName("Lowcode Snapshot Immutable");
+        create.setFormDefinitionId("form-v1");
+        create.setProcessJson(PROCESS_JSON);
+
+        ProcessPackageResponse draftOne = processPackageService.create(create);
+        ProcessPackageResponse publishedOne = processPackageService.publish(draftOne.getId());
+
+        ProcessPackageResponse draftTwo = processPackageService.createNewVersion(publishedOne.getId());
+        UpdateProcessPackageRequest update = new UpdateProcessPackageRequest();
+        update.setFormDefinitionId("form-v2");
+        processPackageService.update(draftTwo.getId(), update);
+        ProcessPackageResponse publishedTwo = processPackageService.publish(draftTwo.getId());
+
+        ProcessPackage storedVersionOne = processPackageMapper.selectById(publishedOne.getId());
+        assertEquals(1, storedVersionOne.getFormDefinitionVersion());
+        assertEquals(versionOneForm.getSchemaJson(), storedVersionOne.getFormSchema());
+        assertEquals(versionOneForm.getUiSchemaJson(), storedVersionOne.getFormUiSchema());
+        assertEquals(2, publishedTwo.getFormDefinitionVersion());
+        assertEquals(versionTwoForm.getSchemaJson(), publishedTwo.getFormSchema());
+    }
+
+    @Test
+    void workflowPublicationRejectsDraftOrOfflineLowcodeFormReferences() {
+        when(lowcodeFormClient.getPublishedForm("draft-form"))
+                .thenReturn(R.fail(40901, "FORM_DEFINITION_NOT_PUBLISHED"));
+        when(lowcodeFormClient.getPublishedForm("offline-form"))
+                .thenReturn(R.fail(40901, "FORM_DEFINITION_NOT_PUBLISHED"));
+
+        ProcessPackageResponse draftReference = createDraftWithForm(
+                "reject_draft_form",
+                "draft-form");
+        BizException draftException = assertThrows(BizException.class,
+                () -> processPackageService.publish(draftReference.getId()));
+        assertEquals("FORM_DEFINITION_NOT_PUBLISHED", draftException.getMessage());
+        assertEquals("DRAFT", processPackageMapper.selectById(draftReference.getId()).getStatus());
+
+        ProcessPackageResponse offlineReference = createDraftWithForm(
+                "reject_offline_form",
+                "offline-form");
+        BizException offlineException = assertThrows(BizException.class,
+                () -> processPackageService.publish(offlineReference.getId()));
+        assertEquals("FORM_DEFINITION_NOT_PUBLISHED", offlineException.getMessage());
+        assertEquals("DRAFT", processPackageMapper.selectById(offlineReference.getId()).getStatus());
+    }
+
+    @Test
     void failedPublishLeavesDraftUnchanged() {
         CreateProcessPackageRequest create = new CreateProcessPackageRequest();
         create.setProcessKey("invalid_publish");
@@ -193,5 +262,30 @@ class ProcessPackageRepositoryIntegrationTest {
         pkg.setStatus(status);
         pkg.setProcessJson(PROCESS_JSON);
         return pkg;
+    }
+
+    private ProcessPackageResponse createDraftWithForm(String processKey, String formDefinitionId) {
+        CreateProcessPackageRequest create = new CreateProcessPackageRequest();
+        create.setProcessKey(processKey);
+        create.setName("Referenced Form Process");
+        create.setFormDefinitionId(formDefinitionId);
+        create.setProcessJson(PROCESS_JSON);
+        return processPackageService.create(create);
+    }
+
+    private PublishedFormSnapshotResponse publishedForm(String id,
+                                                        String formKey,
+                                                        int version,
+                                                        String schemaJson,
+                                                        String uiSchemaJson) {
+        PublishedFormSnapshotResponse form = new PublishedFormSnapshotResponse();
+        form.setFormDefinitionId(id);
+        form.setTenantId("TENANT_A");
+        form.setFormKey(formKey);
+        form.setVersion(version);
+        form.setSchemaHash("sha256:" + version);
+        form.setSchemaJson(schemaJson);
+        form.setUiSchemaJson(uiSchemaJson);
+        return form;
     }
 }

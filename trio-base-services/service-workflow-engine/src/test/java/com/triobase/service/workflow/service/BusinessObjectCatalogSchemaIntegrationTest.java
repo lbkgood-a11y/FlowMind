@@ -11,6 +11,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -28,8 +29,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         })
 class BusinessObjectCatalogSchemaIntegrationTest {
 
+    private static final DockerImageName POSTGRES_IMAGE = DockerImageName
+            .parse(System.getProperty("test.postgres.image", "postgres:15-alpine"))
+            .asCompatibleSubstituteFor("postgres");
+
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine")
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(POSTGRES_IMAGE)
             .withDatabaseName("triobase_test")
             .withUsername("triobase")
             .withPassword("triobase");
