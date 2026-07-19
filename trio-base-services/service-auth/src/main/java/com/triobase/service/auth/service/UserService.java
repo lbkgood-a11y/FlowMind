@@ -10,8 +10,11 @@ import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.dto.auth.UserInfoPayload;
+import com.triobase.service.auth.dto.ChangePasswordRequest;
 import com.triobase.service.auth.dto.CreateUserRequest;
+import com.triobase.service.auth.dto.UpdateProfileRequest;
 import com.triobase.service.auth.dto.UpdateUserRequest;
+import com.triobase.service.auth.dto.UserProfileResponse;
 import com.triobase.service.auth.entity.SysRole;
 import com.triobase.service.auth.entity.SysUser;
 import com.triobase.service.auth.entity.SysUserRole;
@@ -32,6 +35,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class UserService {
 
+    private static final int MAX_REAL_NAME_LENGTH = 64;
+    private static final int MAX_EMAIL_LENGTH = 128;
+    private static final int MAX_PHONE_LENGTH = 20;
+    private static final int MAX_AVATAR_LENGTH = 512;
+    private static final int MAX_INTRODUCTION_LENGTH = 512;
+    private static final String DEFAULT_HOME_PATH = "/dashboard/analytics";
+
     private final UserMapper userMapper;
     private final UserRoleMapper userRoleMapper;
     private final RoleMapper roleMapper;
@@ -43,6 +53,10 @@ public class UserService {
             throw new BizException(AuthErrorCode.USER_NOT_FOUND);
         }
         return toPayload(user);
+    }
+
+    public UserProfileResponse findProfile(String userId) {
+        return toProfileResponse(requireActiveUser(userId));
     }
 
     public PageResult<UserInfoPayload> list(int page,
@@ -125,6 +139,7 @@ public class UserService {
         user.setTenantId("default");
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setRealName(normalizeOptional(request.getUsername(), MAX_REAL_NAME_LENGTH, "realName"));
         user.setEmail(request.getEmail());
         user.setPhone(request.getPhone());
         user.setStatus(request.getStatus() == null ? 1 : request.getStatus());
@@ -155,6 +170,61 @@ public class UserService {
             replaceRoles(id, request.getRoleIds());
         }
         return toPayload(user);
+    }
+
+    @Transactional
+    public UserProfileResponse updateProfile(String userId, UpdateProfileRequest request) {
+        if (request == null) {
+            throw new BizException(400, "Profile request is required");
+        }
+        SysUser user = requireActiveUser(userId);
+
+        if (request.getRealName() != null) {
+            user.setRealName(normalizeOptional(request.getRealName(), MAX_REAL_NAME_LENGTH, "realName"));
+        }
+        if (request.getEmail() != null) {
+            user.setEmail(normalizeEmail(request.getEmail()));
+        }
+        if (request.getPhone() != null) {
+            String phone = normalizeOptional(request.getPhone(), MAX_PHONE_LENGTH, "phone");
+            ensurePhoneAvailable(userId, phone);
+            user.setPhone(phone);
+        }
+        if (request.getAvatar() != null) {
+            user.setAvatar(normalizeOptional(request.getAvatar(), MAX_AVATAR_LENGTH, "avatar"));
+        }
+        if (request.getIntroduction() != null) {
+            user.setIntroduction(normalizeOptional(request.getIntroduction(), MAX_INTRODUCTION_LENGTH, "introduction"));
+        }
+
+        userMapper.updateById(user);
+        return toProfileResponse(user);
+    }
+
+    @Transactional
+    public void changePassword(String userId, ChangePasswordRequest request) {
+        if (request == null) {
+            throw new BizException(400, "Password request is required");
+        }
+        if (!StringUtils.hasText(request.getOldPassword())
+                || !StringUtils.hasText(request.getNewPassword())
+                || !StringUtils.hasText(request.getConfirmPassword())) {
+            throw new BizException(400, "Password fields are required");
+        }
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new BizException(400, "PASSWORD_CONFIRM_MISMATCH");
+        }
+        if (request.getOldPassword().equals(request.getNewPassword())) {
+            throw new BizException(400, "NEW_PASSWORD_MUST_BE_DIFFERENT");
+        }
+        validatePassword(request.getNewPassword());
+
+        SysUser user = requireActiveUser(userId);
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+            throw new BizException(AuthErrorCode.BAD_CREDENTIALS);
+        }
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userMapper.updateById(user);
     }
 
     @Transactional
@@ -213,16 +283,95 @@ public class UserService {
         }
     }
 
+    private SysUser requireActiveUser(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            throw new BizException(AuthErrorCode.TOKEN_INVALID);
+        }
+        SysUser user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(AuthErrorCode.USER_NOT_FOUND);
+        }
+        if (user.getStatus() == null || user.getStatus() != 1) {
+            throw new BizException(AuthErrorCode.ACCOUNT_DISABLED);
+        }
+        return user;
+    }
+
+    private void ensurePhoneAvailable(String userId, String phone) {
+        if (!StringUtils.hasText(phone)) {
+            return;
+        }
+        Long duplicated = userMapper.selectCount(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getPhone, phone)
+                .ne(SysUser::getId, userId));
+        if (duplicated != null && duplicated > 0) {
+            throw new BizException(400, "PHONE_ALREADY_EXISTS");
+        }
+    }
+
+    private String normalizeEmail(String email) {
+        String value = normalizeOptional(email, MAX_EMAIL_LENGTH, "email");
+        if (!StringUtils.hasText(value)) {
+            return value;
+        }
+        if (!value.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
+            throw new BizException(400, "EMAIL_INVALID");
+        }
+        return value;
+    }
+
+    private String normalizeOptional(String value, int maxLength, String fieldName) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        if (normalized.length() > maxLength) {
+            throw new BizException(400, fieldName + " is too long");
+        }
+        return normalized;
+    }
+
     private UserInfoPayload toPayload(SysUser user) {
         List<String> roles = userMapper.selectRoleCodesByUserId(user.getId());
         UserInfoPayload payload = new UserInfoPayload();
         payload.setId(user.getId());
         payload.setUsername(user.getUsername());
+        payload.setRealName(displayRealName(user));
         payload.setEmail(user.getEmail());
         payload.setPhone(user.getPhone());
+        payload.setAvatar(user.getAvatar());
+        payload.setIntroduction(user.getIntroduction());
         payload.setStatus(user.getStatus());
         payload.setRoles(roles);
         payload.setCreatedAt(user.getCreatedAt());
+        payload.setUpdatedAt(user.getUpdatedAt());
         return payload;
+    }
+
+    private UserProfileResponse toProfileResponse(SysUser user) {
+        List<String> roles = userMapper.selectRoleCodesByUserId(user.getId());
+        UserProfileResponse response = new UserProfileResponse();
+        response.setId(user.getId());
+        response.setUserId(user.getId());
+        response.setUsername(user.getUsername());
+        response.setRealName(displayRealName(user));
+        response.setEmail(user.getEmail());
+        response.setPhone(user.getPhone());
+        response.setAvatar(user.getAvatar());
+        response.setIntroduction(user.getIntroduction());
+        response.setDesc(user.getIntroduction());
+        response.setStatus(user.getStatus());
+        response.setRoles(roles);
+        response.setHomePath(DEFAULT_HOME_PATH);
+        response.setCreatedAt(user.getCreatedAt());
+        response.setUpdatedAt(user.getUpdatedAt());
+        return response;
+    }
+
+    private String displayRealName(SysUser user) {
+        return StringUtils.hasText(user.getRealName()) ? user.getRealName() : user.getUsername();
     }
 }

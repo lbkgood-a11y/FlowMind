@@ -12,7 +12,10 @@ public class SysUser extends BaseEntity {
     private String tenantId;
     private String username;
     private String password;
+    private String realName;
     private String email;
     private String phone;
+    private String avatar;
+    private String introduction;
     private Integer status;
 }

@@ -1,8 +1,13 @@
 package com.triobase.service.auth.controller;
 
 import com.triobase.common.core.exception.AuthErrorCode;
+import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.result.R;
 import com.triobase.common.dto.auth.*;
+import com.triobase.service.auth.dto.ChangePasswordRequest;
+import com.triobase.service.auth.dto.UpdateProfileRequest;
+import com.triobase.service.auth.dto.UserProfileResponse;
 import com.triobase.service.auth.service.AuthService;
 import com.triobase.service.auth.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -72,17 +77,28 @@ public class AuthController {
         if (!result.isValid()) {
             return R.fail(1005, result.getError());
         }
-        UserInfoPayload user = userService.findById(result.getUserId());
-        Map<String, Object> userInfo = new java.util.HashMap<>();
-        userInfo.put("userId", user.getId());
-        userInfo.put("username", user.getUsername());
-        userInfo.put("realName", user.getUsername());
-        userInfo.put("avatar", "");
-        userInfo.put("roles", user.getRoles() != null ? user.getRoles() : List.of());
-        userInfo.put("homePath", "/dashboard/analytics");
-        userInfo.put("desc", "");
+        UserProfileResponse user = userService.findProfile(result.getUserId());
+        Map<String, Object> userInfo = buildUserInfo(user);
         userInfo.put("token", token);
         return R.ok(userInfo);
+    }
+
+    @GetMapping("/profile")
+    public R<UserProfileResponse> profile(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return R.ok(userService.findProfile(resolveCurrentUserId(authHeader)));
+    }
+
+    @PutMapping("/profile")
+    public R<UserProfileResponse> updateProfile(@RequestHeader(value = "Authorization", required = false) String authHeader,
+                                                @RequestBody UpdateProfileRequest request) {
+        return R.ok(userService.updateProfile(resolveCurrentUserId(authHeader), request));
+    }
+
+    @PutMapping("/profile/password")
+    public R<Void> changePassword(@RequestHeader(value = "Authorization", required = false) String authHeader,
+                                  @RequestBody ChangePasswordRequest request) {
+        userService.changePassword(resolveCurrentUserId(authHeader), request);
+        return R.ok();
     }
 
     private String extractBearerToken(String authHeader) {
@@ -93,5 +109,37 @@ public class AuthController {
             return authHeader.substring(7).trim();
         }
         return authHeader.trim();
+    }
+
+    private String resolveCurrentUserId(String authHeader) {
+        String userId = SecurityContextHolder.getUserId();
+        if (StringUtils.hasText(userId)) {
+            return userId;
+        }
+        String token = extractBearerToken(authHeader);
+        if (!StringUtils.hasText(token)) {
+            throw new BizException(AuthErrorCode.TOKEN_INVALID);
+        }
+        TokenValidateResult result = authService.validate(token);
+        if (!result.isValid()) {
+            throw new BizException(1005, result.getError());
+        }
+        return result.getUserId();
+    }
+
+    private Map<String, Object> buildUserInfo(UserProfileResponse user) {
+        Map<String, Object> userInfo = new java.util.HashMap<>();
+        userInfo.put("userId", user.getUserId());
+        userInfo.put("username", user.getUsername());
+        userInfo.put("realName", user.getRealName());
+        userInfo.put("email", user.getEmail());
+        userInfo.put("phone", user.getPhone());
+        userInfo.put("avatar", user.getAvatar() != null ? user.getAvatar() : "");
+        userInfo.put("roles", user.getRoles() != null ? user.getRoles() : List.of());
+        userInfo.put("homePath", user.getHomePath());
+        userInfo.put("desc", user.getDesc() != null ? user.getDesc() : "");
+        userInfo.put("introduction", user.getIntroduction());
+        userInfo.put("status", user.getStatus());
+        return userInfo;
     }
 }
