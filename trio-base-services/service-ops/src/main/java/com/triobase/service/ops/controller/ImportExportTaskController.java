@@ -30,6 +30,7 @@ public class ImportExportTaskController {
     }
 
     @GetMapping("/mine")
+    @RequirePermission("/api/v1/import-export-tasks:GET")
     public R<PageResult<OpsImportExportTask>> mine(@RequestParam(defaultValue = "1") int page,
                                                    @RequestParam(defaultValue = "20") int size,
                                                    @RequestParam(required = false) String status) {

@@ -29,16 +29,18 @@ public class PermissionAspect {
                                   RequirePermission requirePermission) throws Throwable {
         String required = requirePermission.value();
         List<String> permissions = SecurityContextHolder.getPermissions();
+        List<String> deniedPermissions = SecurityContextHolder.getDeniedPermissions();
 
-        if (!hasPermission(permissions, required)) {
-            log.warn("Permission denied: required={}, userPermissions={}", required, permissions);
+        if (!hasPermission(permissions, deniedPermissions, required)) {
+            log.warn("Permission denied: required={}, userPermissions={}, deniedPermissions={}",
+                    required, permissions, deniedPermissions);
             throw new BizException(AuthErrorCode.PERMISSION_DENIED);
         }
 
         return joinPoint.proceed();
     }
 
-    private boolean hasPermission(List<String> permissions, String required) {
+    private boolean hasPermission(List<String> permissions, List<String> deniedPermissions, String required) {
         if (permissions == null || permissions.isEmpty()) {
             return false;
         }
@@ -47,6 +49,12 @@ public class PermissionAspect {
         String requestPermissionCode = currentRequestPermissionCode();
         if (StringUtils.hasText(requestPermissionCode)) {
             candidates.add(requestPermissionCode);
+        }
+        if (deniedPermissions != null && deniedPermissions.stream()
+                .filter(StringUtils::hasText)
+                .anyMatch(denied -> candidates.stream()
+                        .anyMatch(candidate -> grantedMatches(denied, candidate)))) {
+            return false;
         }
         return permissions.stream()
                 .filter(StringUtils::hasText)

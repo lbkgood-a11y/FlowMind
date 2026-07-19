@@ -531,12 +531,16 @@ public class AuthorizationRegistryService {
     }
 
     private void ensureActionRegistered(String tenantId, String resourceCode, String actionCode) {
+        Long resourceCount = resourceMapper.selectCount(new LambdaQueryWrapper<SysAuthResource>()
+                .eq(SysAuthResource::getTenantId, tenantId)
+                .eq(SysAuthResource::getResourceCode, resourceCode)
+                .eq(SysAuthResource::getLifecycleStatus, ACTIVE));
         Long count = actionMapper.selectCount(new LambdaQueryWrapper<SysAuthAction>()
                 .eq(SysAuthAction::getTenantId, tenantId)
                 .eq(SysAuthAction::getResourceCode, resourceCode)
                 .eq(SysAuthAction::getActionCode, actionCode)
                 .eq(SysAuthAction::getStatus, (short) 1));
-        if (count == null || count == 0) {
+        if (resourceCount == null || resourceCount == 0 || count == null || count == 0) {
             throw new BizException(40481, "AUTHZ_ACTION_NOT_REGISTERED");
         }
     }

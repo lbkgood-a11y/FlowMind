@@ -94,11 +94,20 @@ const routes: RouteRecordRaw[] = [
         component: () => import('#/views/system/config/list.vue'),
       },
       {
+        path: 'authorization',
+        name: 'SystemAuthorizationRedirect',
+        redirect: '/system/authz',
+        meta: {
+          hideInMenu: true,
+          title: '企业授权',
+        },
+      },
+      {
         path: 'authz',
         name: 'SystemAuthz',
         meta: {
           icon: 'mdi:shield-account',
-          title: '授权管理',
+          title: '企业授权',
         },
         component: () => import('#/views/system/authz/index.vue'),
       },

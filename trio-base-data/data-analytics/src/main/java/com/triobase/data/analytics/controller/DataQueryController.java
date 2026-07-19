@@ -1,5 +1,6 @@
 package com.triobase.data.analytics.controller;
 
+import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.R;
 import com.triobase.data.analytics.dto.HybridQueryRequest;
 import com.triobase.data.analytics.dto.HybridQueryResponse;
@@ -24,16 +25,19 @@ public class DataQueryController {
     private final DataQueryService queryService;
 
     @PostMapping("/structured")
+    @RequirePermission("/api/v1/data/query:POST")
     public R<StructuredQueryResponse> structured(@Valid @RequestBody StructuredQueryRequest request) {
         return R.ok(queryService.structured(request));
     }
 
     @PostMapping("/semantic")
+    @RequirePermission("/api/v1/data/query:POST")
     public R<SemanticQueryResponse> semantic(@Valid @RequestBody SemanticQueryRequest request) {
         return R.ok(queryService.semantic(request));
     }
 
     @PostMapping("/hybrid")
+    @RequirePermission("/api/v1/data/query:POST")
     public R<HybridQueryResponse> hybrid(@Valid @RequestBody HybridQueryRequest request,
                                          @RequestHeader(value = "X-User-Id", required = false) String operatorId,
                                          @RequestHeader(value = "X-Username", required = false) String operatorName) {

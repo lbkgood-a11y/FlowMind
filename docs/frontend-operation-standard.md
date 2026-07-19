@@ -25,7 +25,7 @@ These pages are not all Global Action candidates, but they have the most duplica
 | `system/role/list.vue` | Complex single page with authorization sub-panels | 2500+ lines; table, authorization config, previews, drawers, confirms |
 | `system/user/list.vue` | User management | 1300+ lines; table, drawers, status/delete confirm, organization fields |
 | `system/org/list.vue` | Master-detail organization management | 1200+ lines; organization table/tree, user table, assignment drawer |
-| `system/menu/list.vue` | Menu/permission management | 800+ lines; tree/table, drag/sort, permission preview, drawer |
+| `system/menu/list.vue` | Menu/navigation management | 800+ lines; tree/table, drag/sort, navigation permission preview, drawer |
 | `system/data-permission/list.vue` | Policy management | 800+ lines; authorization resource forms and drawer |
 
 ### Master-detail or multi-table pages

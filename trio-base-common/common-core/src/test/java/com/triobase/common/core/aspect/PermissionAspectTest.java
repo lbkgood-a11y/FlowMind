@@ -64,6 +64,27 @@ class PermissionAspectTest {
         assertThat(result).isEqualTo("ok");
     }
 
+    @Test
+    void deniesPermissionBeforeAllowWhenDeniedPermissionMatchesCurrentRequest() {
+        setRequest("GET", "/api/v1/roles");
+        SecurityContextHolder.set(new SecurityContextHolder.SecurityContext(
+                "U001",
+                "alice",
+                null,
+                List.of(),
+                List.of("/api/v1/**:GET"),
+                List.of("/api/v1/roles:GET"),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null));
+
+        assertThatThrownBy(() -> aspect.checkPermission(mockJoinPoint(), require("/api/v1/**:GET")))
+                .isInstanceOf(BizException.class);
+    }
+
     private ProceedingJoinPoint mockJoinPoint() throws Throwable {
         ProceedingJoinPoint joinPoint = mock(ProceedingJoinPoint.class);
         when(joinPoint.proceed()).thenReturn("ok");

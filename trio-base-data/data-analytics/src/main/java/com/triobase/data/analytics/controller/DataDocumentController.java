@@ -1,5 +1,6 @@
 package com.triobase.data.analytics.controller;
 
+import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.R;
 import com.triobase.data.analytics.dto.DocumentIngestResponse;
 import com.triobase.data.analytics.dto.IngestDocumentRequest;
@@ -20,6 +21,7 @@ public class DataDocumentController {
     private final DocumentIngestionService ingestionService;
 
     @PostMapping
+    @RequirePermission("/api/v1/data/documents:POST")
     public R<DocumentIngestResponse> ingest(@Valid @RequestBody IngestDocumentRequest request,
                                             @RequestHeader(value = "X-Username", required = false) String operator) {
         return R.ok(ingestionService.ingest(request, operator));

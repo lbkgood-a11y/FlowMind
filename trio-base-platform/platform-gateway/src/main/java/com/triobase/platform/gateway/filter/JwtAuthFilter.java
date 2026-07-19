@@ -75,6 +75,9 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
                                         ? result.getRoles() : List.of()));
                                 headers.set("X-User-Permissions", String.join(",", result.getPermissions() != null
                                         ? result.getPermissions() : List.of()));
+                                headers.set("X-User-Denied-Permissions", String.join(",",
+                                        result.getDeniedPermissions() != null
+                                                ? result.getDeniedPermissions() : List.of()));
                                 setIfPresent(headers, "X-Auth-Version", result.getAuthVersion());
                                 setIfPresent(headers, "X-Role-Version", result.getRoleVersion());
                                 setIfPresent(headers, "X-Data-Policy-Version", result.getDataPolicyVersion());
@@ -96,7 +99,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         return whitelistPaths.stream().anyMatch(pattern -> {
             if (pattern.endsWith("/**")) {
                 String prefix = pattern.substring(0, pattern.length() - 3);
-                return path.startsWith(prefix);
+                return path.equals(prefix) || path.startsWith(prefix + "/");
             }
             return path.equals(pattern);
         });

@@ -50,7 +50,7 @@ public class ApplicationReferenceValidator {
         try {
             envelope = authClient.get()
                     .uri(uriBuilder -> {
-                        var builder = uriBuilder.path("/internal/v1/permissions/missing");
+                        var builder = uriBuilder.path("/internal/v1/authz/codes/missing");
                         permissionCodes.forEach(code -> builder.queryParam("codes", code));
                         return builder.build();
                     })

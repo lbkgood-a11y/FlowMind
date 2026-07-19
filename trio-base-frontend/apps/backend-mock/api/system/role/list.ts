@@ -14,7 +14,7 @@ const formatterCN = new Intl.DateTimeFormat('zh-CN', {
   second: '2-digit',
 });
 
-const menuIds = getMenuIds(MOCK_MENU_LIST);
+const visibleMenuIds = getMenuIds(MOCK_MENU_LIST);
 
 function generateMockDataList(count: number) {
   const dataList = [];
@@ -27,7 +27,7 @@ function generateMockDataList(count: number) {
       createTime: formatterCN.format(
         faker.date.between({ from: '2022-01-01', to: '2025-01-01' }),
       ),
-      permissions: faker.helpers.arrayElements(menuIds),
+      permissions: faker.helpers.arrayElements(visibleMenuIds),
       remark: faker.lorem.sentence(),
     };
 

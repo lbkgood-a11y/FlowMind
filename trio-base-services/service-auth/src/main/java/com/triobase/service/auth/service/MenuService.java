@@ -6,11 +6,13 @@ import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.auth.dto.CreateMenuRequest;
 import com.triobase.service.auth.dto.MenuRouteResponse;
 import com.triobase.service.auth.dto.UpdateMenuRequest;
+import com.triobase.service.auth.entity.SysAuthAction;
+import com.triobase.service.auth.entity.SysAuthResource;
 import com.triobase.service.auth.entity.SysMenu;
-import com.triobase.service.auth.entity.SysPermission;
+import com.triobase.service.auth.mapper.AuthActionMapper;
+import com.triobase.service.auth.mapper.AuthResourceMapper;
 import com.triobase.service.auth.mapper.MenuMapper;
-import com.triobase.service.auth.mapper.PermissionMapper;
-import com.triobase.service.auth.mapper.RoleMenuMapper;
+import com.triobase.service.auth.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,13 +27,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class MenuService {
 
+    private static final String DEFAULT_TENANT = "default";
     private static final String DEFAULT_GROUP = "general";
+    private static final String ACTIVE = "ACTIVE";
     private static final String TYPE_BUTTON = "button";
     private static final String TYPE_CATALOG = "catalog";
     private static final String TYPE_EMBEDDED = "embedded";
@@ -40,10 +45,12 @@ public class MenuService {
     private static final Set<String> MENU_TYPES = Set.of(TYPE_BUTTON, TYPE_CATALOG, TYPE_EMBEDDED, TYPE_LINK, TYPE_MENU);
     private static final Set<String> PATH_REQUIRED_TYPES = Set.of(TYPE_CATALOG, TYPE_EMBEDDED, TYPE_MENU);
     private static final Set<String> ROUTE_COMPONENT_TYPES = Set.of(TYPE_EMBEDDED, TYPE_LINK);
+    private static final short STATUS_ENABLED = 1;
 
     private final MenuMapper menuMapper;
-    private final PermissionMapper permissionMapper;
-    private final RoleMenuMapper roleMenuMapper;
+    private final AuthResourceMapper authResourceMapper;
+    private final AuthActionMapper authActionMapper;
+    private final UserMapper userMapper;
 
     public List<SysMenu> list() {
         return list(null, null, null, null);
@@ -97,7 +104,15 @@ public class MenuService {
         List<SysMenu> allMenus = list().stream()
                 .filter(this::isActive)
                 .collect(Collectors.toList());
-        Set<String> authorizedMenuIds = new HashSet<>(roleMenuMapper.selectMenuIdsByUserId(userId));
+        List<String> permissionCodes = userMapper.selectPermissionsByUserId(userId);
+        List<String> deniedPermissionCodes = userMapper.selectDeniedPermissionsByUserId(userId);
+        Set<String> permissions = new HashSet<>(permissionCodes != null ? permissionCodes : List.of());
+        Set<String> deniedPermissions = new HashSet<>(deniedPermissionCodes != null ? deniedPermissionCodes : List.of());
+        Set<String> authorizedMenuIds = allMenus.stream()
+                .filter(menu -> !TYPE_BUTTON.equals(normalizeMenuType(menu.getMenuType())))
+                .filter(menu -> isRouteAuthorized(menu, permissions, deniedPermissions))
+                .map(SysMenu::getId)
+                .collect(Collectors.toCollection(HashSet::new));
         if (authorizedMenuIds.isEmpty()) {
             return List.of();
         }
@@ -131,7 +146,7 @@ public class MenuService {
         validateRequired(request.getMenuKey(), request.getMenuName(), request.getPath(),
                 request.getComponent(), request.getPermissionCode(), menuType);
         validateParent(request.getParentId(), null);
-        validatePermission(request.getPermissionId());
+        validatePermissionCode(request.getPermissionCode());
         validateUniqueMenuKey(request.getMenuKey(), null);
         validateUniquePath(normalizePathForType(request.getPath(), menuType), null);
 
@@ -153,7 +168,7 @@ public class MenuService {
         validateRequired(request.getMenuKey(), request.getMenuName(), request.getPath(),
                 request.getComponent(), request.getPermissionCode(), menuType);
         validateParent(request.getParentId(), id);
-        validatePermission(request.getPermissionId());
+        validatePermissionCode(request.getPermissionCode());
         validateUniqueMenuKey(request.getMenuKey(), id);
         validateUniquePath(normalizePathForType(request.getPath(), menuType), id);
 
@@ -213,7 +228,6 @@ public class MenuService {
         menu.setBadge(normalizeBlank(request.getBadge()));
         menu.setBadgeType(normalizeBlank(request.getBadgeType()));
         menu.setBadgeVariant(normalizeBlank(request.getBadgeVariant()));
-        menu.setPermissionId(normalizeBlank(request.getPermissionId()));
         menu.setPermissionCode(normalizeBlank(request.getPermissionCode()));
         menu.setDescription(normalizeBlank(request.getDescription()));
     }
@@ -242,7 +256,6 @@ public class MenuService {
         menu.setBadge(normalizeBlank(request.getBadge()));
         menu.setBadgeType(normalizeBlank(request.getBadgeType()));
         menu.setBadgeVariant(normalizeBlank(request.getBadgeVariant()));
-        menu.setPermissionId(normalizeBlank(request.getPermissionId()));
         menu.setPermissionCode(normalizeBlank(request.getPermissionCode()));
         menu.setDescription(normalizeBlank(request.getDescription()));
     }
@@ -293,13 +306,25 @@ public class MenuService {
         }
     }
 
-    private void validatePermission(String permissionId) {
-        if (!StringUtils.hasText(permissionId)) {
+    private void validatePermissionCode(String permissionCode) {
+        if (!StringUtils.hasText(permissionCode)) {
             return;
         }
-        SysPermission permission = permissionMapper.selectById(permissionId);
-        if (permission == null) {
-            throw new BizException(40432, "PERMISSION_NOT_FOUND");
+        PermissionKey key = parsePermissionCode(permissionCode);
+        if (key == null) {
+            throw new BizException(40041, "MENU_PERMISSION_CODE_INVALID");
+        }
+        Long resourceCount = authResourceMapper.selectCount(new LambdaQueryWrapper<SysAuthResource>()
+                .eq(SysAuthResource::getTenantId, DEFAULT_TENANT)
+                .eq(SysAuthResource::getResourceCode, key.resourceCode())
+                .eq(SysAuthResource::getLifecycleStatus, ACTIVE));
+        Long actionCount = authActionMapper.selectCount(new LambdaQueryWrapper<SysAuthAction>()
+                .eq(SysAuthAction::getTenantId, DEFAULT_TENANT)
+                .eq(SysAuthAction::getResourceCode, key.resourceCode())
+                .eq(SysAuthAction::getActionCode, key.actionCode())
+                .eq(SysAuthAction::getStatus, STATUS_ENABLED));
+        if (resourceCount == null || resourceCount == 0 || actionCount == null || actionCount == 0) {
+            throw new BizException(40432, "MENU_PERMISSION_ACTION_NOT_REGISTERED");
         }
     }
 
@@ -425,6 +450,53 @@ public class MenuService {
         return status == null || status == 1;
     }
 
+    private boolean isRouteAuthorized(SysMenu menu, Set<String> permissions, Set<String> deniedPermissions) {
+        PermissionKey required = resolvePermissionKey(menu);
+        if (required == null) {
+            return false;
+        }
+        String requiredCode = required.resourceCode() + ":" + required.actionCode();
+        if (deniedPermissions.stream()
+                .filter(StringUtils::hasText)
+                .anyMatch(denied -> permissionMatches(denied, requiredCode))) {
+            return false;
+        }
+        return permissions.stream()
+                .filter(StringUtils::hasText)
+                .anyMatch(granted -> permissionMatches(granted, requiredCode));
+    }
+
+    private PermissionKey resolvePermissionKey(SysMenu menu) {
+        String permissionCode = normalizeBlank(menu.getPermissionCode());
+        if (permissionCode != null) {
+            return parsePermissionCode(permissionCode);
+        }
+        return null;
+    }
+
+    private PermissionKey parsePermissionCode(String permissionCode) {
+        int separator = permissionCode.lastIndexOf(':');
+        if (separator <= 0 || separator >= permissionCode.length() - 1) {
+            return null;
+        }
+        String resourceCode = normalizeBlank(permissionCode.substring(0, separator));
+        String actionCode = normalizeBlank(permissionCode.substring(separator + 1));
+        return resourceCode != null && actionCode != null
+                ? new PermissionKey(resourceCode, actionCode)
+                : null;
+    }
+
+    private boolean permissionMatches(String granted, String required) {
+        if (granted.equals(required)) {
+            return true;
+        }
+        if (!granted.contains("*")) {
+            return false;
+        }
+        String regex = Pattern.quote(granted).replace("*", "\\E.*\\Q");
+        return Pattern.compile(regex).matcher(required).matches();
+    }
+
     private String normalizeMenuType(String menuType) {
         return StringUtils.hasText(menuType) ? menuType.trim() : TYPE_MENU;
     }
@@ -523,5 +595,8 @@ public class MenuService {
         String normalized = normalizeBlank(value);
         return normalized != null
                 && (normalized.startsWith("http://") || normalized.startsWith("https://"));
+    }
+
+    private record PermissionKey(String resourceCode, String actionCode) {
     }
 }

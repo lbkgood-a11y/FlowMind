@@ -145,7 +145,8 @@ public class AuthService {
         }
         List<String> roles = userMapper.selectRoleCodesByUserId(payload.userId());
         List<String> permissions = userMapper.selectPermissionsByUserId(payload.userId());
-        return TokenValidateResult.success(payload.userId(), payload.username(), tenantId(user),
+        List<String> deniedPermissions = userMapper.selectDeniedPermissionsByUserId(payload.userId());
+        TokenValidateResult result = TokenValidateResult.success(payload.userId(), payload.username(), tenantId(user),
                 roles,
                 permissions,
                 authorizationVersionService.current(AuthorizationVersionService.AUTHORIZATION),
@@ -154,6 +155,8 @@ public class AuthService {
                 authorizationVersionService.current(AuthorizationVersionService.AUTHORIZATION),
                 authorizationVersionService.current(AuthorizationVersionService.FIELD_POLICY),
                 authorizationVersionService.current(AuthorizationVersionService.GUARD_TEMPLATE));
+        result.setDeniedPermissions(deniedPermissions);
+        return result;
     }
 
     public void logout(String accessToken, String refreshToken) {

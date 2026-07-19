@@ -1,8 +1,10 @@
 # TrioBase RBAC 权限体系设计
 
-> 版本: v1.2
+> 版本: v1.3
 > 适用于: service-auth (Spring Boot) + platform-gateway + common-security + 各业务微服务 + trio-base-frontend (Vue Vben Admin)
-> 最后更新: 2026-07-12
+> 最后更新: 2026-07-19
+
+> V60 起，`sys_auth_grant` 是角色/用户功能授权的唯一事实表；`sys_role_menu` 已迁移为只读兼容视图。菜单只描述导航和按钮载体，可见性由功能授权反推。
 
 ---
 
@@ -31,7 +33,7 @@
 ```
 浏览器 → Gateway (8080) → service-auth (8081)
               │
-              ├─ JwtAuthFilter: 验证 JWT → 注入 X-User-Id / X-Username / X-User-Permissions 头
+              ├─ JwtAuthFilter: 验证 JWT → 注入 X-User-Id / X-Username / X-User-Permissions / X-User-Denied-Permissions 头
               ├─ DataMaskingFilter: AI 路径敏感数据扫描
               └─ TraceIdFilter: 注入 X-B3-TraceId
 
@@ -54,29 +56,34 @@
 
 ## 2. 数据模型
 
-### 2.1 核心表（7 张）
+### 2.1 核心表
 
 ```
 sys_user ──┐
-           ├── sys_user_role ── sys_role ── sys_role_menu ── sys_menu
-           │                                                  │
-           │                                          permission_id (FK)
-           │                                                  │
-           │                                                  ▼
-           │                                          sys_permission
+           ├── sys_user_role ── sys_role
            │
-           └── (用户权限码由 role → menu → permission 推导)
+           ├── sys_auth_grant ── sys_auth_resource ── sys_auth_action
+           │        │
+           │        ├── sys_data_policy / sys_data_policy_dimension
+           │        └── sys_auth_field_policy
+           │
+           └── sys_menu（导航元数据；可见性由 sys_auth_grant 反推）
 ```
 
 | 表 | 职责 | 关键字段 |
 |----|------|----------|
 | **sys_user** | 用户账户 | `username`, `password` (BCrypt), `email`, `phone`, `status` |
 | **sys_role** | 角色定义 | `role_code`, `role_name`, `status` |
-| **sys_permission** | 权限码注册表 | `resource`, `action` → 唯一约束，组合为 `resource:action` 权限码 |
-| **sys_menu** | 菜单树（UI 载体） | `parent_id` (自引用), `menu_type` (catalog/menu/button/link/embedded), `permission_id` (FK→sys_permission), `permission_code` (冗余，待删除) |
 | **sys_user_role** | 用户←→角色 | `user_id`, `role_id` (唯一约束) |
-| **sys_role_menu** | 角色←→菜单 | `role_id`, `menu_id` (唯一约束) |
-| ~~**sys_role_permission**~~ | 已删除 (V12) | 原角色←→权限直接关联，被 sys_role_menu 替代 |
+| **sys_auth_resource** | 授权资源注册表 | `tenant_id`, `resource_code`, `resource_type`, `owner_service`, `display_name` |
+| **sys_auth_action** | 资源动作注册表 | `tenant_id`, `resource_code`, `action_code`, `action_category`, `status` |
+| **sys_auth_grant** | 功能授权唯一事实表 | `subject_type`, `subject_id`, `resource_code`, `action_code`, `effect`, `status` |
+| **sys_data_policy** / **sys_data_policy_dimension** | 数据范围授权 | `subject_type`, `subject_id`, `resource_code`, `action_code`, `scope_type` |
+| **sys_auth_field_policy** | 字段读写/掩码授权 | `resource_code`, `field_key`, `read_mode`, `write_mode`, `mask_strategy` |
+| **sys_menu** | 菜单树（导航元数据） | `parent_id`, `menu_type`, `path`, `permission_code` |
+| **sys_role_menu** | 只读兼容视图 | 由 `sys_auth_grant` + `sys_menu.permission_code` 反推 |
+| ~~**sys_permission**~~ | 已删除 (V65) | 旧版权限码注册表，已迁移到 `sys_auth_resource` / `sys_auth_action` |
+| ~~**sys_role_permission**~~ | 已删除 (V12) | 原角色←→权限直接关联 |
 
 ### 2.2 种子数据 ID 约定
 
@@ -85,7 +92,7 @@ sys_user ──┐
 | `U` | 用户 | `U001` = admin |
 | `R` | 角色 | `R001` = ADMIN, `R002` = TENANT_ADMIN, `R003` = USER |
 | `P` | API 权限 | `P001` = `/api/v1/users:GET` |
-| `BP` | 历史前端按钮权限 | `BP001` = `System:Menu:Create`（存量兼容，新增后端受保护操作不再使用此格式） |
+| `BP` | 已退役的历史前端按钮权限 | `BP001` = `System:Menu:Create`（历史迁移记录；新增和现役后端受保护操作不使用此格式） |
 | `M` | 菜单路由 | `M004` = 用户管理页面 |
 | `01HK...` | 按钮菜单 | `01HK153X100000000000000010` = 菜单管理-新增按钮 |
 
@@ -97,9 +104,9 @@ sys_user ──┐
 |----|------|------|
 | sys_user | 1 | admin |
 | sys_role | 3 | ADMIN, TENANT_ADMIN, USER |
-| sys_permission | 动态演进 | API 权限为主；用户管理、角色管理、菜单管理已对齐为 API 权限码 |
 | sys_menu | 动态演进 | 目录/菜单/按钮混合；button 节点作为页面内操作的授权载体 |
-| sys_role_menu | 全量 | ADMIN 拥有所有菜单 |
+| sys_auth_grant | 动态演进 | ADMIN 拥有管理端默认授权；角色/用户功能授权均写这里 |
+| sys_role_menu | 投影视图 | 兼容旧查询，不作为写入表 |
 
 ---
 
@@ -133,8 +140,9 @@ POST /api/v1/auth/refresh { refreshToken }
 GET /api/v1/auth/validate (Authorization: Bearer <token>)
   → AuthService.validate()
     → 验证签名 + 过期 + 未被吊销
-    → 查询用户权限码: UserMapper.selectPermissionsByUserId()
-    → 返回 { valid: true, userId, username, permissions: [...] }
+    → 查询用户允许权限码: UserMapper.selectPermissionsByUserId()
+    → 查询用户拒绝权限码: UserMapper.selectDeniedPermissionsByUserId()
+    → 返回 { valid: true, userId, username, permissions: [...], deniedPermissions: [...] }
 ```
 
 ### 3.4 登出
@@ -151,38 +159,52 @@ POST /api/v1/auth/logout { accessToken, refreshToken }
 
 ### 4.1 权限码查询
 
-**UserMapper.selectPermissionsByUserId()** 是权限查询的唯一入口：
+**UserMapper.selectPermissionsByUserId()** 是允许权限查询入口，数据来源只读 `sys_auth_grant`：
 
 ```sql
-SELECT DISTINCT code FROM (
-    SELECT COALESCE(NULLIF(m.permission_code, ''), p.resource || ':' || p.action) AS code
-    FROM sys_role_menu rm
-    JOIN sys_menu m ON m.id = rm.menu_id
-    LEFT JOIN sys_permission p ON p.id = m.permission_id
-    JOIN sys_user_role ur ON rm.role_id = ur.role_id
-    JOIN sys_role r ON r.id = ur.role_id
-    WHERE ur.user_id = #{userId} AND r.status = 1
-) permissions WHERE code IS NOT NULL AND code <> ''
+SELECT DISTINCT g.resource_code || ':' || g.action_code AS code
+FROM sys_auth_grant g
+LEFT JOIN sys_user_role ur
+  ON g.subject_type = 'ROLE' AND ur.role_id = g.subject_id
+LEFT JOIN sys_role r
+  ON r.id = ur.role_id
+WHERE g.tenant_id = 'default'
+  AND g.effect = 'ALLOW'
+  AND g.status = 1
+  AND (
+    (g.subject_type = 'USER' AND g.subject_id = #{userId})
+    OR (g.subject_type = 'ROLE' AND ur.user_id = #{userId} AND r.status = 1)
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM sys_auth_grant denied
+    WHERE denied.tenant_id = g.tenant_id
+      AND denied.subject_type IN ('USER', 'ROLE')
+      AND denied.resource_code = g.resource_code
+      AND denied.action_code = g.action_code
+      AND denied.effect = 'DENY'
+      AND denied.status = 1
+  )
 ```
 
-**查询链路:** user → user_role → role → role_menu → menu → permission → resource:action
+**查询链路:** user → user_role → role/user → sys_auth_grant → resource:action
 
 **权限码优先级:**
-1. `menu.permission_code` 如果非空（菜单/按钮节点可直接固化 API 权限码，如 `/api/v1/users:POST`）
-2. 否则用 `permission.resource || ':' || permission.action`（API 权限，如 `/api/v1/users:GET`）
-3. 菜单无 permission_id 则不产生权限码（如仪表盘）
+1. 运行时鉴权只看 `sys_auth_grant.resource_code/action_code`。
+2. `sys_menu.permission_code` 只用于导航可见性反推；授权事实仍只写 `sys_auth_grant`。
+3. 显式 `DENY` 优先于 `ALLOW`。
 
 ### 4.2 角色授权（管理操作）
 
 ```
-管理员在 UI 勾选菜单树 → 前端传 menuIds
-  → RoleService.create/update()
-    → normalizeMenuIds(): 校验菜单存在，并自动补齐已选节点的父级菜单
-    → replaceMenus(): 写入 sys_role_menu (delete + insert)
-    → 用户权限码由 sys_role_menu → sys_menu → sys_permission 实时推导
+管理员在角色管理或企业授权中勾选功能资源动作
+  → AuthorizationAdminController / Authz API
+    → 写入 sys_auth_grant
+    → bump GRANT / AUTHORIZATION 版本
+    → 菜单可见性由 sys_auth_grant + sys_menu 权限码投影得到
 ```
 
-**注意:** V12 之后只保留 `sys_role_menu`。角色不再直接保存 `permissionIds`，无菜单关联的纯 API 权限需要先设计载体后再引入。
+**注意:** 角色新增/更新接口只保存角色基础信息，不接收 `menuIds` 授权写入。`RoleDetailResponse.menuIds` 是读投影，用于展示角色当前可见菜单，不是授权事实。
 
 ---
 
@@ -192,14 +214,14 @@ SELECT DISTINCT code FROM (
 
 | 类型 | 格式 | 示例 | 来源 |
 |------|------|------|------|
-| **API 权限（标准）** | `/api/v1/{resource}:{HTTP_METHOD}` | `/api/v1/users:GET`, `/api/v1/users/*:PUT` | sys_permission.resource + action，必须与 `@RequirePermission` 一致 |
-| **前端 UI 权限（例外）** | `{Module}:{Entity}:{Action}` | `System:Menu:Create` | 仅用于没有后端受保护接口的纯前端交互或存量兼容 |
+| **API 权限（标准）** | `/api/v1/{resource}:{HTTP_METHOD}` | `/api/v1/users:GET`, `/api/v1/users/*:PUT` | `sys_auth_resource.resource_code` + `sys_auth_action.action_code`，必须与 `@RequirePermission` 一致 |
+| **前端 UI 权限（例外）** | `{Module}:{Entity}:{Action}` | `System:Menu:Create` | 已退役的历史格式；不再用于现役后端受保护能力 |
 
 **设计约束:**
 
 - 后端 Controller 已用 `@RequirePermission` 保护的能力，前端必须复用同一个 API 权限码。
 - 不为同一个后端能力再创建一套 `System:*` 前端权限码，否则会出现“前端按钮显示/隐藏”和“后端 403”两套规则不一致。
-- 历史 `System:*` 按钮权限作为存量兼容逐步清理；用户管理、角色管理、菜单管理已经通过 V15/V16 统一为 API 权限码。
+- 历史 `System:*` 按钮权限已从活跃菜单和授权中清理；用户管理、角色管理、菜单管理已经通过 V15/V16 统一为 API 权限码，旧 `/api/v1/permissions` 管理面已通过 V62 退役。
 
 ### 5.2 API 权限码清单
 
@@ -220,9 +242,6 @@ SELECT DISTINCT code FROM (
 | `/api/v1/menus:GET` | P013 | 菜单管理 (M006) |
 | `/api/v1/menus:POST` | P014 | 菜单管理-新增按钮 |
 | `/api/v1/menus/*:DELETE` | P015 | 菜单管理-删除按钮 |
-| `/api/v1/permissions:GET` | P016 | 授权管理 (M007) |
-| `/api/v1/permissions:POST` | P017 | - |
-| `/api/v1/permissions/*:DELETE` | P018 | - |
 | `/api/v1/menus/*:PUT` | 01HK153X0M000000000000000M | 菜单管理-修改按钮 |
 | `/api/v1/org/units:GET` | P019 | 组织管理 (M009) |
 | `/api/v1/org/units:POST` | P020 | 组织管理-新增按钮 |
@@ -232,6 +251,10 @@ SELECT DISTINCT code FROM (
 | `/api/v1/data-policies:POST` | P024 | 数据权限-新增按钮 |
 | `/api/v1/data-policies/*:PUT` | P025 | 数据权限-修改按钮 |
 | `/api/v1/data-policies/*:DELETE` | P026 | 数据权限-删除按钮 |
+| `/api/v1/authz/**:GET` | P_AUTHZ_READ | 企业授权 (M_AUTHZ) |
+| `/api/v1/authz/**:POST` | P_AUTHZ_WRITE | 企业授权-配置 |
+| `/api/v1/authz/**:PUT` | P_AUTHZ_UPDATE | 企业授权-更新 |
+| `/api/v1/authz/**:DELETE` | P_AUTHZ_DELETE | 企业授权-删除 |
 
 ### 5.3 页面读权限与按钮写权限边界
 
@@ -302,7 +325,7 @@ SELECT DISTINCT code FROM (
 │   ├── 新增 (button) → P024 (/api/v1/data-policies:POST)
 │   ├── 修改 (button) → P025 (/api/v1/data-policies/*:PUT)
 │   └── 删除 (button) → P026 (/api/v1/data-policies/*:DELETE)
-└── 授权管理 (M007, menu) → P016 (隐藏)
+└── 旧授权管理 (M007, menu) → P016 (已通过 V62 退役并隐藏)
 
 表单 (独立)
 ├── 表单管理 (M002, menu) → P011
@@ -356,7 +379,7 @@ public Object checkPermission(ProceedingJoinPoint joinPoint,
 | UserController | 7 | 全部 (7) |
 | RoleController | 8 | 全部 (8) |
 | MenuController | 8 | 全部 (8) |
-| PermissionController | 4 | 全部 (4) |
+| AuthorizationManagementController | 20 | 全部 (20) |
 | AuthController | 7 | 无（公开端点） |
 | MenuRuntimeController | 1 | 无（使用 SecurityContextHolder 过滤） |
 | OrgUnitController | 5 | 无（跨服务，暂无权限条目） |
@@ -364,7 +387,7 @@ public Object checkPermission(ProceedingJoinPoint joinPoint,
 
 ### 7.4 权限码映射规则
 
-Controller 方法上的 `@RequirePermission` 值需与 `sys_permission` 中的 `resource:action` 一致：
+Controller 方法上的 `@RequirePermission` 值需与 `sys_auth_resource` / `sys_auth_action` 中的 `resource_code:action_code` 一致：
 
 | HTTP 方法 | URL 模式 | 权限码 |
 |-----------|----------|--------|
@@ -398,25 +421,28 @@ export async function getAccessCodesApi() {
 
 权限码列表在 `accessCodes` 中，不匹配则移除 DOM 元素。
 
-### 8.3 菜单授权 UI
+### 8.3 角色授权 UI
 
 角色管理页面 (`views/system/role/list.vue`) 使用 Ant Design Vue Tree 组件：
 
-- **编辑/创建角色:** 左侧表单 + 右侧菜单 Tree（多选勾选）
-- **授权模式:** 点击"授权"按钮，只显示菜单 Tree，隐藏其他表单字段
-- **勾选模式:** Tree 必须使用 `checkStrictly=true`，页面节点和按钮节点独立授权
-- **数据流:** 勾选的 `menuIds` → `POST/PUT /api/v1/roles` → 后端写入 `sys_role_menu`
+- **编辑/创建角色:** 表单只维护角色编码、名称、状态、描述等基础信息。
+- **授权模式:** 点击"授权"按钮进入授权配置抽屉，功能授权、数据范围、字段规则、业务规则和决策预览集中维护。
+- **功能授权:** Tree 使用 `checkStrictly=true`，资源动作独立授权，提交到 `/api/v1/authz/grants`。
+- **菜单可见性:** 菜单 Tree 只读展示，由功能授权自动推导，不允许勾选写入。
 
-父子节点独立的原因：页面 GET 权限和按钮写权限不是同一件事。取消“新增”按钮时，不应级联取消父级“用户管理”页面节点，否则用户会同时丢失 `/api/v1/users:GET`，搜索、刷新和列表读取都会消失。
+父子资源独立的原因：页面 GET 权限和按钮写权限不是同一件事。取消“新增”动作时，不应级联取消父级“用户管理”页面读权限，否则用户会同时丢失 `/api/v1/users:GET`，搜索、刷新和列表读取都会消失。
 
-后端 `RoleService.normalizeMenuIds()` 会自动补齐被选中节点的父级菜单，用于保证路由祖先完整；这只是兜底，不代表前端可以用级联勾选替代明确授权。
+后端 `RoleAuthorizationDataService.menuIdsForRole()` 会在读侧自动补齐可见菜单的祖先节点，用于保证路由祖先完整；这只是展示投影，不代表父级菜单拥有独立授权事实。
 
 ```typescript
-const payload: SystemRoleApi.SaveRoleParams = {
-  menuIds: selectedMenuIds(),
-  roleName: formModel.roleName,
-  status: formModel.status,
-};
+await saveAuthorizationGrant({
+  subjectType: 'ROLE',
+  subjectId: roleId,
+  resourceCode,
+  actionCode,
+  effect: 'ALLOW',
+  status: 1,
+});
 ```
 
 ### 8.4 菜单路由动态生成
@@ -462,9 +488,12 @@ ALTER TABLE sys_user ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
 所有种子数据使用冲突处理：
 
 ```sql
--- 简单忽略
-INSERT INTO sys_permission(id, resource, action, description) VALUES (...)
-ON CONFLICT DO NOTHING;
+-- 简单忽略或更新：授权资源/动作
+INSERT INTO sys_auth_resource(...) VALUES (...)
+ON CONFLICT (tenant_id, resource_code) DO UPDATE SET ...;
+
+INSERT INTO sys_auth_action(...) VALUES (...)
+ON CONFLICT (tenant_id, resource_code, action_code) DO UPDATE SET ...;
 
 -- 更新特定列
 INSERT INTO sys_menu (...) VALUES (...)
@@ -473,9 +502,13 @@ ON CONFLICT (id) DO UPDATE SET
     menu_name = EXCLUDED.menu_name,
     ...;
 
--- 唯一约束冲突忽略
-INSERT INTO sys_role_menu(id, role_id, menu_id, created_by, updated_by) VALUES (...)
-ON CONFLICT (role_id, menu_id) DO NOTHING;
+-- ADMIN 默认功能授权写入唯一事实表
+INSERT INTO sys_auth_grant(
+    id, tenant_id, subject_type, subject_id, resource_code, action_code,
+    effect, status, description, created_by, updated_by
+) VALUES (...)
+ON CONFLICT (tenant_id, subject_type, subject_id, resource_code, action_code, effect)
+DO UPDATE SET status = EXCLUDED.status, updated_at = CURRENT_TIMESTAMP;
 ```
 
 ### 9.3 开发规则
@@ -507,6 +540,13 @@ ON CONFLICT (role_id, menu_id) DO NOTHING;
 | V15 | 对齐用户管理按钮权限为 API 权限码，清理重复/废弃用户管理按钮权限 |
 | V16 | 对齐角色管理、菜单管理按钮权限为 API 权限码，清理重复/废弃按钮权限 |
 | V17 | 新增组织管理、数据权限菜单/API 权限和数据权限策略表 |
+| V54 | 引入企业授权资源、动作、授权事实、字段策略、业务规则和决策版本 |
+| V60 | 将 `sys_role_menu` 迁移进 `sys_auth_grant`，并把 `sys_role_menu` 改为只读视图 |
+| V61 | 补齐前端路由类权限，确保 active route menu 权限闭环 |
+| V62 | 退役旧 `/api/v1/permissions` 权限管理面 |
+| V63 | 补齐数据权限引用的业务资源/动作，确保 `sys_data_policy` 闭环 |
+| V64 | 回填并删除 `sys_menu.permission_id`，运行时菜单投影只依赖 `permission_code` |
+| V65 | 删除旧 `sys_permission` 表，资源/动作元数据只存 `sys_auth_resource` / `sys_auth_action` |
 
 ---
 
@@ -516,13 +556,33 @@ ON CONFLICT (role_id, menu_id) DO NOTHING;
 
 **假设要添加"操作日志"页面，路径 `/system/audit-log`：**
 
-**Step 1 — 迁移文件（示例：新建 `V17__add_audit_log_menu.sql`）：**
+**Step 1 — 迁移文件（示例：新建 `V64__add_audit_log_menu.sql`）：**
 
 ```sql
--- 1. 注册 API 权限
-INSERT INTO sys_permission(id, resource, action, description) VALUES
-    ('P019', '/api/v1/audit-logs', 'GET', '查看操作日志')
-ON CONFLICT DO NOTHING;
+-- 1. 注册授权资源和动作
+INSERT INTO sys_auth_resource(
+    id, tenant_id, resource_code, resource_type, owner_service,
+    display_name, lifecycle_status, global_flag, created_by, updated_by
+) VALUES (
+    'AR_AUDIT_LOGS', 'default', '/api/v1/audit-logs', 'API_OPERATION', 'service-auth',
+    '操作日志', 'ACTIVE', 0, 'SYSTEM', 'SYSTEM'
+)
+ON CONFLICT (tenant_id, resource_code) DO UPDATE SET
+    display_name = EXCLUDED.display_name,
+    lifecycle_status = 'ACTIVE',
+    updated_at = CURRENT_TIMESTAMP;
+
+INSERT INTO sys_auth_action(
+    id, tenant_id, resource_code, action_code, action_category,
+    description, status, created_by, updated_by
+) VALUES (
+    'AA_AUDIT_LOGS_GET', 'default', '/api/v1/audit-logs', 'GET', 'API',
+    '查看操作日志', 1, 'SYSTEM', 'SYSTEM'
+)
+ON CONFLICT (tenant_id, resource_code, action_code) DO UPDATE SET
+    description = EXCLUDED.description,
+    status = 1,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 2. 添加菜单项
 INSERT INTO sys_menu (id, parent_id, menu_key, menu_name, path, component, ...) VALUES
@@ -530,11 +590,16 @@ INSERT INTO sys_menu (id, parent_id, menu_key, menu_name, path, component, ...) 
      '/system/audit-log/list', 'mdi:file-document', ...)
 ON CONFLICT (id) DO UPDATE SET ...;
 
--- 3. ADMIN 自动获得新菜单
-INSERT INTO sys_role_menu(id, role_id, menu_id, created_by, updated_by)
-SELECT '01' || upper(substr(md5('R001' || ':' || 'M010'), 1, 24)),
-       'R001', 'M010', 'SYSTEM', 'SYSTEM'
-ON CONFLICT (role_id, menu_id) DO NOTHING;
+-- 3. ADMIN 自动获得新功能授权
+INSERT INTO sys_auth_grant(
+    id, tenant_id, subject_type, subject_id, resource_code, action_code,
+    effect, status, description, created_by, updated_by
+)
+SELECT 'AG' || upper(substr(md5('default:ROLE:R001:/api/v1/audit-logs:GET'), 1, 24)),
+       'default', 'ROLE', 'R001', '/api/v1/audit-logs', 'GET',
+       'ALLOW', 1, '查看操作日志', 'SYSTEM', 'SYSTEM'
+ON CONFLICT (tenant_id, subject_type, subject_id, resource_code, action_code, effect)
+DO UPDATE SET status = 1, updated_by = 'SYSTEM', updated_at = CURRENT_TIMESTAMP;
 ```
 
 **Step 2 — 后端 Controller：**
@@ -573,9 +638,29 @@ public class AuditLogController {
 **Step 1 — 迁移文件：**
 
 ```sql
-INSERT INTO sys_permission(id, resource, action, description) VALUES
-    ('P020', '/api/v1/audit-logs/export', 'POST', '导出操作日志')
-ON CONFLICT DO NOTHING;
+INSERT INTO sys_auth_resource(
+    id, tenant_id, resource_code, resource_type, owner_service,
+    display_name, lifecycle_status, global_flag, created_by, updated_by
+) VALUES (
+    'AR_AUDIT_LOGS_EXPORT', 'default', '/api/v1/audit-logs/export', 'API_OPERATION', 'service-auth',
+    '导出操作日志', 'ACTIVE', 0, 'SYSTEM', 'SYSTEM'
+)
+ON CONFLICT (tenant_id, resource_code) DO UPDATE SET
+    display_name = EXCLUDED.display_name,
+    lifecycle_status = 'ACTIVE',
+    updated_at = CURRENT_TIMESTAMP;
+
+INSERT INTO sys_auth_action(
+    id, tenant_id, resource_code, action_code, action_category,
+    description, status, created_by, updated_by
+) VALUES (
+    'AA_AUDIT_LOGS_EXPORT', 'default', '/api/v1/audit-logs/export', 'POST', 'API',
+    '导出操作日志', 1, 'SYSTEM', 'SYSTEM'
+)
+ON CONFLICT (tenant_id, resource_code, action_code) DO UPDATE SET
+    description = EXCLUDED.description,
+    status = 1,
+    updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO sys_menu (id, parent_id, menu_key, menu_name, menu_type, permission_code, ...) VALUES
     ('01HK...', 'M010', 'SystemAuditLogExport', '导出', 'button',
@@ -617,19 +702,18 @@ public R<Void> assignRoles(...) { ... }
 
 | 问题 | 严重度 | 说明 |
 |------|--------|------|
-| `sys_menu.permission_code` 冗余 | 中 | 可通过 `JOIN sys_permission` 计算。UserMapper 的 COALESCE 逻辑可简化 |
-| 历史 `System:*` 按钮权限 | 低 | 用户管理、角色管理、菜单管理已对齐；后续新增功能继续按“API 权限码优先”策略执行 |
-| FormController 无 @RequirePermission | 低 | 暂无对应 sys_permission 条目 |
+| 历史 `System:*` 按钮权限 | 已清理 | 活跃菜单、功能授权和动作目录均不再使用该格式；后续新增功能继续按“API 权限码优先”策略执行 |
+| FormController 无 @RequirePermission | 低 | 暂无对应授权资源/动作条目 |
 
 ### 11.2 设计决策待确认
 
 | 议题 | 状态 | 说明 |
 |------|------|------|
-| `sys_role_permission` vs `sys_role_menu` | 已决策 | 只保留 `sys_role_menu`。权限码从 menu→permission 推导。无菜单的纯 API 权限方案待定 |
+| 授权事实源 | 已决策 | 角色/用户功能授权只写 `sys_auth_grant`；`sys_role_menu` 仅为兼容视图 |
 | 权限码格式统一 | 已决策 | 后端受保护能力统一使用 `resource:action`，注解、前端指令、JWT 中一致 |
 | 搜索/刷新/分页是否是按钮权限 | 已决策 | 否。它们复用页面 GET 权限，不额外创建 button 节点 |
-| 按钮权限是否需要 `sys_permission` 行 | 已决策 | 需要。button 节点承载后端动作时应关联对应 API 权限，`permission_code` 必须与 `@RequirePermission` 一致 |
-| 角色授权树是否级联勾选 | 已决策 | 否。前端 Tree 使用 `checkStrictly=true`，页面读权限与按钮写权限独立授权 |
+| 按钮权限是否需要旧权限表行 | 已决策 | 不需要。button 节点承载后端动作时应注册 `sys_auth_resource` / `sys_auth_action`，`permission_code` 必须与 `@RequirePermission` 一致 |
+| 角色授权树是否级联勾选 | 已决策 | 否。功能授权 Tree 使用 `checkStrictly=true`，页面读权限与按钮写权限独立授权 |
 
 ---
 
@@ -730,7 +814,7 @@ CI 应扫描 Controller：
 | 检查项 | 规则 |
 |--------|------|
 | Controller 方法无权限注解 | 失败，除非标记 `@PublicEndpoint` |
-| `@RequirePermission` 未注册到 `sys_permission` | 失败 |
+| `@RequirePermission` 未注册到 `sys_auth_resource` / `sys_auth_action` | 失败 |
 | 前端按钮权限码与后端注解不一致 | 失败 |
 | 业务查询接口缺少数据范围声明 | 失败 |
 

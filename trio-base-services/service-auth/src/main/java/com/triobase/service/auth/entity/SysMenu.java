@@ -31,7 +31,6 @@ public class SysMenu extends BaseEntity {
     private String badge;
     private String badgeType;
     private String badgeVariant;
-    private String permissionId;
     private String permissionCode;
     private String description;
 }

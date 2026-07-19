@@ -43,6 +43,7 @@ public class FileCenterController {
     }
 
     @GetMapping("/api/v1/files/{id}")
+    @RequirePermission("/api/v1/files:GET")
     public ResponseEntity<Resource> download(@PathVariable String id) {
         FileCenterService.FileDownload download = fileCenterService.download(id);
         String filename = download.file().getOriginalName();

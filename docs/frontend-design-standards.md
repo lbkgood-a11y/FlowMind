@@ -784,7 +784,7 @@ navGroups: [
       { title: "角色管理", url: "/admin/roles", icon: Shield },
       { title: "组织管理", url: "/admin/orgs", icon: Building2 },
       { title: "菜单管理", url: "/admin/menus", icon: Menu },
-      { title: "授权管理", url: "/admin/permissions", icon: KeyRound },
+      { title: "企业授权", url: "/system/authz", icon: KeyRound },
     ],
   },
 ],

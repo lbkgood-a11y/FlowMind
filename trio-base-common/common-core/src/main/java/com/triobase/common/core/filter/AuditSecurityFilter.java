@@ -24,6 +24,7 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
     private static final String HEADER_TENANT_ID = "X-Tenant-Id";
     private static final String HEADER_ROLES = "X-User-Roles";
     private static final String HEADER_PERMISSIONS = "X-User-Permissions";
+    private static final String HEADER_DENIED_PERMISSIONS = "X-User-Denied-Permissions";
     private static final String HEADER_AUTH_VERSION = "X-Auth-Version";
     private static final String HEADER_ROLE_VERSION = "X-Role-Version";
     private static final String HEADER_DATA_POLICY_VERSION = "X-Data-Policy-Version";
@@ -43,6 +44,7 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
             String tenantId = request.getHeader(HEADER_TENANT_ID);
             String rolesHeader = request.getHeader(HEADER_ROLES);
             String permissionsHeader = request.getHeader(HEADER_PERMISSIONS);
+            String deniedPermissionsHeader = request.getHeader(HEADER_DENIED_PERMISSIONS);
 
             if (userId != null && !userId.isBlank()) {
                 List<String> roles = rolesHeader != null && !rolesHeader.isBlank()
@@ -51,6 +53,9 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
                 List<String> permissions = permissionsHeader != null && !permissionsHeader.isBlank()
                         ? List.of(permissionsHeader.split(","))
                         : Collections.emptyList();
+                List<String> deniedPermissions = deniedPermissionsHeader != null && !deniedPermissionsHeader.isBlank()
+                        ? List.of(deniedPermissionsHeader.split(","))
+                        : Collections.emptyList();
 
                 SecurityContextHolder.set(new SecurityContext(
                         userId,
@@ -58,6 +63,7 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
                         tenantId,
                         roles,
                         permissions,
+                        deniedPermissions,
                         parseLong(request.getHeader(HEADER_AUTH_VERSION)),
                         parseLong(request.getHeader(HEADER_ROLE_VERSION)),
                         parseLong(request.getHeader(HEADER_DATA_POLICY_VERSION)),

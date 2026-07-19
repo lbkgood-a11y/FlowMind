@@ -10,7 +10,7 @@ Keep menu grants narrow:
 
 - Grant catalog and page menus for navigation.
 - Avoid creating fake hidden menus for every document action.
-- Keep legacy menu permission codes during migration, but prefer resource grants for new business documents.
+- Keep menu `permission_code` aligned with registered resource actions so navigation can be projected from grants.
 
 ## Function Permissions
 
@@ -26,7 +26,7 @@ Resources are grouped by business type, such as lowcode apps, lowcode forms, fie
 - `EXPORT`: export data.
 - `DESIGN`, `PUBLISH`, `OFFLINE`: manage lowcode lifecycle.
 
-Deny grants are evaluated before allow grants. Use deny only for exceptional restrictions because it will override role allows and legacy fallback.
+Deny grants are evaluated before allow grants. Use deny only for exceptional restrictions because it will override role allows.
 
 ## Data Range
 

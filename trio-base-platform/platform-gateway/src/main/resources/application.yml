@@ -58,7 +58,7 @@ spring:
         - id: service-auth-users
           uri: ${AUTH_SERVICE_URL:http://localhost:8081}
           predicates:
-            - Path=/api/v1/users,/api/v1/users/**,/api/v1/roles,/api/v1/roles/**,/api/v1/permissions,/api/v1/permissions/**,/api/v1/menus,/api/v1/menus/**,/api/v1/menu,/api/v1/menu/**,/api/v1/data-policies,/api/v1/data-policies/**,/api/v1/audit-logs,/api/v1/audit-logs/**,/api/v1/sessions,/api/v1/sessions/**,/api/v1/dictionaries,/api/v1/dictionaries/**,/api/v1/system-configs,/api/v1/system-configs/**
+            - Path=/api/v1/users,/api/v1/users/**,/api/v1/roles,/api/v1/roles/**,/api/v1/menus,/api/v1/menus/**,/api/v1/menu,/api/v1/menu/**,/api/v1/authz,/api/v1/authz/**,/api/v1/data-policies,/api/v1/data-policies/**,/api/v1/audit-logs,/api/v1/audit-logs/**,/api/v1/sessions,/api/v1/sessions/**,/api/v1/dictionaries,/api/v1/dictionaries/**,/api/v1/system-configs,/api/v1/system-configs/**
         - id: service-ops
           uri: ${OPS_SERVICE_URL:http://localhost:8087}
           predicates:

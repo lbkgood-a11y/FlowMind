@@ -12,6 +12,7 @@ public class TokenValidateResult {
     private String tenantId;
     private List<String> roles;
     private List<String> permissions;
+    private List<String> deniedPermissions;
     private Long authVersion;
     private Long roleVersion;
     private Long dataPolicyVersion;
@@ -54,6 +55,7 @@ public class TokenValidateResult {
         r.tenantId = tenantId;
         r.roles = roles;
         r.permissions = permissions;
+        r.deniedPermissions = null;
         r.authVersion = authVersion;
         r.roleVersion = roleVersion;
         r.dataPolicyVersion = dataPolicyVersion;

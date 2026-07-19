@@ -39,6 +39,7 @@ public class OpenApiApplicationAdmissionFilter implements GlobalFilter, Ordered 
             "X-Username",
             "X-User-Roles",
             "X-User-Permissions",
+            "X-User-Denied-Permissions",
             "X-Application-Client-Id",
             "X-Subscription-Id",
             "X-Policy-Version",

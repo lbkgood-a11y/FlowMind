@@ -120,7 +120,8 @@ class AuthServiceTest {
         user.setTenantId("tenant-a");
         user.setStatus(1);
         when(userMapper.selectById("U001")).thenReturn(user);
-        when(userMapper.selectPermissionsByUserId("U001")).thenReturn(List.of("GET:/api/v1/users"));
+        when(userMapper.selectPermissionsByUserId("U001")).thenReturn(List.of("/api/v1/users:GET"));
+        when(userMapper.selectDeniedPermissionsByUserId("U001")).thenReturn(List.of("/api/v1/users/*:DELETE"));
 
         TokenValidateResult result = authService.validate(token);
 
@@ -128,6 +129,8 @@ class AuthServiceTest {
         assertEquals("U001", result.getUserId());
         assertEquals("admin", result.getUsername());
         assertEquals("tenant-a", result.getTenantId());
+        assertEquals(List.of("/api/v1/users:GET"), result.getPermissions());
+        assertEquals(List.of("/api/v1/users/*:DELETE"), result.getDeniedPermissions());
     }
 
     @Test

@@ -102,13 +102,13 @@ const ORG_PERMISSIONS = {
 
 type RoleFormModel = {
   description?: string;
-  menuIds: string[];
   roleCode: string;
   roleName: string;
   status: 0 | 1;
+  visibleMenuIds: string[];
 };
 
-type MenuCheckedKeys =
+type CheckedKeysValue =
   | Array<number | string>
   | {
       checked: Array<number | string>;
@@ -177,6 +177,15 @@ type AuthorizationTreeNode = {
   disabled?: boolean;
   key: string;
   selectable?: boolean;
+  title: string;
+};
+
+type MenuTreeNode = {
+  children?: MenuTreeNode[];
+  disabled?: boolean;
+  key: string;
+  selectable?: boolean;
+  sortOrder?: number;
   title: string;
 };
 
@@ -276,7 +285,7 @@ const authorizationOptions = ref<SystemAuthorizationApi.AdminOptions>();
 const authorizationProfile = ref<SystemAuthorizationApi.RoleAuthorizationProfile>();
 const orgDimensions = ref<SystemOrgApi.OrgDimension[]>([]);
 const orgOptionsMap = ref<Record<string, { label: string; value: string }[]>>({});
-const functionGrantCheckedKeys = ref<MenuCheckedKeys>([]);
+const functionGrantCheckedKeys = ref<CheckedKeysValue>([]);
 const originalFunctionGrantIds = ref<Record<string, string>>({});
 const previewResult = ref<SystemAuthorizationApi.DecisionPreview>();
 const { hasAccessByCodes } = useAccess();
@@ -323,10 +332,10 @@ const pagination = reactive({
 
 const formModel = reactive<RoleFormModel>({
   description: '',
-  menuIds: [],
   roleCode: '',
   roleName: '',
   status: 1,
+  visibleMenuIds: [],
 });
 
 const columnSettings = reactive<RoleColumnSetting[]>(
@@ -336,7 +345,6 @@ const columnDraft = ref<RoleColumnSetting[]>(
   defaultColumnSettings.map((item) => ({ ...item })),
 );
 
-const menuCheckedKeys = ref<MenuCheckedKeys>([]);
 const dataPolicyForm = reactive({
   actionCode: '',
   dimensionCode: 'ADMIN',
@@ -358,8 +366,8 @@ const previewForm = reactive({
   userId: '',
 });
 
-const menuIds = computed(() => new Set(menus.value.map((item) => item.id)));
-const menuTree = computed(() => buildMenuTree(menus.value));
+const menuTree = computed(() => buildMenuTree(menus.value, true));
+const visibleMenuCount = computed(() => formModel.visibleMenuIds.length);
 const selectedRoleView = computed(
   () => roleViewPresets[selectedRoleViewKey.value],
 );
@@ -739,42 +747,36 @@ function changePreviewResource(resourceCode: string) {
   previewResult.value = undefined;
 }
 
-function buildMenuTree(list: SystemMenuApi.SystemMenu[]) {
-  const nodeMap = new Map<
-    string,
-    {
-      children: any[];
-      key: string;
-      sortOrder: number;
-      title: string;
-    }
-  >();
+function buildMenuTree(list: SystemMenuApi.SystemMenu[], readOnly = false) {
+  const nodeMap = new Map<string, MenuTreeNode>();
   list.forEach((menu) => {
     nodeMap.set(menu.id, {
       children: [],
+      disabled: readOnly,
       key: menu.id,
+      selectable: false,
       sortOrder: menu.sortOrder ?? 100,
       title: `${menu.menuName || menu.menuKey} (${menuTypeLabel(menu.menuType)})`,
     });
   });
 
-  const roots: any[] = [];
+  const roots: MenuTreeNode[] = [];
   list.forEach((menu) => {
     const node = nodeMap.get(menu.id);
     if (!node) {
       return;
     }
     if (menu.parentId && nodeMap.has(menu.parentId)) {
-      nodeMap.get(menu.parentId)?.children.push(node);
+      nodeMap.get(menu.parentId)?.children?.push(node);
     } else {
       roots.push(node);
     }
   });
 
-  const sortNodes = (nodes: any[]) => {
-    nodes.sort((a, b) => a.sortOrder - b.sortOrder);
+  const sortNodes = (nodes: MenuTreeNode[]) => {
+    nodes.sort((a, b) => (a.sortOrder ?? 100) - (b.sortOrder ?? 100));
     nodes.forEach((node) => {
-      if (node.children.length > 0) {
+      if (node.children && node.children.length > 0) {
         sortNodes(node.children);
       } else {
         delete node.children;
@@ -871,6 +873,20 @@ async function refreshAuthorizationProfile(roleId = editingRole.value?.id) {
   applyAuthorizationProfile(profile);
 }
 
+async function refreshRoleProjection(roleId = editingRole.value?.id) {
+  if (!roleId) {
+    return;
+  }
+  const detail = await getRoleDetail(roleId);
+  if (editingRole.value?.id === roleId) {
+    editingRole.value = detail;
+    formModel.visibleMenuIds = detail.menuIds ?? [];
+  }
+  if (detailRole.value?.id === roleId) {
+    detailRole.value = detail;
+  }
+}
+
 async function loadRoles(page = pagination.current) {
   if (!canQuery.value) {
     roles.value = [];
@@ -929,19 +945,17 @@ function selectRoleView(keys: Array<number | string>) {
 function resetForm() {
   editingRole.value = undefined;
   permissionOnly.value = false;
-  activeAuthorizationTab.value = canQueryMenus.value ? 'menu' : 'function';
+  activeAuthorizationTab.value = canQueryAuthz.value ? 'function' : 'menu';
   formModel.description = '';
-  formModel.menuIds = [];
   formModel.roleCode = '';
   formModel.roleName = '';
   formModel.status = 1;
-  menuCheckedKeys.value = [];
+  formModel.visibleMenuIds = [];
   resetAuthorizationState();
 }
 
 async function openCreate() {
   resetForm();
-  await loadMenusForAuthorization(true);
   formOpen.value = true;
 }
 
@@ -955,11 +969,10 @@ async function openEdit(record: SystemRoleApi.SystemRole, onlyPermissions = fals
   const detail = await getRoleDetail(record.id);
   editingRole.value = detail;
   formModel.description = detail.description ?? '';
-  formModel.menuIds = detail.menuIds ?? [];
   formModel.roleCode = detail.roleCode;
   formModel.roleName = detail.roleName;
   formModel.status = statusValue(detail);
-  menuCheckedKeys.value = [...formModel.menuIds];
+  formModel.visibleMenuIds = detail.menuIds ?? [];
   formOpen.value = true;
 }
 
@@ -994,15 +1007,6 @@ function confirmColumnSettings() {
   columnSettingOpen.value = false;
 }
 
-function selectedMenuIds() {
-  const checkedKeys = Array.isArray(menuCheckedKeys.value)
-    ? menuCheckedKeys.value
-    : menuCheckedKeys.value.checked;
-  return checkedKeys
-    .map((key) => String(key))
-    .filter((key) => menuIds.value.has(key));
-}
-
 async function syncFunctionGrants(roleId: string) {
   if (!canManageAuthz.value || !canQueryAuthz.value) {
     return;
@@ -1013,11 +1017,11 @@ async function syncFunctionGrants(roleId: string) {
   const removals = Object.entries(existingIds).filter(([key]) => !desiredKeys.has(key));
 
   if (additions.length > 0 && !canCreateAuthz.value) {
-    message.warning('当前账号没有新增功能权限的权限');
+    message.warning('当前账号没有新增功能授权的权限');
     return;
   }
   if (removals.length > 0 && !canDeleteAuthz.value) {
-    message.warning('当前账号没有删除功能权限的权限');
+    message.warning('当前账号没有删除功能授权的权限');
     return;
   }
 
@@ -1039,7 +1043,10 @@ async function syncFunctionGrants(roleId: string) {
   ].filter(Boolean));
 
   if (additions.length > 0 || removals.length > 0) {
-    await refreshAuthorizationProfile(roleId);
+    await Promise.all([
+      refreshAuthorizationProfile(roleId),
+      refreshRoleProjection(roleId),
+    ]);
   }
 }
 
@@ -1216,7 +1223,6 @@ async function submitForm() {
     }
     const payload: SystemRoleApi.SaveRoleParams = {
       description: formModel.description?.trim() || undefined,
-      menuIds: canQueryMenus.value ? selectedMenuIds() : formModel.menuIds,
       roleName: formModel.roleName.trim(),
       status: formModel.status,
     };
@@ -1224,21 +1230,16 @@ async function submitForm() {
       payload.roleCode = formModel.roleCode.trim();
     }
 
-    let savedRoleId = editingRole.value?.id;
     if (editingRole.value) {
       await updateRole(editingRole.value.id, payload);
       await syncFunctionGrants(editingRole.value.id);
       message.success(permissionOnly.value ? '角色授权已更新' : '角色已更新');
     } else {
-      const created = await createRole(payload);
-      savedRoleId = created.id;
+      await createRole(payload);
       message.success('角色已创建');
     }
 
     formOpen.value = false;
-    if (savedRoleId && savedRoleId === editingRole.value?.id) {
-      await refreshAuthorizationProfile(savedRoleId);
-    }
     await loadRoles();
   } finally {
     saving.value = false;
@@ -1616,15 +1617,19 @@ onMounted(() => {
         </div>
 
         <Tabs
-          v-if="canQueryMenus || canQueryAuthz"
+          v-if="(canQueryMenus && editingRole) || canQueryAuthz"
           v-model:active-key="activeAuthorizationTab"
           class="authorization-tabs"
           size="small"
         >
-          <TabPane v-if="canQueryMenus" key="menu" tab="菜单导航">
+          <TabPane v-if="canQueryMenus && editingRole" key="menu" tab="菜单可见性">
+            <div class="authorization-toolbar">
+              <span>由功能授权自动推导</span>
+              <Tag color="blue">{{ visibleMenuCount }} 项</Tag>
+            </div>
             <div class="permission-panel">
               <Tree
-                v-model:checkedKeys="menuCheckedKeys"
+                :checked-keys="formModel.visibleMenuIds"
                 :check-strictly="true"
                 :tree-data="menuTree"
                 block-node
@@ -1638,8 +1643,7 @@ onMounted(() => {
           <TabPane
             v-if="canQueryAuthz"
             key="function"
-            :disabled="!editingRole"
-            tab="功能权限"
+            tab="功能授权"
           >
             <div v-if="editingRole" class="authorization-tab-body">
               <div class="authorization-toolbar">
@@ -1658,7 +1662,7 @@ onMounted(() => {
                 />
               </div>
             </div>
-            <Empty v-else description="保存角色后配置功能权限" />
+            <Empty v-else description="保存角色后配置功能授权" />
           </TabPane>
 
           <TabPane v-if="canQueryAuthz" key="data" :disabled="!editingRole" tab="数据范围">
@@ -2010,7 +2014,7 @@ onMounted(() => {
         </DescriptionsItem>
         <DescriptionsItem label="描述">{{ detailRole.description || '-' }}</DescriptionsItem>
         <DescriptionsItem label="创建时间">{{ formatDate(detailRole.createdAt) }}</DescriptionsItem>
-        <DescriptionsItem label="授权菜单数量">
+        <DescriptionsItem label="可见菜单数量">
           {{ detailRole.menuIds?.length ?? 0 }}
         </DescriptionsItem>
       </Descriptions>

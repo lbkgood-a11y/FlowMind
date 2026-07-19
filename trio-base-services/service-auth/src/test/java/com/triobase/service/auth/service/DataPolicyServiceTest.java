@@ -8,6 +8,8 @@ import com.triobase.service.auth.entity.SysDataPolicy;
 import com.triobase.service.auth.entity.SysDataPolicyDimension;
 import com.triobase.service.auth.entity.SysRole;
 import com.triobase.service.auth.entity.SysUserRole;
+import com.triobase.service.auth.mapper.AuthActionMapper;
+import com.triobase.service.auth.mapper.AuthResourceMapper;
 import com.triobase.service.auth.mapper.DataPolicyDimensionMapper;
 import com.triobase.service.auth.mapper.DataPolicyMapper;
 import com.triobase.service.auth.mapper.OrgScopeMapper;
@@ -40,6 +42,12 @@ class DataPolicyServiceTest {
     private DataPolicyDimensionMapper dataPolicyDimensionMapper;
 
     @Mock
+    private AuthResourceMapper authResourceMapper;
+
+    @Mock
+    private AuthActionMapper authActionMapper;
+
+    @Mock
     private RoleMapper roleMapper;
 
     @Mock
@@ -57,7 +65,10 @@ class DataPolicyServiceTest {
 
         SysRole role = new SysRole();
         role.setId("R001");
+        role.setStatus((short) 1);
         when(roleMapper.selectById("R001")).thenReturn(role);
+        when(authResourceMapper.selectCount(any())).thenReturn(1L);
+        when(authActionMapper.selectCount(any())).thenReturn(1L);
         when(dataPolicyMapper.selectById(any())).thenAnswer(invocation -> {
             SysDataPolicy policy = new SysDataPolicy();
             policy.setId(invocation.getArgument(0));
@@ -85,11 +96,31 @@ class DataPolicyServiceTest {
 
         SysRole role = new SysRole();
         role.setId("R001");
+        role.setStatus((short) 1);
         when(roleMapper.selectById("R001")).thenReturn(role);
+        when(authResourceMapper.selectCount(any())).thenReturn(1L);
+        when(authActionMapper.selectCount(any())).thenReturn(1L);
 
         BizException ex = assertThrows(BizException.class, () -> dataPolicyService.create(request));
 
         assertEquals(40066, ex.getCode());
+        verify(dataPolicyMapper, never()).insert(any(SysDataPolicy.class));
+    }
+
+    @Test
+    void create_shouldRejectUnregisteredResourceAction() {
+        SaveDataPolicyRequest request = baseRequest();
+
+        SysRole role = new SysRole();
+        role.setId("R001");
+        role.setStatus((short) 1);
+        when(roleMapper.selectById("R001")).thenReturn(role);
+        when(authResourceMapper.selectCount(any())).thenReturn(0L);
+        when(authActionMapper.selectCount(any())).thenReturn(0L);
+
+        BizException ex = assertThrows(BizException.class, () -> dataPolicyService.create(request));
+
+        assertEquals(40468, ex.getCode());
         verify(dataPolicyMapper, never()).insert(any(SysDataPolicy.class));
     }
 

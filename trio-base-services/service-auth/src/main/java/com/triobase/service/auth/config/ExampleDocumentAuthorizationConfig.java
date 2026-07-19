@@ -3,6 +3,7 @@ package com.triobase.service.auth.config;
 import com.triobase.common.dto.authz.CustomDocumentAuthorizationManifest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 /**
  * Reference example showing how to register hand-authored business documents
@@ -55,6 +56,7 @@ import org.springframework.context.annotation.Configuration;
  * }</pre>
  */
 @Configuration
+@Profile("example")
 public class ExampleDocumentAuthorizationConfig {
 
     /**

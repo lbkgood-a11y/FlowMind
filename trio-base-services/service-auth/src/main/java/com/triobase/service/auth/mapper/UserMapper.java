@@ -12,14 +12,6 @@ import java.util.List;
 public interface UserMapper extends BaseMapper<SysUser> {
 
     @Select("SELECT DISTINCT code FROM (" +
-            "SELECT COALESCE(NULLIF(m.permission_code, ''), p.resource || ':' || p.action) AS code " +
-            "FROM sys_role_menu rm " +
-            "JOIN sys_menu m ON m.id = rm.menu_id " +
-            "LEFT JOIN sys_permission p ON p.id = m.permission_id " +
-            "JOIN sys_user_role ur ON rm.role_id = ur.role_id " +
-            "JOIN sys_role r ON r.id = ur.role_id " +
-            "WHERE ur.user_id = #{userId} AND r.status = 1 " +
-            "UNION " +
             "SELECT g.resource_code || ':' || g.action_code AS code " +
             "FROM sys_auth_grant g " +
             "JOIN sys_user_role ur ON ur.role_id = g.subject_id " +
@@ -31,8 +23,37 @@ public interface UserMapper extends BaseMapper<SysUser> {
             "FROM sys_auth_grant g " +
             "WHERE g.subject_type = 'USER' AND g.subject_id = #{userId} " +
             "AND g.effect = 'ALLOW' AND g.status = 1" +
-            ") permissions WHERE code IS NOT NULL AND code <> ''")
+            ") permissions WHERE code IS NOT NULL AND code <> '' " +
+            "AND NOT EXISTS (" +
+            "SELECT 1 FROM (" +
+            "SELECT dg.resource_code || ':' || dg.action_code AS denied_code " +
+            "FROM sys_auth_grant dg " +
+            "JOIN sys_user_role dur ON dur.role_id = dg.subject_id " +
+            "JOIN sys_role dr ON dr.id = dur.role_id " +
+            "WHERE dur.user_id = #{userId} AND dr.status = 1 " +
+            "AND dg.subject_type = 'ROLE' AND dg.effect = 'DENY' AND dg.status = 1 " +
+            "UNION " +
+            "SELECT dg.resource_code || ':' || dg.action_code AS denied_code " +
+            "FROM sys_auth_grant dg " +
+            "WHERE dg.subject_type = 'USER' AND dg.subject_id = #{userId} " +
+            "AND dg.effect = 'DENY' AND dg.status = 1" +
+            ") denied WHERE denied.denied_code = permissions.code)")
     List<String> selectPermissionsByUserId(String userId);
+
+    @Select("SELECT DISTINCT code FROM (" +
+            "SELECT g.resource_code || ':' || g.action_code AS code " +
+            "FROM sys_auth_grant g " +
+            "JOIN sys_user_role ur ON ur.role_id = g.subject_id " +
+            "JOIN sys_role r ON r.id = ur.role_id " +
+            "WHERE ur.user_id = #{userId} AND r.status = 1 " +
+            "AND g.subject_type = 'ROLE' AND g.effect = 'DENY' AND g.status = 1 " +
+            "UNION " +
+            "SELECT g.resource_code || ':' || g.action_code AS code " +
+            "FROM sys_auth_grant g " +
+            "WHERE g.subject_type = 'USER' AND g.subject_id = #{userId} " +
+            "AND g.effect = 'DENY' AND g.status = 1" +
+            ") denied_permissions WHERE code IS NOT NULL AND code <> ''")
+    List<String> selectDeniedPermissionsByUserId(String userId);
 
     @Select("SELECT r.role_code FROM sys_role r " +
             "JOIN sys_user_role ur ON r.id = ur.role_id " +

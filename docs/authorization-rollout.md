@@ -27,23 +27,25 @@ This document covers the first production rollout of TrioBase enterprise authori
 ## Compatibility Rules
 
 - Menu navigation remains separate from function authorization.
-- Existing `sys_menu.permission_code`, `@RequirePermission`, and `@RequireDataScope` behavior remains compatible during migration.
-- Lowcode runtime still falls back to legacy permission codes only when no explicit deny exists.
-- Explicit deny grants take precedence over allow grants and legacy fallback.
+- `sys_auth_grant` is the only stored function authorization fact.
+- `sys_menu.permission_code` is used only to project menu visibility from grants.
+- Existing `@RequirePermission` and `@RequireDataScope` declarations remain valid code-level guards, but they do not create a second grant source.
+- Lowcode runtime must use registered resource/action codes and fail closed when a resource/action is missing.
+- Explicit deny grants take precedence over allow grants.
 - Services must treat unsupported data-scope results as no access.
 
 ## Rollback
 
-- Keep the database migrations in place; they are additive and support old permission behavior.
+- Keep the database migrations in place; V60/V64/V65 are required for the single authorization source.
 - Disable custom document startup sync with `triobase.authorization.custom-doc.sync-enabled=false`.
 - Revoke new role grants or field policies from the authorization drawer if a role receives too much access.
 - If a published lowcode resource sync is wrong, fix metadata and republish; resource sync is idempotent.
-- If decision API availability is degraded, document operations should fail closed while existing management pages can continue using legacy permission checks where still configured.
+- If decision API availability is degraded, document operations should fail closed; do not reintroduce legacy permission fallback.
 
 ## Operational Signals
 
 - `AUTHZ_RESOURCE_ACTION_NOT_REGISTERED`: resource sync or migration is missing.
-- `AUTHZ_GRANT_NOT_FOUND`: role has no function grant and no legacy fallback.
+- `AUTHZ_GRANT_NOT_FOUND`: role has no matching function grant.
 - `AUTHZ_DENY_GRANT_MATCHED`: explicit deny is working as designed.
 - `AUTHZ_FIELD_DENY_POLICY`: a field policy is hiding and blocking the field.
 - `AUTHZ_FUNCTION_DENIED`: field default became hidden because function access was denied.

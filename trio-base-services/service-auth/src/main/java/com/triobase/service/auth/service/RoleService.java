@@ -10,13 +10,9 @@ import com.triobase.common.core.result.PageResult;
 import com.triobase.service.auth.dto.CreateRoleRequest;
 import com.triobase.service.auth.dto.RoleDetailResponse;
 import com.triobase.service.auth.dto.UpdateRoleRequest;
-import com.triobase.service.auth.entity.SysMenu;
 import com.triobase.service.auth.entity.SysRole;
-import com.triobase.service.auth.entity.SysRoleMenu;
 import com.triobase.service.auth.entity.SysUserRole;
-import com.triobase.service.auth.mapper.MenuMapper;
 import com.triobase.service.auth.mapper.RoleMapper;
-import com.triobase.service.auth.mapper.RoleMenuMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,18 +20,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class RoleService {
 
     private final RoleMapper roleMapper;
-    private final RoleMenuMapper roleMenuMapper;
-    private final MenuMapper menuMapper;
     private final UserRoleMapper userRoleMapper;
+    private final RoleAuthorizationDataService roleAuthorizationDataService;
 
     public List<SysRole> list() {
         return list(null, null);
@@ -105,7 +98,7 @@ public class RoleService {
         if (role == null) {
             throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
         }
-        List<String> menuIds = roleMenuMapper.selectMenuIdsByRoleId(id);
+        List<String> menuIds = roleAuthorizationDataService.menuIdsForRole(id);
         return RoleDetailResponse.from(role, menuIds);
     }
 
@@ -121,7 +114,6 @@ public class RoleService {
     public SysRole create(CreateRoleRequest request) {
         validateRequired(request.getRoleCode(), request.getRoleName());
         validateUniqueRoleCode(request.getRoleCode(), null);
-        List<String> normalizedMenuIds = normalizeMenuIds(request.getMenuIds());
 
         SysRole role = new SysRole();
         role.setId(UlidGenerator.nextUlid());
@@ -130,7 +122,6 @@ public class RoleService {
         role.setDescription(normalizeBlank(request.getDescription()));
         role.setStatus(toStatus(request.getStatus()));
         roleMapper.insert(role);
-        replaceMenus(role.getId(), normalizedMenuIds);
         return role;
     }
 
@@ -143,8 +134,7 @@ public class RoleService {
                 .eq(SysUserRole::getRoleId, id)) > 0) {
             throw new BizException(40043, "ROLE_HAS_USERS");
         }
-        roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>()
-                .eq(SysRoleMenu::getRoleId, id));
+        roleAuthorizationDataService.deleteRoleAuthorizationData(id);
         roleMapper.deleteById(id);
     }
 
@@ -161,9 +151,6 @@ public class RoleService {
             role.setStatus(toStatus(request.getStatus()));
         }
         roleMapper.updateById(role);
-        if (request.getMenuIds() != null) {
-            replaceMenus(id, normalizeMenuIds(request.getMenuIds()));
-        }
         return role;
     }
 
@@ -176,43 +163,6 @@ public class RoleService {
         role.setStatus(toStatus(status));
         roleMapper.updateById(role);
         return role;
-    }
-
-    private void replaceMenus(String roleId, List<String> normalizedMenuIds) {
-        roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>()
-                .eq(SysRoleMenu::getRoleId, roleId));
-        for (String normalizedMenuId : normalizedMenuIds) {
-            SysRoleMenu relation = new SysRoleMenu();
-            relation.setRoleId(roleId);
-            relation.setMenuId(normalizedMenuId);
-            roleMenuMapper.insert(relation);
-        }
-    }
-
-    private List<String> normalizeMenuIds(List<String> menuIds) {
-        if (menuIds == null || menuIds.isEmpty()) {
-            return List.of();
-        }
-        LinkedHashSet<String> normalizedMenuIds = new LinkedHashSet<>(menuIds).stream()
-                .map(this::normalizeBlank)
-                .filter(StringUtils::hasText)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        List<String> selectedMenuIds = List.copyOf(normalizedMenuIds);
-        for (String menuId : selectedMenuIds) {
-            SysMenu menu = menuMapper.selectById(menuId);
-            if (menu == null) {
-                throw new BizException(40433, "MENU_NOT_FOUND");
-            }
-            String parentId = normalizeBlank(menu.getParentId());
-            while (parentId != null && normalizedMenuIds.add(parentId)) {
-                SysMenu parent = menuMapper.selectById(parentId);
-                if (parent == null) {
-                    throw new BizException(40433, "MENU_NOT_FOUND");
-                }
-                parentId = normalizeBlank(parent.getParentId());
-            }
-        }
-        return List.copyOf(normalizedMenuIds);
     }
 
     private void validateRequired(String roleCode, String roleName) {

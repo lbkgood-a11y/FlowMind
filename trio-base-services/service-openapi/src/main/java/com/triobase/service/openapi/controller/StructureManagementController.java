@@ -36,6 +36,8 @@ public class StructureManagementController {
     private static final String STRUCTURE_CREATE = "/api/v1/openapi/management/structures:POST";
     private static final String STRUCTURE_EDIT = "/api/v1/openapi/management/structures/*:PUT";
     private static final String STRUCTURE_PUBLISH = "/api/v1/openapi/management/structures/*/publish:POST";
+    private static final String STRUCTURE_DEPRECATE = "/api/v1/openapi/management/structures/*/deprecate:POST";
+    private static final String STRUCTURE_ARCHIVE = "/api/v1/openapi/management/structures/*/archive:POST";
 
     private final StructureRegistryService registryService;
     private final StructureVersionService versionService;
@@ -92,13 +94,13 @@ public class StructureManagementController {
     }
 
     @PostMapping("/structures/versions/{versionId}/deprecate")
-    @RequirePermission(STRUCTURE_PUBLISH)
+    @RequirePermission(STRUCTURE_DEPRECATE)
     public R<StructureVersionResponse> deprecate(@PathVariable String versionId) {
         return R.ok(versionService.deprecate(versionId));
     }
 
     @PostMapping("/structures/versions/{versionId}/archive")
-    @RequirePermission(STRUCTURE_PUBLISH)
+    @RequirePermission(STRUCTURE_ARCHIVE)
     public R<StructureVersionResponse> archive(@PathVariable String versionId) {
         return R.ok(versionService.archive(versionId));
     }

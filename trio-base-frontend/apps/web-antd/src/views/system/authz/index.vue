@@ -495,7 +495,7 @@ function onTabChange(key: number | string) {
   <Page>
     <BusinessPageScaffold class="authz-page" pattern="master-detail">
       <template #toolbar>
-        <CompactToolbar title="授权管理" subtitle="统一管理功能授权、字段策略、守卫模板和决策预览" />
+        <CompactToolbar title="企业授权" subtitle="统一管理功能授权、字段策略、守卫模板和决策预览" />
       </template>
       <Tabs default-active-key="function" @change="onTabChange">
         <!-- Tab 1: 功能权限 -->

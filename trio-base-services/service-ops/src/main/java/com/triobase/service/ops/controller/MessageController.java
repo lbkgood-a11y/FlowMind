@@ -42,6 +42,7 @@ public class MessageController {
     }
 
     @GetMapping("/inbox")
+    @RequirePermission("/api/v1/messages:GET")
     public R<PageResult<MessageInboxResponse>> inbox(@RequestParam(defaultValue = "1") int page,
                                                      @RequestParam(defaultValue = "20") int size,
                                                      @RequestParam(required = false) Short readStatus) {
@@ -49,18 +50,21 @@ public class MessageController {
     }
 
     @PostMapping("/inbox/{recipientId}/read")
+    @RequirePermission("/api/v1/messages:GET")
     public R<Void> markRead(@PathVariable String recipientId) {
         messageService.markRead(recipientId);
         return R.ok();
     }
 
     @DeleteMapping("/inbox/{recipientId}")
+    @RequirePermission("/api/v1/messages:GET")
     public R<Void> deleteInboxMessage(@PathVariable String recipientId) {
         messageService.deleteInboxMessage(recipientId);
         return R.ok();
     }
 
     @GetMapping("/unread-count")
+    @RequirePermission("/api/v1/messages:GET")
     public R<Long> unreadCount() {
         return R.ok(messageService.unreadCount());
     }

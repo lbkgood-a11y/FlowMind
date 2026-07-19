@@ -68,6 +68,7 @@ public class AnnouncementController {
     }
 
     @GetMapping("/visible")
+    @RequirePermission("/api/v1/announcements:GET")
     public R<PageResult<OpsAnnouncement>> visible(@RequestParam(defaultValue = "1") int page,
                                                   @RequestParam(defaultValue = "20") int size,
                                                   @RequestParam(required = false) List<String> orgIds) {
@@ -75,12 +76,14 @@ public class AnnouncementController {
     }
 
     @PostMapping("/{id}/read")
+    @RequirePermission("/api/v1/announcements:GET")
     public R<Void> markRead(@PathVariable String id) {
         announcementService.markRead(id);
         return R.ok();
     }
 
     @GetMapping("/unread-count")
+    @RequirePermission("/api/v1/announcements:GET")
     public R<Long> unreadCount(@RequestParam(required = false) List<String> orgIds) {
         return R.ok(announcementService.unreadCount(orgIds));
     }

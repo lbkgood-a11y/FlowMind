@@ -11,10 +11,14 @@ import com.triobase.service.auth.dto.DataPolicyDimensionResponse;
 import com.triobase.service.auth.dto.DataPolicyResponse;
 import com.triobase.service.auth.dto.EffectiveDataPolicyResponse;
 import com.triobase.service.auth.dto.SaveDataPolicyRequest;
+import com.triobase.service.auth.entity.SysAuthAction;
+import com.triobase.service.auth.entity.SysAuthResource;
 import com.triobase.service.auth.entity.SysDataPolicy;
 import com.triobase.service.auth.entity.SysDataPolicyDimension;
 import com.triobase.service.auth.entity.SysRole;
 import com.triobase.service.auth.entity.SysUserRole;
+import com.triobase.service.auth.mapper.AuthActionMapper;
+import com.triobase.service.auth.mapper.AuthResourceMapper;
 import com.triobase.service.auth.mapper.DataPolicyDimensionMapper;
 import com.triobase.service.auth.mapper.DataPolicyMapper;
 import com.triobase.service.auth.mapper.OrgScopeMapper;
@@ -41,6 +45,8 @@ public class DataPolicyService {
     private static final String ADMIN_ROLE_CODE = "ADMIN";
     private static final String ADMIN_ALL_POLICY_ID = "SYSTEM_ADMIN_ALL";
     private static final String DEFAULT_DIMENSION_CODE = "ADMIN";
+    private static final String ACTIVE = "ACTIVE";
+    private static final short STATUS_ENABLED = 1;
     private static final Set<String> EFFECTS = Set.of("ALLOW", "DENY");
     private static final Set<String> COMBINE_MODES = Set.of("AND", "OR");
     private static final Set<String> SCOPE_TYPES = Set.of(
@@ -55,6 +61,8 @@ public class DataPolicyService {
 
     private final DataPolicyMapper dataPolicyMapper;
     private final DataPolicyDimensionMapper dataPolicyDimensionMapper;
+    private final AuthResourceMapper authResourceMapper;
+    private final AuthActionMapper authActionMapper;
     private final RoleMapper roleMapper;
     private final UserRoleMapper userRoleMapper;
     private final OrgScopeMapper orgScopeMapper;
@@ -271,9 +279,14 @@ public class DataPolicyService {
             throw new BizException(40062, "DATA_POLICY_REQUIRED");
         }
         SysRole role = roleMapper.selectById(request.getRoleId());
-        if (role == null) {
+        if (role == null || role.getStatus() == null || role.getStatus() != STATUS_ENABLED) {
             throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
         }
+        ensureActionRegistered(
+                currentTenantId(),
+                request.getResourceCode().trim().toUpperCase(Locale.ROOT),
+                request.getActionCode().trim().toUpperCase(Locale.ROOT)
+        );
         if (request.getDimensions() == null || request.getDimensions().isEmpty()) {
             throw new BizException(40063, "DATA_POLICY_DIMENSIONS_REQUIRED");
         }
@@ -291,6 +304,21 @@ public class DataPolicyService {
                     && (dimension.getOrgUnitIds() == null || normalizeOrgUnitIds(dimension.getOrgUnitIds()).isEmpty())) {
                 throw new BizException(40066, "DATA_POLICY_ASSIGNED_ORGS_REQUIRED");
             }
+        }
+    }
+
+    private void ensureActionRegistered(String tenantId, String resourceCode, String actionCode) {
+        Long resourceCount = authResourceMapper.selectCount(new LambdaQueryWrapper<SysAuthResource>()
+                .eq(SysAuthResource::getTenantId, tenantId)
+                .eq(SysAuthResource::getResourceCode, resourceCode)
+                .eq(SysAuthResource::getLifecycleStatus, ACTIVE));
+        Long actionCount = authActionMapper.selectCount(new LambdaQueryWrapper<SysAuthAction>()
+                .eq(SysAuthAction::getTenantId, tenantId)
+                .eq(SysAuthAction::getResourceCode, resourceCode)
+                .eq(SysAuthAction::getActionCode, actionCode)
+                .eq(SysAuthAction::getStatus, STATUS_ENABLED));
+        if (resourceCount == null || resourceCount == 0 || actionCount == null || actionCount == 0) {
+            throw new BizException(40468, "DATA_POLICY_ACTION_NOT_REGISTERED");
         }
     }
 

@@ -114,8 +114,8 @@ const quickNavItems: WorkbenchQuickNavItem[] = [
   {
     color: '#4daf1bc9',
     icon: 'ion:key-outline',
-    title: '权限管理',
-    url: '/demos/access/page-control',
+    title: '企业授权',
+    url: '/system/authz',
   },
   {
     color: '#00d8ff',

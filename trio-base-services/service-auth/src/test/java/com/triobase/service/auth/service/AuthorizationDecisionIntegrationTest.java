@@ -133,7 +133,8 @@ class AuthorizationDecisionIntegrationTest {
         verify(guardTemplateMapper).insert(any(com.triobase.service.auth.entity.SysAuthGuardTemplate.class));
 
         // --- Grant: resource/action must already appear in DB for validation ---
-        // saveGrant calls ensureActionRegistered which counts existing actions
+        // saveGrant calls ensureActionRegistered which counts existing active resources and actions
+        when(resourceMapper.selectCount(any())).thenReturn(1L);
         when(actionMapper.selectCount(any())).thenReturn(1L);
         when(resourceMapper.selectOne(any())).thenReturn(resource("ACTIVE"));
 

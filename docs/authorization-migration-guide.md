@@ -2,14 +2,14 @@
 
 本文档面向需要在 TrioBase 企业授权模型上线后保持兼容的开发者。新授权模型以"角色 → 资源 → 动作"三元组为核心，取代旧式的菜单派生权限模式。
 
-## 兼容性承诺
+## 单源授权承诺
 
-| 旧模式 | 新模式 | 兼容性 |
-|--------|--------|--------|
-| `@RequirePermission` | `AuthorizationDecisionService.decide()` | ✅ 旧注解继续有效 |
-| `@RequireDataScope` | `DataPolicyService.resolveEffective()` | ✅ 旧注解继续有效 |
-| `sys_menu.permission_code` | 资源授权 Grant | ✅ 无显式 Deny 时降级到旧菜单权限码 |
-| 低代码 `FORM_KEY:ACTION` | `LOWCODE_FORM:FORM_KEY` 资源 | ✅ 迁移期间双轨运行 |
+| 旧模式 | 新模式 | 当前要求 |
+|--------|--------|----------|
+| `@RequirePermission` | `AuthorizationDecisionService.decide()` | 旧注解可继续作为代码侧声明，但授权事实必须来自 `sys_auth_grant` |
+| `@RequireDataScope` | `DataPolicyService.resolveEffective()` | 数据范围仍由授权中心解析，并校验资源/动作已注册 |
+| `sys_menu.permission_code` | 菜单可见性投影 | 只用于从 `sys_auth_grant` 反推导航，不再作为独立授权来源 |
+| 低代码 `FORM_KEY:ACTION` | `LOWCODE_FORM:FORM_KEY` 资源 | 业务功能统一注册为资源+动作，不保留双轨授权 |
 
 ## 迁移步骤
 
@@ -27,7 +27,7 @@ ORDER BY resource_code;
 
 ### 第二步：为角色赋予功能权限
 
-使用管理面板 **系统管理 → 授权管理 → 功能权限** 为角色赋予资源动作权限。
+使用管理面板 **系统管理 → 企业授权 → 功能权限** 为角色赋予资源动作权限。
 
 等价于调用：
 ```http
@@ -44,7 +44,7 @@ POST /api/v1/authz/grants
 
 ### 第三步：配置数据范围
 
-使用 **系统管理 → 授权管理 → 数据范围** 为角色配置可见范围。
+使用 **系统管理 → 企业授权 → 数据范围** 为角色配置可见范围。
 
 ### 第四步：验证决策
 
@@ -71,7 +71,7 @@ X-Internal-Token: <token>
 
 | 旧概念 | 新概念 | 说明 |
 |--------|--------|------|
-| `sys_menu` 菜单权限码 | `sys_auth_resource` + `sys_auth_grant` | 资源授权是持久化授权契约 |
+| `sys_menu` 菜单权限码 | `sys_auth_resource` + `sys_auth_grant` | 菜单只保存权限码用于投影，持久化授权契约只在 `sys_auth_grant` |
 | `@RequirePermission("xxx")` | `AuthorizationDecisionResponse.isAllowed()` | 运行时查询，不再仅依赖静态注解 |
 | `@RequireDataScope` | `AuthzDataScopeResult.scopeTypes` | 数据范围策略在 auth 服务端解析 |
 | 角色 → 菜单 | 角色 → 资源 → 动作 | 细粒度到单个业务动作 |
@@ -83,16 +83,16 @@ X-Internal-Token: <token>
 2. 显式 Deny 授权 → **Deny**（优先于任何 Allow）
 3. 显式 Allow 授权 → **Allow**
 4. 管理员角色（ADMIN）→ **Allow**（即使无显式授权）
-5. 旧式菜单权限码降级 → **Allow**（仅当无 Deny 时）
-6. 无匹配 → **Deny**
+5. 无匹配 → **Deny**
 
-## Rollback 方案
+## 回退约束
 
-如需回退到旧式权限模式：
+当前版本已经退役旧权限 CRUD、`sys_permission` 和 `sys_role_menu` 写入链路，不支持再回退到多套授权事实并行。允许的回退动作是撤销或修正 `sys_auth_grant`、字段策略、数据策略和资源动作注册。
 
-1. **不删除数据库迁移** — 所有迁移是增量的，向后兼容
-2. **移除 Grant** — 在管理面板删除角色的授权 Grant，旧菜单权限码降级自动生效
-3. **状态管理** — 无需重启服务
+1. **不删除数据库迁移** — 所有迁移是增量的，必须保留 V60/V64/V65 的单源收敛结果
+2. **修正 Grant** — 在企业授权中删除或新增角色授权 Grant
+3. **修正资源动作** — 资源/动作注册错误时通过同步接口或迁移补齐，保持 fail-closed
+4. **状态管理** — 授权、数据策略、字段策略变更会 bump 对应版本，无需重启服务
 
 ## 调试信号
 

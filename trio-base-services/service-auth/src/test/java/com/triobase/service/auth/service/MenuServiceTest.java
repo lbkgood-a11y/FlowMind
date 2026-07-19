@@ -5,10 +5,10 @@ import com.triobase.service.auth.dto.CreateMenuRequest;
 import com.triobase.service.auth.dto.MenuRouteResponse;
 import com.triobase.service.auth.dto.UpdateMenuRequest;
 import com.triobase.service.auth.entity.SysMenu;
-import com.triobase.service.auth.entity.SysPermission;
+import com.triobase.service.auth.mapper.AuthActionMapper;
+import com.triobase.service.auth.mapper.AuthResourceMapper;
 import com.triobase.service.auth.mapper.MenuMapper;
-import com.triobase.service.auth.mapper.PermissionMapper;
-import com.triobase.service.auth.mapper.RoleMenuMapper;
+import com.triobase.service.auth.mapper.UserMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,10 +28,13 @@ class MenuServiceTest {
     private MenuMapper menuMapper;
 
     @Mock
-    private PermissionMapper permissionMapper;
+    private AuthResourceMapper authResourceMapper;
 
     @Mock
-    private RoleMenuMapper roleMenuMapper;
+    private AuthActionMapper authActionMapper;
+
+    @Mock
+    private UserMapper userMapper;
 
     @InjectMocks
     private MenuService menuService;
@@ -43,13 +46,11 @@ class MenuServiceTest {
         request.setMenuName("用户管理");
         request.setPath("/admin/users");
         request.setComponent("/system/user/list");
-        request.setPermissionId("P001");
-
-        SysPermission permission = new SysPermission();
-        permission.setId("P001");
+        request.setPermissionCode("/api/v1/users:GET");
 
         when(menuMapper.selectCount(any())).thenReturn(0L);
-        when(permissionMapper.selectById("P001")).thenReturn(permission);
+        when(authResourceMapper.selectCount(any())).thenReturn(1L);
+        when(authActionMapper.selectCount(any())).thenReturn(1L);
         when(menuMapper.insert(any(SysMenu.class))).thenReturn(1);
 
         SysMenu menu = menuService.create(request);
@@ -58,7 +59,7 @@ class MenuServiceTest {
         assertEquals("users", menu.getMenuKey());
         assertEquals("/admin/users", menu.getPath());
         assertEquals("/system/user/list", menu.getComponent());
-        assertEquals("P001", menu.getPermissionId());
+        assertEquals("/api/v1/users:GET", menu.getPermissionCode());
         assertEquals(Short.valueOf((short) 1), menu.getVisible());
     }
 
@@ -151,10 +152,12 @@ class MenuServiceTest {
         request.setMenuType("button");
         request.setPath("/should-not-persist");
         request.setComponent("/should/not/persist");
-        request.setPermissionCode("system:menu:create");
+        request.setPermissionCode("/api/v1/menus:POST");
         request.setHideInMenu(false);
 
         when(menuMapper.selectCount(any())).thenReturn(0L);
+        when(authResourceMapper.selectCount(any())).thenReturn(1L);
+        when(authActionMapper.selectCount(any())).thenReturn(1L);
         when(menuMapper.insert(any(SysMenu.class))).thenReturn(1);
 
         SysMenu menu = menuService.create(request);
@@ -162,7 +165,23 @@ class MenuServiceTest {
         assertNull(menu.getPath());
         assertNull(menu.getComponent());
         assertEquals(Short.valueOf((short) 1), menu.getHideInMenu());
-        assertEquals("system:menu:create", menu.getPermissionCode());
+        assertEquals("/api/v1/menus:POST", menu.getPermissionCode());
+    }
+
+    @Test
+    void create_shouldThrow_whenPermissionCodeIsNotRegistered() {
+        CreateMenuRequest request = new CreateMenuRequest();
+        request.setMenuKey("expenseCreate");
+        request.setMenuName("发起费用");
+        request.setMenuType("button");
+        request.setPermissionCode("FORM:EXPENSE:CREATE");
+
+        when(authResourceMapper.selectCount(any())).thenReturn(1L);
+        when(authActionMapper.selectCount(any())).thenReturn(0L);
+
+        BizException ex = assertThrows(BizException.class, () -> menuService.create(request));
+
+        assertEquals(40432, ex.getCode());
     }
 
     @Test
@@ -225,6 +244,63 @@ class MenuServiceTest {
         assertEquals("/system/menu/list", routes.get(0).getChildren().get(0).getComponent());
         assertEquals(Boolean.TRUE, routes.get(0).getChildren().get(0).getMeta().get("affixTab"));
         assertEquals("/api/v1/menus:GET", routes.get(0).getChildren().get(0).getAuthCode());
+    }
+
+    @Test
+    void listRoutesForUser_shouldDeriveRoutesFromGrantPermissionsAndHonorDeny() {
+        SysMenu root = new SysMenu();
+        root.setId("M001");
+        root.setMenuKey("system");
+        root.setMenuName("系统管理");
+        root.setPath("/system");
+        root.setMenuType("catalog");
+        root.setMenuGroup("system");
+        root.setStatus((short) 1);
+
+        SysMenu menuAllowed = new SysMenu();
+        menuAllowed.setId("M002");
+        menuAllowed.setParentId("M001");
+        menuAllowed.setMenuKey("menus");
+        menuAllowed.setMenuName("菜单管理");
+        menuAllowed.setPath("/system/menu");
+        menuAllowed.setComponent("/system/menu/list");
+        menuAllowed.setMenuType("menu");
+        menuAllowed.setStatus((short) 1);
+        menuAllowed.setPermissionCode("/api/v1/menus:GET");
+
+        SysMenu menuDenied = new SysMenu();
+        menuDenied.setId("M003");
+        menuDenied.setParentId("M001");
+        menuDenied.setMenuKey("roles");
+        menuDenied.setMenuName("角色管理");
+        menuDenied.setPath("/system/role");
+        menuDenied.setComponent("/system/role/list");
+        menuDenied.setMenuType("menu");
+        menuDenied.setStatus((short) 1);
+        menuDenied.setPermissionCode("/api/v1/roles:GET");
+
+        SysMenu menuWithoutGrant = new SysMenu();
+        menuWithoutGrant.setId("M004");
+        menuWithoutGrant.setParentId("M001");
+        menuWithoutGrant.setMenuKey("publicReport");
+        menuWithoutGrant.setMenuName("未授权报表");
+        menuWithoutGrant.setPath("/system/public-report");
+        menuWithoutGrant.setComponent("/system/public-report/list");
+        menuWithoutGrant.setMenuType("menu");
+        menuWithoutGrant.setStatus((short) 1);
+
+        when(menuMapper.selectList(any())).thenReturn(List.of(root, menuAllowed, menuDenied, menuWithoutGrant));
+        when(userMapper.selectPermissionsByUserId("U001"))
+                .thenReturn(List.of("/api/v1/menus:GET", "/api/v1/roles:GET"));
+        when(userMapper.selectDeniedPermissionsByUserId("U001"))
+                .thenReturn(List.of("/api/v1/roles:GET"));
+
+        List<MenuRouteResponse> routes = menuService.listRoutesForUser("U001");
+
+        assertEquals(1, routes.size());
+        assertEquals("system", routes.get(0).getName());
+        assertEquals(1, routes.get(0).getChildren().size());
+        assertEquals("menus", routes.get(0).getChildren().get(0).getName());
     }
 
     @Test

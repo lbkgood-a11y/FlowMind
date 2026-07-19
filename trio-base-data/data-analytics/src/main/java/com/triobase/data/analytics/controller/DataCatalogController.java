@@ -1,5 +1,6 @@
 package com.triobase.data.analytics.controller;
 
+import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.core.result.R;
 import com.triobase.data.analytics.dto.CreateDatasetRequest;
@@ -24,12 +25,14 @@ public class DataCatalogController {
     private final DatasetCatalogService catalogService;
 
     @PostMapping
+    @RequirePermission("/api/v1/data/datasets:POST")
     public R<DatasetResponse> create(@Valid @RequestBody CreateDatasetRequest request,
                                      @RequestHeader(value = "X-Username", required = false) String operator) {
         return R.ok(catalogService.create(request, operator));
     }
 
     @GetMapping
+    @RequirePermission("/api/v1/data/datasets:GET")
     public R<PageResult<DatasetResponse>> list(@RequestParam(required = false) String status,
                                                @RequestParam(defaultValue = "1") int page,
                                                @RequestParam(defaultValue = "20") int size) {
@@ -37,6 +40,7 @@ public class DataCatalogController {
     }
 
     @GetMapping("/{id}")
+    @RequirePermission("/api/v1/data/datasets:GET")
     public R<DatasetResponse> getById(@PathVariable String id) {
         return R.ok(catalogService.getById(id));
     }

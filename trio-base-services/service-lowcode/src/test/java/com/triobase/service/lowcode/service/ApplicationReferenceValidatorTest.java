@@ -97,7 +97,7 @@ class ApplicationReferenceValidatorTest {
                              String workflowBody,
                              AtomicReference<String> authHeader) throws IOException {
         server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/internal/v1/permissions/missing", exchange -> {
+        server.createContext("/internal/v1/authz/codes/missing", exchange -> {
             authHeader.set(exchange.getRequestHeaders().getFirst(InternalServiceTokenFilter.HEADER_SERVICE_NAME));
             respond(exchange, permissionsBody);
         });

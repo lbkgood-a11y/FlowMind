@@ -37,6 +37,7 @@ class JwtAuthFilterTest {
                     "userId":"U001","username":"alice","tenantId":"tenant-a",
                     "roles":["ADMIN","USER"],
                     "permissions":["/api/v1/forms:GET","/api/v1/forms/*/instances:GET"],
+                    "deniedPermissions":["/api/v1/forms/archive:GET"],
                     "authVersion":3,"roleVersion":4,"dataPolicyVersion":5}}
                     """.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
@@ -65,8 +66,45 @@ class JwtAuthFilterTest {
         assertThat(forwarded.get().getFirst("X-User-Roles")).isEqualTo("ADMIN,USER");
         assertThat(forwarded.get().getFirst("X-User-Permissions"))
                 .isEqualTo("/api/v1/forms:GET,/api/v1/forms/*/instances:GET");
+        assertThat(forwarded.get().getFirst("X-User-Denied-Permissions"))
+                .isEqualTo("/api/v1/forms/archive:GET");
         assertThat(forwarded.get().getFirst("X-Auth-Version")).isEqualTo("3");
         assertThat(forwarded.get().getFirst("X-Role-Version")).isEqualTo("4");
         assertThat(forwarded.get().getFirst("X-Data-Policy-Version")).isEqualTo("5");
+    }
+
+    @Test
+    void authzPathIsNotWhitelistedByAuthPrefix() throws Exception {
+        AtomicReference<String> query = new AtomicReference<>();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/auth/validate", exchange -> {
+            query.set(exchange.getRequestURI().getQuery());
+            byte[] body = """
+                    {"code":0,"message":"success","data":{"valid":true,
+                    "userId":"U001","username":"admin",
+                    "permissions":["/api/v1/authz/**:GET"]}}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        JwtAuthFilter filter = new JwtAuthFilter(WebClient.builder(),
+                "http://127.0.0.1:" + server.getAddress().getPort(), "/api/v1/auth/**");
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest
+                .get("/api/v1/authz/resources/tree")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
+                .build());
+        AtomicReference<HttpHeaders> forwarded = new AtomicReference<>();
+
+        filter.filter(exchange, e -> {
+            forwarded.set(e.getRequest().getHeaders());
+            return Mono.empty();
+        }).block();
+
+        assertThat(query.get()).contains("token=access-token");
+        assertThat(forwarded.get().getFirst("X-User-Id")).isEqualTo("U001");
+        assertThat(forwarded.get().getFirst("X-User-Permissions")).isEqualTo("/api/v1/authz/**:GET");
     }
 }

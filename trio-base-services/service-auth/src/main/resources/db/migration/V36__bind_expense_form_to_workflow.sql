@@ -1,13 +1,18 @@
 -- Bind lowcode expense instances to workflow instances and grant launch permission.
 
-ALTER TABLE lc_form_instance
+ALTER TABLE IF EXISTS lc_form_instance
     ADD COLUMN IF NOT EXISTS process_key VARCHAR(128),
     ADD COLUMN IF NOT EXISTS process_instance_id VARCHAR(32),
     ADD COLUMN IF NOT EXISTS workflow_status VARCHAR(32);
 
-CREATE UNIQUE INDEX IF NOT EXISTS uk_lc_form_instance_process
-    ON lc_form_instance(process_instance_id)
-    WHERE process_instance_id IS NOT NULL;
+DO $$
+BEGIN
+    IF to_regclass('public.lc_form_instance') IS NOT NULL THEN
+        CREATE UNIQUE INDEX IF NOT EXISTS uk_lc_form_instance_process
+            ON lc_form_instance(process_instance_id)
+            WHERE process_instance_id IS NOT NULL;
+    END IF;
+END $$;
 
 UPDATE lc_form_definition
 SET schema_json = '{"additionalProperties":false,"properties":{"amount":{"minimum":0.01,"title":"金额","type":"number"},"reason":{"maxLength":200,"minLength":2,"title":"事由","type":"string"},"dept":{"minLength":1,"title":"所属部门","type":"string"},"remark":{"maxLength":300,"title":"备注","type":"string"}},"required":["amount","reason","dept"],"title":"费用报销","type":"object"}',
@@ -40,11 +45,16 @@ ON CONFLICT (form_definition_id, field_key) DO UPDATE SET
     required_flag = EXCLUDED.required_flag, placeholder = EXCLUDED.placeholder,
     sort_order = EXCLUDED.sort_order, updated_by = 'SYSTEM', updated_at = CURRENT_TIMESTAMP;
 
-UPDATE wf_process_package
-SET form_schema = '{"type":"object","additionalProperties":false,"required":["amount","reason","dept"],"properties":{"amount":{"type":"number","title":"报销金额","minimum":0.01},"reason":{"type":"string","title":"报销事由","minLength":2},"dept":{"type":"string","title":"所属部门","minLength":1},"remark":{"type":"string","title":"备注"},"businessId":{"type":"string","title":"业务单据ID"},"formInstanceId":{"type":"string","title":"表单实例ID"}}}',
-    updated_by = 'SYSTEM',
-    updated_at = CURRENT_TIMESTAMP
-WHERE process_key = 'expense_report' AND status = 'PUBLISHED';
+DO $$
+BEGIN
+    IF to_regclass('public.wf_process_package') IS NOT NULL THEN
+        UPDATE wf_process_package
+        SET form_schema = '{"type":"object","additionalProperties":false,"required":["amount","reason","dept"],"properties":{"amount":{"type":"number","title":"报销金额","minimum":0.01},"reason":{"type":"string","title":"报销事由","minLength":2},"dept":{"type":"string","title":"所属部门","minLength":1},"remark":{"type":"string","title":"备注"},"businessId":{"type":"string","title":"业务单据ID"},"formInstanceId":{"type":"string","title":"表单实例ID"}}}',
+            updated_by = 'SYSTEM',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE process_key = 'expense_report' AND status = 'PUBLISHED';
+    END IF;
+END $$;
 
 INSERT INTO sys_permission(id, resource, action, description) VALUES
     ('P087', '/api/v1/forms/expense/instances/*/process', 'PUT', 'Bind expense form to workflow instance')

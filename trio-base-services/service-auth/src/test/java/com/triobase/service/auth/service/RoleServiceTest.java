@@ -3,12 +3,8 @@ package com.triobase.service.auth.service;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.service.auth.dto.CreateRoleRequest;
 import com.triobase.service.auth.dto.UpdateRoleRequest;
-import com.triobase.service.auth.entity.SysMenu;
 import com.triobase.service.auth.entity.SysRole;
-import com.triobase.service.auth.entity.SysRoleMenu;
-import com.triobase.service.auth.mapper.MenuMapper;
 import com.triobase.service.auth.mapper.RoleMapper;
-import com.triobase.service.auth.mapper.RoleMenuMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,35 +31,22 @@ class RoleServiceTest {
     private RoleMapper roleMapper;
 
     @Mock
-    private RoleMenuMapper roleMenuMapper;
-
-    @Mock
-    private MenuMapper menuMapper;
-
-    @Mock
     private UserRoleMapper userRoleMapper;
+
+    @Mock
+    private RoleAuthorizationDataService roleAuthorizationDataService;
 
     @InjectMocks
     private RoleService roleService;
 
     @Test
-    void create_shouldPersistRoleMenusAndPermissionMirror_whenRequestValid() {
+    void create_shouldPersistRoleOnly_whenRequestValid() {
         CreateRoleRequest request = new CreateRoleRequest();
         request.setRoleCode("ADMIN");
         request.setRoleName("Administrator");
         request.setStatus(1);
-        request.setMenuIds(List.of("M001", "M002", "M001", " "));
-
-        SysMenu menu1 = new SysMenu();
-        menu1.setId("M001");
-        menu1.setPermissionId("P001");
-        SysMenu menu2 = new SysMenu();
-        menu2.setId("M002");
-        menu2.setPermissionId("P002");
 
         when(roleMapper.selectCount(any())).thenReturn(0L);
-        when(menuMapper.selectById("M001")).thenReturn(menu1);
-        when(menuMapper.selectById("M002")).thenReturn(menu2);
         when(roleMapper.insert(any(SysRole.class))).thenReturn(1);
 
         SysRole role = roleService.create(request);
@@ -72,7 +55,7 @@ class RoleServiceTest {
         assertEquals("ADMIN", role.getRoleCode());
         assertEquals("Administrator", role.getRoleName());
         assertEquals(Short.valueOf((short) 1), role.getStatus());
-        verify(roleMenuMapper, times(2)).insert(any(SysRoleMenu.class));
+        verifyNoInteractions(roleAuthorizationDataService);
     }
 
     @Test
@@ -99,26 +82,7 @@ class RoleServiceTest {
     }
 
     @Test
-    void update_shouldThrow_whenMenuMissing() {
-        UpdateRoleRequest request = new UpdateRoleRequest();
-        request.setRoleName("Tenant Administrator");
-        request.setMenuIds(List.of("M404"));
-
-        SysRole role = new SysRole();
-        role.setId("R001");
-        role.setRoleCode("TENANT_ADMIN");
-
-        when(roleMapper.selectById("R001")).thenReturn(role);
-        when(menuMapper.selectById("M404")).thenReturn(null);
-
-        BizException ex = assertThrows(BizException.class, () -> roleService.update("R001", request));
-
-        assertEquals(40433, ex.getCode());
-        verify(roleMenuMapper, never()).delete(any());
-    }
-
-    @Test
-    void update_shouldPreserveRoleMenus_whenMenuIdsAbsent() {
+    void update_shouldPreserveAuthorization_whenUpdatingRoleDetails() {
         UpdateRoleRequest request = new UpdateRoleRequest();
         request.setRoleName("Tenant Administrator");
         request.setStatus(1);
@@ -133,8 +97,7 @@ class RoleServiceTest {
         SysRole updated = roleService.update("R001", request);
 
         assertEquals("Tenant Administrator", updated.getRoleName());
-        verify(roleMenuMapper, never()).delete(any());
-        verify(roleMenuMapper, never()).insert(any(SysRoleMenu.class));
+        verifyNoInteractions(roleAuthorizationDataService);
     }
 
     @Test
@@ -163,5 +126,20 @@ class RoleServiceTest {
 
         assertEquals(40043, ex.getCode());
         verify(roleMapper, never()).deleteById("R001");
+        verify(roleAuthorizationDataService, never()).deleteRoleAuthorizationData("R001");
+    }
+
+    @Test
+    void delete_shouldCleanAuthorizationData_whenRoleHasNoUsers() {
+        SysRole role = new SysRole();
+        role.setId("R099");
+
+        when(roleMapper.selectById("R099")).thenReturn(role);
+        when(userRoleMapper.selectCount(any())).thenReturn(0L);
+
+        roleService.delete("R099");
+
+        verify(roleAuthorizationDataService).deleteRoleAuthorizationData("R099");
+        verify(roleMapper).deleteById("R099");
     }
 }

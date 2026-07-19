@@ -37,16 +37,16 @@ The system SHALL expose internal single and batch authorization decision APIs th
 - **WHEN** a runtime page requests decisions for multiple document actions, fields, and Global Action definitions
 - **THEN** the batch decision API returns one stable decision entry per requested resource/action without requiring multiple network round trips
 
-### Requirement: Authorization grants are decoupled from menus
-The system SHALL allow roles or users to be granted resource actions independently from menu membership while preserving existing menu-derived permission behavior during migration.
+### Requirement: Authorization grants are the single function authorization source
+The system SHALL store role and user function authorization only in `sys_auth_grant`; menu membership SHALL be a read-only projection derived from grants and menu permission metadata.
 
 #### Scenario: Resource grant without menu
 - **WHEN** a role is granted `CUSTOM_DOC:CONTRACT:EXPORT` without any corresponding menu row
 - **THEN** authorization decisions for contract export can allow the role based on the resource grant
 
-#### Scenario: Existing menu permission remains valid
-- **WHEN** a role still receives a legacy permission through `sys_role_menu` and `sys_menu.permission_code`
-- **THEN** compatibility logic preserves existing API permission checks until the permission is migrated to direct resource grants
+#### Scenario: Menu visibility is projected from grants
+- **WHEN** a role has an active allow grant matching `sys_menu.permission_code`
+- **THEN** role detail and dynamic routes can show the corresponding menu and ancestors without writing any role-menu authorization row
 
 ### Requirement: Data-scope decisions are executable by services
 The system SHALL return data-scope decisions using stable scope types and resolved identifiers that owning services can compile into safe database predicates.
@@ -148,9 +148,9 @@ Business document permissions SHALL use semantic resource and action codes rathe
 - **WHEN** SCM registers purchase order permissions
 - **THEN** it uses stable semantic codes for actions such as view, create, edit, submit, approve, reject, cancel, close, and export
 
-#### Scenario: Legacy management endpoint
-- **WHEN** a system management page uses existing URL permissions
-- **THEN** the existing permission behavior remains valid during migration unless the operation is reclassified as a business document action
+#### Scenario: System management endpoint
+- **WHEN** a system management page uses URL-style resource and action permissions
+- **THEN** the behavior is backed by `sys_auth_resource`, `sys_auth_action`, and `sys_auth_grant` rather than a separate permission store
 
 ### Requirement: Field decisions drive frontend rendering and backend enforcement
 Field authorization decisions SHALL drive frontend visible/editable/required/masked field rendering while owner services remain the enforcement source for reads and writes.
@@ -169,4 +169,3 @@ The authorization system SHALL support batch evaluation for page action renderin
 #### Scenario: Document page action batch
 - **WHEN** a document page loads actions and fields for a purchase order
 - **THEN** the backend can evaluate all relevant resource/action and field decisions in one batch and return stable entries for the frontend to render
-

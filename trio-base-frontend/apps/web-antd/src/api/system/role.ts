@@ -23,7 +23,6 @@ export namespace SystemRoleApi {
 
   export interface SaveRoleParams {
     description?: string;
-    menuIds?: string[];
     roleCode?: string;
     roleName: string;
     status?: 0 | 1;

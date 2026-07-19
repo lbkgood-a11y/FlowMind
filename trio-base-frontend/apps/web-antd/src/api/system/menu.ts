@@ -35,7 +35,6 @@ export namespace SystemMenuApi {
     parentId?: string;
     path?: string;
     permissionCode?: string;
-    permissionId?: string;
     sortOrder?: number;
     status?: 0 | 1;
     updatedAt?: string;
@@ -64,7 +63,6 @@ export namespace SystemMenuApi {
     parentId?: string;
     path?: string;
     permissionCode?: string;
-    permissionId?: string;
     sortOrder?: number;
     status?: 0 | 1;
     visible?: boolean;
