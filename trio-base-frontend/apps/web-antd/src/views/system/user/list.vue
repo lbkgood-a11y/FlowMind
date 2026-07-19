@@ -1101,9 +1101,10 @@ onMounted(async () => {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   padding: 8px;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .user-page.is-block-fullscreen .list-panel {

@@ -310,12 +310,21 @@ onMounted(loadDatasets);
 
 <style scoped>
 .data-page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
   padding: 8px;
+  overflow: hidden;
 }
 
 .panel {
-  min-height: calc(100vh - 120px);
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
   padding: 10px;
+  overflow: hidden;
   background: #fff;
   border-radius: 4px;
 }
@@ -337,8 +346,11 @@ onMounted(loadDatasets);
 
 .grid {
   display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 12px;
+  overflow: auto;
 }
 
 .form-panel,

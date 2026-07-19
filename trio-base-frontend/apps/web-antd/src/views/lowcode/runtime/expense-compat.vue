@@ -34,9 +34,10 @@ onMounted(async () => {
 <style scoped>
 .compat-loading {
   display: flex;
+  height: 100%;
+  min-height: 0;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - 120px);
   font-size: 13px;
   color: #606b7b;
   background: #fff;

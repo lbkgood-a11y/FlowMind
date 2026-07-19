@@ -491,8 +491,9 @@ watch(
 }
 
 .list-panel {
-  min-height: calc(100vh - 120px);
+  min-height: 0;
   padding: 8px;
+  overflow: hidden;
   background: #fff;
   border-radius: 4px;
 }

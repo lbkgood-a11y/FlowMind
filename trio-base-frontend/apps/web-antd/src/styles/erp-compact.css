@@ -1,3 +1,41 @@
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#app .ant-app,
+#app .ant-app > :where(.relative),
+#app .ant-app > :where(.relative) > :where(.flex.flex-1.flex-col) {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#__vben_main_content {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#__vben_main_content > :where(.relative.flex.h-full.flex-col),
+#__vben_main_content > :where(.relative.flex.h-full.flex-col) > :where(.h-full) {
+  min-width: 0;
+  min-height: 0;
+}
+
+#__vben_main_content > :where(.relative.flex.h-full.flex-col) {
+  overflow: hidden;
+}
+
 .erp-compact-page {
   --erp-content-gutter: 8px;
   --erp-control-height: 30px;
@@ -11,17 +49,21 @@
   --erp-query-label-width: 88px;
 
   min-width: 0;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   padding: 0 !important;
+  overflow: hidden;
   background: hsl(var(--background-deep));
 }
 
 .tb-business-page {
   display: flex;
   min-width: 0;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   flex-direction: column;
   gap: var(--erp-panel-gap, 6px);
+  overflow: hidden;
 }
 
 .tb-business-page__body {
@@ -31,6 +73,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   gap: var(--erp-panel-gap, 6px);
+  overflow: hidden;
 }
 
 .tb-query-bar__grid {
@@ -112,6 +155,7 @@
   min-height: 36px;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -121,7 +165,9 @@
   display: grid;
   min-width: 0;
   min-height: 0;
+  flex: 1 1 auto;
   gap: var(--erp-panel-gap, 6px);
+  overflow: hidden;
 }
 
 .tb-split-layout {
@@ -159,16 +205,20 @@
   display: flex;
   min-width: 0;
   min-height: 0;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: var(--erp-panel-gap, 6px);
+  overflow: hidden;
 }
 
 .tb-document-page__body {
   display: grid;
   min-width: 0;
   min-height: 0;
+  flex: 1 1 auto;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
   gap: var(--erp-panel-gap, 6px);
+  overflow: hidden;
 }
 
 .tb-document-page__body:not(:has(.tb-document-page__side)) {
@@ -296,6 +346,7 @@
 
 .erp-compact-page :where(.query-actions, .toolbar-actions, .workbench-actions) {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   margin-left: auto;
 }
@@ -477,6 +528,7 @@
 .erp-compact-page :where(.ant-pagination) {
   margin: 0;
   font-size: 12px;
+  white-space: normal;
 }
 
 .erp-compact-page
@@ -513,5 +565,12 @@
 
   .erp-compact-page :where(.query-actions) {
     grid-column: 1 / -1 !important;
+  }
+
+  .tb-toolbar,
+  .tb-document-header__actions,
+  .tb-document-action-bar,
+  .tb-table-frame__footer {
+    align-items: flex-start;
   }
 }

@@ -2030,9 +2030,10 @@ onMounted(() => {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   padding: 8px;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .role-page.is-block-fullscreen .role-workbench,
