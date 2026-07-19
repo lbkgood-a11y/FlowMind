@@ -34,16 +34,20 @@ export interface ProcessFormSchema {
 }
 
 export interface ProcessUiFieldSchema {
+  'ui:disabled'?: boolean;
   'ui:placeholder'?: string;
+  'ui:readonly'?: boolean;
   'ui:widget'?: FormWidget | 'enum';
 }
 
 export type ProcessUiSchema = Record<string, ProcessUiFieldSchema>;
 
 export interface ProcessFormField {
+  disabled?: boolean;
   key: string;
   label: string;
   placeholder?: string;
+  readOnly?: boolean;
   required: boolean;
   schema: ProcessFieldSchema;
   widget: FormWidget;
@@ -95,6 +99,8 @@ export function getProcessFormFields(
       key,
       label: fieldSchema.title || key,
       placeholder: fieldUi['ui:placeholder'],
+      disabled: Boolean(fieldUi['ui:disabled']),
+      readOnly: Boolean(fieldUi['ui:readonly']),
       required: required.has(key),
       schema: fieldSchema,
       widget: resolveWidget(fieldSchema, fieldUi),

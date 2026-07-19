@@ -1,17 +1,35 @@
+// @vitest-environment happy-dom
+
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Modal } from 'ant-design-vue';
 
 const apiMocks = vi.hoisted(() => ({
-  addSignTask: vi.fn(),
-  approveTask: vi.fn(),
   getRejectTargets: vi.fn().mockResolvedValue([]),
-  rejectTask: vi.fn(),
-  transferTask: vi.fn(),
 }));
 
+const actionApiMocks = vi.hoisted(() => ({
+  ACTION_TARGET_TYPES: { processTask: 'PROCESS_TASK' },
+  ACTION_TYPES: {
+    processTaskAddSign: 'process.task.addSign',
+    processTaskApprove: 'process.task.approve',
+    processTaskReject: 'process.task.reject',
+    processTaskTransfer: 'process.task.transfer',
+  },
+  createActionIdempotencyKey: vi.fn(() => 'idem-task'),
+  requireActionData: vi.fn((result: any, key: string) => result.data[key]),
+}));
+
+const dispatchMocks = vi.hoisted(() => ({
+  dispatchAction: vi.fn(),
+}));
+
+vi.mock('#/api', () => actionApiMocks);
 vi.mock('#/api/process', () => apiMocks);
+vi.mock('#/composables/useActionDispatch', () => ({
+  useActionDispatch: () => ({ dispatchAction: dispatchMocks.dispatchAction }),
+}));
 vi.mock('#/components/business', () => ({
   UserSelect: { name: 'UserSelect', template: '<div class="user-select" />' },
 }));
@@ -33,8 +51,8 @@ const task = {
 };
 
 describe('TaskActionDialog', () => {
-  it('submits an approval with a generated operation id', async () => {
-    apiMocks.approveTask.mockResolvedValue(task);
+  it('dispatches approval as a Global Action with idempotency', async () => {
+    dispatchMocks.dispatchAction.mockResolvedValue({ data: { task }, status: 'SUCCEEDED' });
     const wrapper = shallowMount(TaskActionDialog, {
       props: { action: 'APPROVE', open: true, task },
     });
@@ -42,9 +60,21 @@ describe('TaskActionDialog', () => {
     wrapper.findComponent(Modal).vm.$emit('ok');
     await flushPromises();
 
-    expect(apiMocks.approveTask).toHaveBeenCalledWith(
-      'TASK001',
-      expect.objectContaining({ operationId: expect.any(String) }),
+    expect(dispatchMocks.dispatchAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: 'process.task.approve',
+        executionMode: 'SIGNAL',
+        idempotencyKey: 'idem-task',
+        payload: expect.objectContaining({
+          operationId: 'idem-task',
+          taskId: 'TASK001',
+        }),
+        target: expect.objectContaining({
+          id: 'TASK001',
+          type: 'PROCESS_TASK',
+        }),
+      }),
+      expect.objectContaining({ failureMessage: '任务操作失败' }),
     );
     expect(wrapper.emitted('success')?.[0]?.[0]).toBe('APPROVE');
   });

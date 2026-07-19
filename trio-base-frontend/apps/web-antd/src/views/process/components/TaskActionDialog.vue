@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import type { ProcessApi } from '#/api/process';
+import type { ActionApi } from '#/api/action-client';
 
 import { computed, ref, watch } from 'vue';
 
 import { Input, Modal, Select } from 'ant-design-vue';
 
 import {
-  addSignTask,
-  approveTask,
-  getRejectTargets,
-  rejectTask,
-  transferTask,
-} from '#/api/process';
+  ACTION_TARGET_TYPES,
+  ACTION_TYPES,
+  createActionIdempotencyKey,
+  requireActionData,
+} from '#/api';
+import { getRejectTargets } from '#/api/process';
+import { useActionDispatch } from '#/composables/useActionDispatch';
 import { UserSelect } from '#/components/business';
 
 export type TaskActionType = 'ADD_SIGN' | 'APPROVE' | 'REJECT' | 'TRANSFER';
@@ -23,16 +25,28 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  success: [action: TaskActionType, task: ProcessApi.TaskItem];
+  success: [
+    action: TaskActionType,
+    task: ProcessApi.TaskItem,
+    result: ActionApi.GlobalActionResult,
+  ];
   'update:open': [open: boolean];
 }>();
 
 const Textarea = Input.TextArea;
+const { dispatchAction } = useActionDispatch();
 const saving = ref(false);
 const comment = ref('');
 const targetNodeId = ref<string>();
 const targetUserId = ref<string>();
 const rejectTargets = ref<string[]>([]);
+
+const actionTypes: Record<TaskActionType, string> = {
+  ADD_SIGN: ACTION_TYPES.processTaskAddSign,
+  APPROVE: ACTION_TYPES.processTaskApprove,
+  REJECT: ACTION_TYPES.processTaskReject,
+  TRANSFER: ACTION_TYPES.processTaskTransfer,
+};
 
 const title = computed(() => {
   const labels: Record<TaskActionType, string> = {
@@ -76,31 +90,41 @@ async function submit() {
 
   saving.value = true;
   try {
-    const operationId = crypto.randomUUID();
-    let result: ProcessApi.TaskItem;
-    if (props.action === 'APPROVE') {
-      result = await approveTask(task.id, {
-        comment: comment.value || undefined,
-        operationId,
-      });
-    } else if (props.action === 'REJECT') {
-      result = await rejectTask(task.id, {
-        comment: comment.value || undefined,
-        operationId,
-        targetNodeId: targetNodeId.value || undefined,
-      });
-    } else if (props.action === 'TRANSFER') {
-      result = await transferTask(task.id, {
-        newAssigneeId: targetUserId.value!,
-        operationId,
-      });
-    } else {
-      result = await addSignTask(task.id, {
-        assigneeId: targetUserId.value!,
-        operationId,
-      });
+    const actionType = actionTypes[props.action];
+    const operationId = createActionIdempotencyKey(actionType, task.id);
+    const payload: Record<string, unknown> = {
+      action: props.action,
+      operationId,
+      taskId: task.id,
+    };
+    if (comment.value) {
+      payload.comment = comment.value;
     }
-    emit('success', props.action, result);
+    if (targetNodeId.value) {
+      payload.targetNodeId = targetNodeId.value;
+    }
+    if (props.action === 'TRANSFER') {
+      payload.newAssigneeId = targetUserId.value;
+    }
+    if (props.action === 'ADD_SIGN') {
+      payload.assigneeId = targetUserId.value;
+    }
+    const actionResult = await dispatchAction<{ task: ProcessApi.TaskItem }>(
+      {
+        actionType,
+        executionMode: 'SIGNAL',
+        idempotencyKey: operationId,
+        payload,
+        target: {
+          id: task.id,
+          ownerService: 'service-workflow-engine',
+          type: ACTION_TARGET_TYPES.processTask,
+        },
+      },
+      { failureMessage: '任务操作失败' },
+    );
+    const result = requireActionData<ProcessApi.TaskItem>(actionResult, 'task');
+    emit('success', props.action, result, actionResult);
     emit('update:open', false);
   } finally {
     saving.value = false;

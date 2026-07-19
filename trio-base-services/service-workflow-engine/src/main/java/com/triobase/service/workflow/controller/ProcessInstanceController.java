@@ -5,7 +5,6 @@ import com.triobase.common.core.result.PageResult;
 import com.triobase.common.core.result.R;
 import com.triobase.service.workflow.dto.ProcessHistoryResponse;
 import com.triobase.service.workflow.dto.ProcessInstanceResponse;
-import com.triobase.service.workflow.dto.StartProcessRequest;
 import com.triobase.service.workflow.service.ProcessInstanceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -16,12 +15,6 @@ import org.springframework.web.bind.annotation.*;
 public class ProcessInstanceController {
 
     private final ProcessInstanceService processInstanceService;
-
-    @PostMapping("/start")
-    @RequirePermission("/api/v1/process-instances/start:POST")
-    public R<ProcessInstanceResponse> start(@RequestBody StartProcessRequest request) {
-        return R.ok(processInstanceService.startProcess(request));
-    }
 
     @GetMapping
     @RequirePermission("/api/v1/process-instances:GET")

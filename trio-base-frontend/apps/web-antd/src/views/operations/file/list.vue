@@ -29,6 +29,12 @@ import {
   uploadFile,
 } from '#/api';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const PERMISSIONS = {
   delete: '/api/v1/files/*:DELETE',
@@ -153,9 +159,9 @@ onMounted(load);
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page ops-page">
-      <section class="toolbar">
-        <Space wrap>
+    <BusinessPageScaffold class="ops-page" pattern="single-table">
+      <template #query>
+        <CompactQueryBar :columns="3">
           <Input v-model:value="query.keyword" allow-clear class="query-input" placeholder="文件名/扩展名" />
           <Select
             v-model:value="query.status"
@@ -167,58 +173,66 @@ onMounted(load);
             ]"
             placeholder="状态"
           />
-          <Button v-if="canQuery" type="primary" @click="load">查询</Button>
-          <Button v-if="canQuery" @click="resetQuery">重置</Button>
-          <Tooltip v-if="canQuery" title="刷新">
-            <Button shape="circle" @click="load">
-              <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
-            </Button>
-          </Tooltip>
-          <Upload v-if="canUpload" :before-upload="beforeUpload" :show-upload-list="false">
-            <Button :loading="uploading" type="primary">
-              <Plus class="size-4" />
-              上传文件
-            </Button>
-          </Upload>
-        </Space>
-      </section>
+          <template #actions>
+            <Button v-if="canQuery" type="primary" @click="load">查询</Button>
+            <Button v-if="canQuery" @click="resetQuery">重置</Button>
+            <Tooltip v-if="canQuery" title="刷新">
+              <Button shape="circle" @click="load">
+                <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+              </Button>
+            </Tooltip>
+            <Upload v-if="canUpload" :before-upload="beforeUpload" :show-upload-list="false">
+              <Button :loading="uploading" type="primary">
+                <Plus class="size-4" />
+                上传文件
+              </Button>
+            </Upload>
+          </template>
+        </CompactQueryBar>
+      </template>
 
-      <Table
-        row-key="id"
-        :columns="columns"
-        :data-source="records"
-        :loading="loading"
-        :pagination="pagination"
-        :scroll="{ x: 1180 }"
-        size="small"
-        :sticky="{ offsetScroll: 0 }"
-        @change="handleTableChange"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'fileSize'">
-            {{ formatFileSize(record.fileSize) }}
+      <template #toolbar>
+        <CompactToolbar title="文件管理" subtitle="上传、下载和维护平台文件状态" />
+      </template>
+
+      <CompactTableFrame>
+        <Table
+          row-key="id"
+          :columns="columns"
+          :data-source="records"
+          :loading="loading"
+          :pagination="pagination"
+          :scroll="{ x: 1180 }"
+          size="small"
+          :sticky="{ offsetScroll: 0 }"
+          @change="handleTableChange"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'fileSize'">
+              {{ formatFileSize(record.fileSize) }}
+            </template>
+            <template v-else-if="column.key === 'status'">
+              <Tag :color="record.status === 1 ? 'green' : 'default'">
+                {{ record.status === 1 ? '启用' : '禁用' }}
+              </Tag>
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <Space>
+                <Button :href="getFileDownloadUrl(record.id)" target="_blank" type="link" size="small">
+                  下载
+                </Button>
+                <Button v-if="canUpdateStatus" type="link" size="small" @click="toggleStatus(asFile(record))">
+                  {{ record.status === 1 ? '禁用' : '启用' }}
+                </Button>
+                <Popconfirm v-if="canDelete" title="确认删除该文件？" @confirm="remove(asFile(record))">
+                  <Button danger type="link" size="small">删除</Button>
+                </Popconfirm>
+              </Space>
+            </template>
           </template>
-          <template v-else-if="column.key === 'status'">
-            <Tag :color="record.status === 1 ? 'green' : 'default'">
-              {{ record.status === 1 ? '启用' : '禁用' }}
-            </Tag>
-          </template>
-          <template v-else-if="column.key === 'action'">
-            <Space>
-              <Button :href="getFileDownloadUrl(record.id)" target="_blank" type="link" size="small">
-                下载
-              </Button>
-              <Button v-if="canUpdateStatus" type="link" size="small" @click="toggleStatus(asFile(record))">
-                {{ record.status === 1 ? '禁用' : '启用' }}
-              </Button>
-              <Popconfirm v-if="canDelete" title="确认删除该文件？" @confirm="remove(asFile(record))">
-                <Button danger type="link" size="small">删除</Button>
-              </Popconfirm>
-            </Space>
-          </template>
-        </template>
-      </Table>
-    </div>
+        </Table>
+      </CompactTableFrame>
+    </BusinessPageScaffold>
   </Page>
 </template>
 

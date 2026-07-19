@@ -2,6 +2,7 @@ package com.triobase.service.auth.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
@@ -47,6 +48,8 @@ public class DataPolicyService {
             "OWN_ORG",
             "OWN_ORG_AND_CHILDREN",
             "ASSIGNED_ORGS",
+            "PARTICIPATED",
+            "CANDIDATE_TASKS",
             "ALL"
     );
 
@@ -58,7 +61,7 @@ public class DataPolicyService {
 
     public List<DataPolicyResponse> listByRole(String roleId) {
         List<SysDataPolicy> policies = dataPolicyMapper.selectList(new LambdaQueryWrapper<SysDataPolicy>()
-                .eq(SysDataPolicy::getTenantId, DEFAULT_TENANT)
+                .eq(SysDataPolicy::getTenantId, currentTenantId())
                 .eq(SysDataPolicy::getSubjectType, SUBJECT_TYPE_ROLE)
                 .eq(StringUtils.hasText(roleId), SysDataPolicy::getSubjectId, roleId)
                 .orderByDesc(SysDataPolicy::getCreatedAt));
@@ -78,7 +81,7 @@ public class DataPolicyService {
         validateRequest(request);
         SysDataPolicy policy = new SysDataPolicy();
         policy.setId(UlidGenerator.nextUlid());
-        policy.setTenantId(DEFAULT_TENANT);
+        policy.setTenantId(currentTenantId());
         policy.setSubjectType(SUBJECT_TYPE_ROLE);
         fillPolicy(policy, request);
         dataPolicyMapper.insert(policy);
@@ -110,9 +113,17 @@ public class DataPolicyService {
     }
 
     public EffectiveDataPolicyResponse resolveEffective(String userId, String resourceCode, String actionCode) {
+        return resolveEffective(currentTenantId(), userId, resourceCode, actionCode);
+    }
+
+    public EffectiveDataPolicyResponse resolveEffective(String tenantId,
+                                                        String userId,
+                                                        String resourceCode,
+                                                        String actionCode) {
         if (!StringUtils.hasText(userId) || !StringUtils.hasText(resourceCode) || !StringUtils.hasText(actionCode)) {
             throw new BizException(40061, "DATA_POLICY_QUERY_REQUIRED");
         }
+        String effectiveTenant = StringUtils.hasText(tenantId) ? tenantId.trim() : DEFAULT_TENANT;
         List<String> roleIds = userRoleMapper.selectList(new LambdaQueryWrapper<SysUserRole>()
                         .eq(SysUserRole::getUserId, userId))
                 .stream()
@@ -126,7 +137,7 @@ public class DataPolicyService {
         List<SysDataPolicy> policies = roleIds.isEmpty()
                 ? List.of()
                 : dataPolicyMapper.selectList(new LambdaQueryWrapper<SysDataPolicy>()
-                .eq(SysDataPolicy::getTenantId, DEFAULT_TENANT)
+                .eq(SysDataPolicy::getTenantId, effectiveTenant)
                 .eq(SysDataPolicy::getSubjectType, SUBJECT_TYPE_ROLE)
                 .in(SysDataPolicy::getSubjectId, roleIds)
                 .eq(SysDataPolicy::getResourceCode, resourceCode)
@@ -141,7 +152,7 @@ public class DataPolicyService {
         response.setActionCode(actionCode);
         response.setRoleIds(roleIds);
         List<DataPolicyResponse> policyResponses = toResponses(policies);
-        boolean orgContextResolved = resolveOrgContext(userId, policyResponses);
+        boolean orgContextResolved = resolveOrgContext(effectiveTenant, userId, policyResponses);
         response.setPolicies(policyResponses);
         response.setRestrictive(policies.isEmpty());
         response.setOrgContextResolved(orgContextResolved);
@@ -194,7 +205,7 @@ public class DataPolicyService {
         return response;
     }
 
-    private boolean resolveOrgContext(String userId, List<DataPolicyResponse> policies) {
+    private boolean resolveOrgContext(String tenantId, String userId, List<DataPolicyResponse> policies) {
         boolean resolved = false;
         for (DataPolicyResponse policy : policies) {
             if (policy.getDimensions() == null || !"ALLOW".equalsIgnoreCase(policy.getEffect())) {
@@ -209,12 +220,12 @@ public class DataPolicyService {
                 if (!"OWN_ORG".equals(scopeType) && !"OWN_ORG_AND_CHILDREN".equals(scopeType)) {
                     continue;
                 }
-                List<String> ownOrgUnitIds = resolveOwnOrgUnitIds(userId, dimension.getDimensionCode());
+                List<String> ownOrgUnitIds = resolveOwnOrgUnitIds(tenantId, userId, dimension.getDimensionCode());
                 if ("OWN_ORG_AND_CHILDREN".equals(scopeType) && !ownOrgUnitIds.isEmpty()) {
-                    String dimensionId = orgScopeMapper.selectDimensionId(DEFAULT_TENANT, dimension.getDimensionCode());
+                    String dimensionId = orgScopeMapper.selectDimensionId(tenantId, dimension.getDimensionCode());
                     if (StringUtils.hasText(dimensionId)) {
                         ownOrgUnitIds = orgScopeMapper.selectOrgUnitAndDescendantIds(
-                                DEFAULT_TENANT,
+                                tenantId,
                                 dimensionId,
                                 ownOrgUnitIds
                         );
@@ -227,15 +238,15 @@ public class DataPolicyService {
         return resolved;
     }
 
-    private List<String> resolveOwnOrgUnitIds(String userId, String dimensionCode) {
+    private List<String> resolveOwnOrgUnitIds(String tenantId, String userId, String dimensionCode) {
         if (!StringUtils.hasText(dimensionCode)) {
             return List.of();
         }
-        String dimensionId = orgScopeMapper.selectDimensionId(DEFAULT_TENANT, dimensionCode);
+        String dimensionId = orgScopeMapper.selectDimensionId(tenantId, dimensionCode);
         if (!StringUtils.hasText(dimensionId)) {
             return List.of();
         }
-        List<String> orgUnitIds = orgScopeMapper.selectActiveUserOrgUnitIds(DEFAULT_TENANT, dimensionId, userId);
+        List<String> orgUnitIds = orgScopeMapper.selectActiveUserOrgUnitIds(tenantId, dimensionId, userId);
         if (orgUnitIds.isEmpty()) {
             return List.of();
         }
@@ -357,5 +368,10 @@ public class DataPolicyService {
 
     private String normalizeBlank(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private String currentTenantId() {
+        String tenantId = SecurityContextHolder.getTenantId();
+        return StringUtils.hasText(tenantId) ? tenantId : DEFAULT_TENANT;
     }
 }

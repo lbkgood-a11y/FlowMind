@@ -35,6 +35,8 @@ class OperationAuditServiceTest {
     void record_shouldFillDefaultsAndInsert() {
         SysOperationAuditLog log = new SysOperationAuditLog();
         log.setRequestPath("/api/v1/users");
+        log.setActionId("act-1");
+        log.setActionType("process.task.approve");
 
         operationAuditService.record(log);
 
@@ -44,7 +46,34 @@ class OperationAuditServiceTest {
         assertNotNull(saved.getId());
         assertEquals("default", saved.getTenantId());
         assertEquals("SUCCESS", saved.getResultStatus());
+        assertEquals("act-1", saved.getActionId());
+        assertEquals("process.task.approve", saved.getActionType());
         assertNotNull(saved.getOperatedAt());
+    }
+
+    @Test
+    void record_shouldPersistActionLinkedFailureWithRedactedSummary() {
+        SysOperationAuditLog log = new SysOperationAuditLog();
+        log.setRequestPath("/api/v1/actions");
+        log.setResultStatus("FAILURE");
+        log.setActionId("act-failed");
+        log.setActionType("integration.orchestration.start");
+        log.setActionSource("GUI");
+        log.setActionStatus("FAILED");
+        log.setActionTargetType("INTEGRATION_ROUTE");
+        log.setActionTargetId("orders.submit");
+        log.setActionCorrelationId("corr-1");
+        log.setActionIdempotencyKey("idem-1");
+        log.setActionSummary("{\"credential\":\"***REDACTED***\"}");
+
+        operationAuditService.record(log);
+
+        ArgumentCaptor<SysOperationAuditLog> captor = ArgumentCaptor.forClass(SysOperationAuditLog.class);
+        verify(operationAuditLogMapper).insert(captor.capture());
+        SysOperationAuditLog saved = captor.getValue();
+        assertEquals("act-failed", saved.getActionId());
+        assertEquals("FAILED", saved.getActionStatus());
+        assertEquals("{\"credential\":\"***REDACTED***\"}", saved.getActionSummary());
     }
 
     @Test
@@ -65,10 +94,54 @@ class OperationAuditServiceTest {
         when(operationAuditLogMapper.selectPage(any(), any())).thenReturn(page);
 
         PageResult<SysOperationAuditLog> result = operationAuditService.page(
-                1, 20, "admin", null, "/api/v1/users", "SUCCESS", null, null);
+                1, 20, "admin", null, "/api/v1/users", "SUCCESS",
+                "act-1", "process.task.approve", "GUI", "SUCCEEDED",
+                "PROCESS_TASK", "task-1", "corr-1", "idem-1", null, null);
 
         assertEquals(1, result.getTotal());
         assertEquals("A001", result.getRecords().get(0).getId());
+    }
+
+    @Test
+    void detail_shouldReturnHttpOnlyOperationDetail() {
+        SysOperationAuditLog log = new SysOperationAuditLog();
+        log.setId("A001");
+        log.setRequestPath("/api/v1/users");
+        log.setRequestSummary("{\"username\":\"admin\"}");
+        log.setResponseSummary("{\"success\":true}");
+        log.setTraceId("trace-1");
+        when(operationAuditLogMapper.selectById("A001")).thenReturn(log);
+
+        SysOperationAuditLog result = operationAuditService.detail("A001");
+
+        assertEquals("/api/v1/users", result.getRequestPath());
+        assertEquals("{\"username\":\"admin\"}", result.getRequestSummary());
+        assertEquals("{\"success\":true}", result.getResponseSummary());
+        assertEquals("trace-1", result.getTraceId());
+    }
+
+    @Test
+    void detail_shouldReturnActionLinkedRedactedDetail() {
+        SysOperationAuditLog log = new SysOperationAuditLog();
+        log.setId("A002");
+        log.setRequestPath("/api/v1/actions");
+        log.setActionId("act-2");
+        log.setActionType("process.task.approve");
+        log.setActionSource("GUI");
+        log.setActionStatus("SUCCEEDED");
+        log.setActionTargetType("PROCESS_TASK");
+        log.setActionTargetId("task-2");
+        log.setActionCorrelationId("corr-2");
+        log.setActionIdempotencyKey("idem-2");
+        log.setActionSummary("{\"comment\":\"***REDACTED***\"}");
+        when(operationAuditLogMapper.selectById("A002")).thenReturn(log);
+
+        SysOperationAuditLog result = operationAuditService.detail("A002");
+
+        assertEquals("act-2", result.getActionId());
+        assertEquals("process.task.approve", result.getActionType());
+        assertEquals("SUCCEEDED", result.getActionStatus());
+        assertEquals("{\"comment\":\"***REDACTED***\"}", result.getActionSummary());
     }
 
     @Test

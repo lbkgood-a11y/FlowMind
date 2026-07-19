@@ -27,6 +27,9 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
     private static final String HEADER_AUTH_VERSION = "X-Auth-Version";
     private static final String HEADER_ROLE_VERSION = "X-Role-Version";
     private static final String HEADER_DATA_POLICY_VERSION = "X-Data-Policy-Version";
+    private static final String HEADER_AUTHORIZATION_VERSION = "X-Authorization-Version";
+    private static final String HEADER_FIELD_POLICY_VERSION = "X-Field-Policy-Version";
+    private static final String HEADER_GUARD_TEMPLATE_VERSION = "X-Guard-Template-Version";
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
@@ -57,7 +60,10 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
                         permissions,
                         parseLong(request.getHeader(HEADER_AUTH_VERSION)),
                         parseLong(request.getHeader(HEADER_ROLE_VERSION)),
-                        parseLong(request.getHeader(HEADER_DATA_POLICY_VERSION))
+                        parseLong(request.getHeader(HEADER_DATA_POLICY_VERSION)),
+                        parseLong(request.getHeader(HEADER_AUTHORIZATION_VERSION)),
+                        parseLong(request.getHeader(HEADER_FIELD_POLICY_VERSION)),
+                        parseLong(request.getHeader(HEADER_GUARD_TEMPLATE_VERSION))
                 ));
             }
 

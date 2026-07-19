@@ -40,6 +40,11 @@ import {
   updateOrgUnit,
 } from '#/api';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import {
+  BusinessPageScaffold,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const Textarea = Input.TextArea;
 
@@ -564,7 +569,7 @@ onMounted(async () => {
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page org-page">
+    <BusinessPageScaffold class="org-page" pattern="master-detail">
       <section class="org-workbench">
         <aside class="data-panel org-tree-panel">
           <div class="org-tree-header">
@@ -615,11 +620,13 @@ onMounted(async () => {
 
         <section class="org-table-panel">
           <div class="data-panel org-upper-panel">
-            <div class="list-header">
-              <div class="list-title">
+            <CompactToolbar>
+              <template #title>
+                <div class="list-title">
                 <h2>组织列表</h2>
                 <Tag color="blue">{{ tableContextText }}</Tag>
               </div>
+              </template>
               <Space :size="8">
                 <Button
                   v-if="canCreate"
@@ -647,9 +654,9 @@ onMounted(async () => {
                   </Button>
                 </Tooltip>
               </Space>
-            </div>
+            </CompactToolbar>
 
-            <div class="table-frame">
+            <CompactTableFrame>
               <Table
                 row-key="id"
                 :columns="columns"
@@ -710,15 +717,17 @@ onMounted(async () => {
                   </template>
                 </template>
               </Table>
-            </div>
+            </CompactTableFrame>
           </div>
 
           <div class="data-panel org-lower-panel">
-            <div class="list-header">
-              <div class="list-title">
+            <CompactToolbar>
+              <template #title>
+                <div class="list-title">
                 <h2>组织用户</h2>
                 <Tag :color="selectedOrgNode ? 'blue' : 'default'">{{ userContextText }}</Tag>
               </div>
+              </template>
               <Space :size="8">
                 <Button
                   v-if="canUpdate && selectedOrgNode"
@@ -732,9 +741,9 @@ onMounted(async () => {
                   </Button>
                 </Tooltip>
               </Space>
-            </div>
+            </CompactToolbar>
 
-            <div class="table-frame">
+            <CompactTableFrame>
               <Table
                 row-key="assignmentId"
                 :columns="userColumns"
@@ -780,11 +789,11 @@ onMounted(async () => {
                   </template>
                 </template>
               </Table>
-            </div>
+            </CompactTableFrame>
           </div>
         </section>
       </section>
-    </div>
+    </BusinessPageScaffold>
 
     <Drawer
       v-model:open="formOpen"

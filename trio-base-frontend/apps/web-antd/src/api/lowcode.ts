@@ -66,10 +66,18 @@ export namespace LowcodeApi {
   }
 
   export interface ApplicationPage {
+    allowed?: boolean;
+    authorizationActionCode?: string;
     id: string;
     metadataJson: string;
     pageType: 'CREATE' | 'DETAIL' | 'LIST' | string;
     sortOrder?: number;
+  }
+
+  export interface GuardRequirement {
+    description?: string;
+    guardCode: string;
+    ownerService?: string;
   }
 
   export interface ApplicationAction {
@@ -83,7 +91,10 @@ export namespace LowcodeApi {
       | 'SUBMIT'
       | 'SUBMIT_AND_LAUNCH_WORKFLOW'
       | string;
+    allowed?: boolean;
+    authorizationActionCode?: string;
     formDefinitionId?: string;
+    guardRequirements?: GuardRequirement[];
     id: string;
     label: string;
     metadataJson?: string;
@@ -91,6 +102,15 @@ export namespace LowcodeApi {
     processKey?: string;
     sortOrder?: number;
     status?: string;
+  }
+
+  export interface RuntimeFieldAuthorization {
+    fieldKey: string;
+    maskStrategy?: string;
+    readMode?: 'HIDDEN' | 'MASKED' | 'VISIBLE' | string;
+    reasonCode?: string;
+    reasonMessage?: string;
+    writeMode?: 'DENIED' | 'EDITABLE' | 'READONLY' | 'READ_ONLY' | string;
   }
 
   export interface RuntimeApplicationSummary {
@@ -110,29 +130,13 @@ export namespace LowcodeApi {
   export interface RuntimeApplicationDescriptor
     extends RuntimeApplicationSummary {
     actions: ApplicationAction[];
+    fieldRules?: RuntimeFieldAuthorization[];
     pages: ApplicationPage[];
     primaryFormDefinitionId: string;
     schemaJson: string;
     uiSchemaJson?: string;
   }
 
-  export interface RuntimeWorkflow {
-    processInstanceId?: string;
-    processKey?: string;
-    processPackageId?: string;
-    status?: string;
-    version?: number;
-  }
-
-  export interface RuntimeActionResponse {
-    actionCode: string;
-    errorCode?: string;
-    formInstance?: FormInstance;
-    message?: string;
-    retryable?: boolean;
-    status: 'FORM_SAVED' | 'WORKFLOW_PENDING' | 'WORKFLOW_STARTED' | string;
-    workflow?: RuntimeWorkflow;
-  }
 }
 
 async function getFormDefinitionList(params: Recordable<any>) {
@@ -203,30 +207,6 @@ async function getFormInstanceList(formKey: string, params: Recordable<any>) {
   return { items: page.records, total: page.total };
 }
 
-async function submitFormInstance(
-  formKey: string,
-  data: Record<string, unknown>,
-) {
-  return requestClient.post<LowcodeApi.FormInstance>(`/forms/${formKey}/submit`, {
-    data,
-  });
-}
-
-async function bindFormInstanceProcess(
-  formKey: string,
-  instanceId: string,
-  data: {
-    processInstanceId: string;
-    processKey: string;
-    workflowStatus?: string;
-  },
-) {
-  return requestClient.put<LowcodeApi.FormInstance>(
-    `/forms/${formKey}/instances/${instanceId}/process`,
-    data,
-  );
-}
-
 async function getRuntimeApplicationList(params: Recordable<any>) {
   const page = await requestClient.get<{
     records: LowcodeApi.RuntimeApplicationSummary[];
@@ -267,41 +247,7 @@ async function getRuntimeApplicationInstance(
   );
 }
 
-async function runRuntimeApplicationAction(
-  appKey: string,
-  actionCode: string,
-  data: {
-    data?: Record<string, unknown>;
-    idempotencyKey?: string;
-    title?: string;
-  },
-  params?: { version?: number },
-) {
-  return requestClient.post<LowcodeApi.RuntimeActionResponse>(
-    `/lowcode-runtime/apps/${appKey}/actions/${actionCode}`,
-    data,
-    { params },
-  );
-}
-
-async function retryRuntimeApplicationWorkflow(
-  appKey: string,
-  instanceId: string,
-  data?: {
-    actionCode?: string;
-    idempotencyKey?: string;
-  },
-  params?: { version?: number },
-) {
-  return requestClient.post<LowcodeApi.RuntimeActionResponse>(
-    `/lowcode-runtime/apps/${appKey}/instances/${instanceId}/retry-workflow`,
-    data,
-    { params },
-  );
-}
-
 export {
-  bindFormInstanceProcess,
   createFormDefinition,
   deriveFormDefinitionVersion,
   getFormDataResources,
@@ -315,8 +261,5 @@ export {
   getRuntimeApplicationList,
   offlineFormDefinition,
   publishFormDefinition,
-  retryRuntimeApplicationWorkflow,
-  runRuntimeApplicationAction,
-  submitFormInstance,
   updateFormDefinition,
 };

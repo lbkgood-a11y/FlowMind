@@ -1,5 +1,13 @@
 import { requestClient } from '#/api/request';
 
+import {
+  ACTION_TARGET_TYPES,
+  ACTION_TYPES,
+  type ActionApi,
+  submitAction,
+} from './action-client';
+import { requireActionData } from './action-status';
+
 export namespace OpenApiOperationsApi {
   export interface PageResult<T> {
     page: number;
@@ -69,6 +77,34 @@ export namespace OpenApiOperationsApi {
     ready: boolean;
     stages: ReadinessStage[];
   }
+
+  export interface RuntimeAdmission {
+    applicationClientId?: string;
+    environment: 'DEV' | 'PROD' | 'TEST' | string;
+    maxActiveWorkflows?: number;
+    maxConcurrency?: number;
+    policyVersion?: number;
+    subscriptionId?: string;
+    tenantId?: string;
+  }
+
+  export interface OrchestrationExecution {
+    completedAt?: string;
+    executionId: string;
+    routeKey: string;
+    startedAt?: string;
+    state: string;
+    workflowId?: string;
+  }
+
+  export interface StartOrchestrationActionRequest {
+    admission: RuntimeAdmission;
+    environment: 'DEV' | 'PROD' | 'TEST' | string;
+    idempotencyKey: string;
+    operation?: string;
+    payload?: Record<string, unknown>;
+    routeKey: string;
+  }
 }
 
 async function getLifecycleAssets(assetType: string, params?: Record<string, any>) {
@@ -94,6 +130,37 @@ async function invokeOpenApiLifecycleAction(
   data?: Record<string, any>,
 ) {
   return method === 'PUT' ? requestClient.put(url, data) : requestClient.post(url, data);
+}
+
+async function startOpenApiOrchestrationAction(
+  data: OpenApiOperationsApi.StartOrchestrationActionRequest,
+) {
+  const result = await submitAction<{
+    orchestration: OpenApiOperationsApi.OrchestrationExecution;
+  }>({
+    actionType: ACTION_TYPES.integrationOrchestrationStart,
+    executionMode: 'WORKFLOW',
+    idempotencyKey: data.idempotencyKey,
+    payload: {
+      admission: data.admission,
+      environment: data.environment,
+      idempotencyKey: data.idempotencyKey,
+      operation: data.operation ?? 'POST',
+      payload: data.payload ?? {},
+      routeKey: data.routeKey,
+    },
+    source: 'GUI',
+    target: {
+      id: data.routeKey,
+      ownerService: 'service-openapi',
+      tenantId: data.admission.tenantId,
+      type: ACTION_TARGET_TYPES.integrationRoute,
+    },
+  } satisfies ActionApi.GlobalActionRequest);
+  return requireActionData<OpenApiOperationsApi.OrchestrationExecution>(
+    result,
+    'orchestration',
+  );
 }
 
 async function getOpenApiExecutions(params?: Record<string, any>) {
@@ -128,4 +195,5 @@ export {
   getOpenApiExecutions,
   invokeOpenApiLifecycleAction,
   resolveCallbackQuarantine,
+  startOpenApiOrchestrationAction,
 };

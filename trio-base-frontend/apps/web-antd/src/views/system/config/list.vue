@@ -25,6 +25,12 @@ import {
 
 import { getSystemConfigs, updateSystemConfig } from '#/api';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const Textarea = Input.TextArea;
 
@@ -174,9 +180,9 @@ onMounted(loadConfigs);
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page config-page">
-      <section class="toolbar">
-        <Space wrap>
+    <BusinessPageScaffold class="config-page" pattern="single-table">
+      <template #query>
+        <CompactQueryBar :columns="3">
           <Select
             v-model:value="query.configGroup"
             allow-clear
@@ -195,6 +201,7 @@ onMounted(loadConfigs);
             ]"
             placeholder="状态"
           />
+          <template #actions>
           <Button v-if="canQuery" type="primary" @click="loadConfigs">查询</Button>
           <Button v-if="canQuery" @click="resetQuery">重置</Button>
         <Tooltip v-if="canQuery" title="刷新">
@@ -202,10 +209,15 @@ onMounted(loadConfigs);
             <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
           </Button>
         </Tooltip>
-        </Space>
-      </section>
+          </template>
+        </CompactQueryBar>
+      </template>
 
-      <section class="table-shell">
+      <template #toolbar>
+        <CompactToolbar title="系统参数" subtitle="维护平台运行参数和敏感配置标记" />
+      </template>
+
+      <CompactTableFrame>
         <Table
           row-key="id"
           :columns="columns"
@@ -234,8 +246,8 @@ onMounted(loadConfigs);
             </template>
           </template>
         </Table>
-      </section>
-    </div>
+      </CompactTableFrame>
+    </BusinessPageScaffold>
 
     <Drawer
       v-model:open="formOpen"

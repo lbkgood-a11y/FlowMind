@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { SystemMenuApi, SystemRoleApi } from '#/api';
+import type {
+  SystemAuthorizationApi,
+  SystemDataPolicyApi,
+  SystemMenuApi,
+  SystemOrgApi,
+  SystemRoleApi,
+} from '#/api';
 import type { TableProps } from 'ant-design-vue';
 import type { Dayjs } from 'dayjs';
 
@@ -31,24 +37,40 @@ import {
   Space,
   Switch,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Tree,
 } from 'ant-design-vue';
 
 import {
+  createDataPolicy,
   createRole,
+  deleteAuthorizationFieldPolicy,
+  deleteAuthorizationGrant,
+  deleteDataPolicy,
   deleteRole,
+  getAuthorizationAdminOptions,
+  getAuthorizationResourceTree,
   getMenuList,
+  getOrgDimensions,
+  getOrgTree,
+  getRoleAuthorizationProfile,
   getRoleDetail,
   getRolePage,
+  previewAuthorizationDecision,
   roleCodeExists,
+  saveAuthorizationFieldPolicy,
+  saveAuthorizationGrant,
+  updateAuthorizationGuardTemplateStatus,
   updateRole,
   updateRoleStatus,
 } from '#/api';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import { BusinessPageScaffold } from '#/shared';
 
 const RangePicker = DatePicker.RangePicker;
+const TabPane = Tabs.TabPane;
 const Textarea = Input.TextArea;
 
 const ROLE_PERMISSIONS = {
@@ -60,6 +82,22 @@ const ROLE_PERMISSIONS = {
 
 const MENU_PERMISSIONS = {
   query: '/api/v1/menus:GET',
+} as const;
+
+const AUTHZ_PERMISSIONS = {
+  delete: '/api/v1/authz/**:DELETE',
+  post: '/api/v1/authz/**:POST',
+  put: '/api/v1/authz/**:PUT',
+  query: '/api/v1/authz/**:GET',
+} as const;
+
+const DATA_POLICY_PERMISSIONS = {
+  delete: '/api/v1/data-policies/*:DELETE',
+  post: '/api/v1/data-policies:POST',
+} as const;
+
+const ORG_PERMISSIONS = {
+  query: '/api/v1/org/units:GET',
 } as const;
 
 type RoleFormModel = {
@@ -123,6 +161,29 @@ type RoleViewTreeNode = {
   key: RoleViewKey | string;
   selectable?: boolean;
   title: string;
+};
+
+type AuthorizationTabKey =
+  | 'data'
+  | 'field'
+  | 'function'
+  | 'guard'
+  | 'menu'
+  | 'preview';
+
+type AuthorizationTreeNode = {
+  children?: AuthorizationTreeNode[];
+  disableCheckbox?: boolean;
+  disabled?: boolean;
+  key: string;
+  selectable?: boolean;
+  title: string;
+};
+
+type ResourceActionItem = {
+  action: SystemAuthorizationApi.ActionNode;
+  key: string;
+  resource: SystemAuthorizationApi.ResourceNode;
 };
 
 const defaultColumnSettings: RoleColumnSetting[] = [
@@ -195,6 +256,8 @@ const roles = ref<SystemRoleApi.SystemRole[]>([]);
 const menus = ref<SystemMenuApi.SystemMenu[]>([]);
 const loading = ref(false);
 const loadingMenus = ref(false);
+const authorizationLoading = ref(false);
+const previewLoading = ref(false);
 const saving = ref(false);
 const formOpen = ref(false);
 const detailOpen = ref(false);
@@ -207,6 +270,15 @@ const tableKey = ref(0);
 const editingRole = ref<SystemRoleApi.RoleDetail>();
 const detailRole = ref<SystemRoleApi.RoleDetail>();
 const selectedRoleViewKey = ref<RoleViewKey>('all');
+const activeAuthorizationTab = ref<AuthorizationTabKey>('menu');
+const authorizationTree = ref<SystemAuthorizationApi.ResourceTree>();
+const authorizationOptions = ref<SystemAuthorizationApi.AdminOptions>();
+const authorizationProfile = ref<SystemAuthorizationApi.RoleAuthorizationProfile>();
+const orgDimensions = ref<SystemOrgApi.OrgDimension[]>([]);
+const orgOptionsMap = ref<Record<string, { label: string; value: string }[]>>({});
+const functionGrantCheckedKeys = ref<MenuCheckedKeys>([]);
+const originalFunctionGrantIds = ref<Record<string, string>>({});
+const previewResult = ref<SystemAuthorizationApi.DecisionPreview>();
 const { hasAccessByCodes } = useAccess();
 
 const canQuery = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.query]));
@@ -214,8 +286,25 @@ const canCreate = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.create]));
 const canUpdate = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.update]));
 const canDelete = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.delete]));
 const canQueryMenus = computed(() => hasAccessByCodes([MENU_PERMISSIONS.query]));
+const canQueryAuthz = computed(() => hasAccessByCodes([AUTHZ_PERMISSIONS.query]));
+const canCreateAuthz = computed(() => hasAccessByCodes([AUTHZ_PERMISSIONS.post]));
+const canDeleteAuthz = computed(() => hasAccessByCodes([AUTHZ_PERMISSIONS.delete]));
+const canUpdateAuthz = computed(() => hasAccessByCodes([AUTHZ_PERMISSIONS.put]));
+const canCreateDataPolicy = computed(() =>
+  hasAccessByCodes([DATA_POLICY_PERMISSIONS.post]),
+);
+const canDeleteDataPolicy = computed(() =>
+  hasAccessByCodes([DATA_POLICY_PERMISSIONS.delete]),
+);
+const canQueryOrg = computed(() => hasAccessByCodes([ORG_PERMISSIONS.query]));
+const canManageAuthz = computed(
+  () => canCreateAuthz.value || canDeleteAuthz.value || canUpdateAuthz.value,
+);
 const canSaveRole = computed(() =>
   editingRole.value ? canUpdate.value : canCreate.value,
+);
+const canOpenAuthorization = computed(
+  () => canUpdate.value && (canQueryMenus.value || canQueryAuthz.value),
 );
 
 const queryForm = reactive<RoleQueryModel>({
@@ -248,6 +337,26 @@ const columnDraft = ref<RoleColumnSetting[]>(
 );
 
 const menuCheckedKeys = ref<MenuCheckedKeys>([]);
+const dataPolicyForm = reactive({
+  actionCode: '',
+  dimensionCode: 'ADMIN',
+  orgUnitIds: [] as string[],
+  resourceCode: '',
+  scopeType: '',
+});
+const fieldPolicyForm = reactive({
+  fieldKey: '',
+  maskStrategy: '',
+  readMode: '',
+  resourceCode: '',
+  writeMode: '',
+});
+const previewForm = reactive({
+  actionCode: '',
+  businessObjectId: '',
+  resourceCode: '',
+  userId: '',
+});
 
 const menuIds = computed(() => new Set(menus.value.map((item) => item.id)));
 const menuTree = computed(() => buildMenuTree(menus.value));
@@ -255,6 +364,112 @@ const selectedRoleView = computed(
   () => roleViewPresets[selectedRoleViewKey.value],
 );
 const selectedRoleViewKeys = computed(() => [selectedRoleViewKey.value]);
+const resourceGroups = computed(() => authorizationTree.value?.groups ?? []);
+const resourceList = computed(() =>
+  resourceGroups.value.flatMap((group) => group.resources ?? []),
+);
+const resourceOptions = computed(() =>
+  resourceList.value.map((resource) => ({
+    label: `${resource.displayName || resource.resourceCode} · ${resource.resourceType}`,
+    value: resource.resourceCode,
+  })),
+);
+const fieldResourceOptions = computed(() =>
+  resourceList.value
+    .filter((resource) => (resource.fields ?? []).length > 0)
+    .map((resource) => ({
+      label: `${resource.displayName || resource.resourceCode} · ${resource.resourceType}`,
+      value: resource.resourceCode,
+    })),
+);
+const functionActionItems = computed<ResourceActionItem[]>(() =>
+  resourceList.value.flatMap((resource) =>
+    (resource.actions ?? [])
+      .filter((action) => action.status !== 0)
+      .map((action) => ({
+        action,
+        key: functionActionKey(resource.resourceCode, action.actionCode),
+        resource,
+      })),
+  ),
+);
+const functionActionByKey = computed(
+  () => new Map(functionActionItems.value.map((item) => [item.key, item])),
+);
+const functionActionKeySet = computed(
+  () => new Set(functionActionItems.value.map((item) => item.key)),
+);
+const authorizationTreeData = computed<AuthorizationTreeNode[]>(() =>
+  resourceGroups.value.map((group) => ({
+    children: (group.resources ?? []).map((resource) => ({
+      children: (resource.actions ?? []).map((action) => ({
+        disabled: action.status === 0,
+        key: functionActionKey(resource.resourceCode, action.actionCode),
+        title: actionTitle(action),
+      })),
+      disableCheckbox: true,
+      key: `resource:${resource.resourceCode}`,
+      selectable: false,
+      title: resourceTitle(resource),
+    })),
+    disableCheckbox: true,
+    key: `group:${group.resourceType}`,
+    selectable: false,
+    title: `${group.label} (${group.resources?.length ?? 0})`,
+  })),
+);
+const selectedFunctionGrantCount = computed(
+  () => selectedFunctionGrantKeys().length,
+);
+const dataScopeOptions = computed(() =>
+  (authorizationOptions.value?.dataScopes ?? []).map(toSelectOption),
+);
+const dimensionOptions = computed(() =>
+  orgDimensions.value.map((item) => ({
+    label: item.dimensionName,
+    value: item.dimensionCode,
+  })),
+);
+const assignedOrgOptions = computed(
+  () => orgOptionsMap.value[dataPolicyForm.dimensionCode] ?? [],
+);
+const fieldReadModeOptions = computed(() =>
+  (authorizationOptions.value?.fieldReadModes ?? []).map(toSelectOption),
+);
+const fieldWriteModeOptions = computed(() =>
+  (authorizationOptions.value?.fieldWriteModes ?? []).map(toSelectOption),
+);
+const maskStrategyOptions = computed(() =>
+  (authorizationOptions.value?.maskStrategies ?? []).map(toSelectOption),
+);
+const dataPolicyActionOptions = computed(() =>
+  actionOptionsForResource(dataPolicyForm.resourceCode),
+);
+const fieldPolicyFieldOptions = computed(() =>
+  fieldOptionsForResource(fieldPolicyForm.resourceCode),
+);
+const previewActionOptions = computed(() =>
+  actionOptionsForResource(previewForm.resourceCode),
+);
+const dataPolicyRows = computed(
+  () => authorizationProfile.value?.dataPolicies ?? [],
+);
+const fieldPolicyRows = computed(
+  () => authorizationProfile.value?.fieldPolicies ?? [],
+);
+const guardTemplateRows = computed(
+  () => authorizationOptions.value?.guardTemplates ?? [],
+);
+const resourceGuardRows = computed(() =>
+  resourceList.value
+    .filter((resource) => (resource.guards ?? []).length > 0)
+    .flatMap((resource) =>
+      resource.guards.map((guard) => ({
+        guard,
+        resource,
+      })),
+    ),
+);
 
 const allDraftChecked = computed({
   get: () => columnDraft.value.every((item) => item.visible),
@@ -331,6 +546,199 @@ function menuTypeLabel(type?: SystemMenuApi.MenuType) {
   return labels[type ?? 'menu'];
 }
 
+function functionActionKey(resourceCode: string, actionCode: string) {
+  return `authz:${resourceCode}:${actionCode}`;
+}
+
+function toSelectOption(option: SystemAuthorizationApi.Option) {
+  return {
+    label: option.label || option.code,
+    value: option.code,
+  };
+}
+
+function actionTitle(action: SystemAuthorizationApi.ActionNode) {
+  const label = optionLabel(
+    authorizationOptions.value?.functionActions,
+    action.actionCode,
+    action.description || action.actionCode,
+  );
+  return action.guardCodes?.length
+    ? `${label} · ${action.guardCodes.join('/')}`
+    : label;
+}
+
+function resourceTitle(resource: SystemAuthorizationApi.ResourceNode) {
+  return `${resource.displayName || resource.resourceCode} · ${resource.resourceCode}`;
+}
+
+function optionLabel(
+  options: SystemAuthorizationApi.Option[] | undefined,
+  code: string | undefined,
+  fallback?: string,
+) {
+  if (!code) return fallback || '-';
+  return options?.find((item) => item.code === code)?.label || fallback || code;
+}
+
+function dataScopeLabel(code?: string) {
+  return optionLabel(authorizationOptions.value?.dataScopes, code, code);
+}
+
+function fieldReadModeLabel(code?: string) {
+  return optionLabel(authorizationOptions.value?.fieldReadModes, code, code);
+}
+
+function fieldWriteModeLabel(code?: string) {
+  return optionLabel(authorizationOptions.value?.fieldWriteModes, code, code);
+}
+
+function maskStrategyLabel(code?: string) {
+  return optionLabel(authorizationOptions.value?.maskStrategies, code, code || '-');
+}
+
+function grantEffectColor(effect?: string) {
+  return effect === 'DENY' ? 'error' : 'success';
+}
+
+function findResource(resourceCode: string) {
+  return resourceList.value.find((resource) => resource.resourceCode === resourceCode);
+}
+
+function actionOptionsForResource(resourceCode: string) {
+  const resource = findResource(resourceCode);
+  return (resource?.actions ?? [])
+    .filter((action) => action.status !== 0)
+    .map((action) => ({
+      label: actionTitle(action),
+      value: action.actionCode,
+    }));
+}
+
+function fieldOptionsForResource(resourceCode: string) {
+  const resource = findResource(resourceCode);
+  return (resource?.fields ?? [])
+    .filter((field) => field.status !== 0)
+    .map((field) => ({
+      label: field.fieldLabel || field.fieldKey,
+      value: field.fieldKey,
+    }));
+}
+
+function selectedFunctionGrantKeys() {
+  const checkedKeys = Array.isArray(functionGrantCheckedKeys.value)
+    ? functionGrantCheckedKeys.value
+    : functionGrantCheckedKeys.value.checked;
+  return checkedKeys
+    .map((key) => String(key))
+    .filter((key) => functionActionKeySet.value.has(key));
+}
+
+function applyAuthorizationProfile(
+  profile: SystemAuthorizationApi.RoleAuthorizationProfile,
+) {
+  authorizationProfile.value = profile;
+  const grantIds: Record<string, string> = {};
+  for (const grant of profile.functionGrants ?? []) {
+    if (grant.effect !== 'ALLOW' || grant.status === 0) {
+      continue;
+    }
+    const key = functionActionKey(grant.resourceCode, grant.actionCode);
+    if (functionActionKeySet.value.has(key) && grant.id) {
+      grantIds[key] = grant.id;
+    }
+  }
+  originalFunctionGrantIds.value = grantIds;
+  functionGrantCheckedKeys.value = Object.keys(grantIds);
+}
+
+function resetAuthorizationState() {
+  authorizationTree.value = undefined;
+  authorizationOptions.value = undefined;
+  authorizationProfile.value = undefined;
+  functionGrantCheckedKeys.value = [];
+  originalFunctionGrantIds.value = {};
+  previewResult.value = undefined;
+  resetAuthorizationForms();
+}
+
+function resetAuthorizationForms() {
+  dataPolicyForm.resourceCode = '';
+  dataPolicyForm.actionCode = '';
+  dataPolicyForm.dimensionCode = 'ADMIN';
+  dataPolicyForm.orgUnitIds = [];
+  dataPolicyForm.scopeType = '';
+  fieldPolicyForm.resourceCode = '';
+  fieldPolicyForm.fieldKey = '';
+  fieldPolicyForm.readMode = '';
+  fieldPolicyForm.writeMode = '';
+  fieldPolicyForm.maskStrategy = '';
+  previewForm.resourceCode = '';
+  previewForm.actionCode = '';
+  previewForm.businessObjectId = '';
+  previewForm.userId = '';
+}
+
+function resetAuthorizationQuickForms() {
+  const firstResource = resourceList.value[0];
+  dataPolicyForm.resourceCode = firstResource?.resourceCode ?? '';
+  dataPolicyForm.actionCode = firstResource?.actions?.[0]?.actionCode ?? '';
+  dataPolicyForm.dimensionCode = orgDimensions.value[0]?.dimensionCode ?? 'ADMIN';
+  dataPolicyForm.orgUnitIds = [];
+  dataPolicyForm.scopeType =
+    authorizationOptions.value?.dataScopes?.[0]?.code ?? 'SELF';
+
+  const firstFieldResource = resourceList.value.find(
+    (resource) => (resource.fields ?? []).length > 0,
+  );
+  fieldPolicyForm.resourceCode = firstFieldResource?.resourceCode ?? '';
+  fieldPolicyForm.fieldKey = firstFieldResource?.fields?.[0]?.fieldKey ?? '';
+  fieldPolicyForm.readMode =
+    authorizationOptions.value?.fieldReadModes?.[0]?.code ?? 'VISIBLE';
+  fieldPolicyForm.writeMode =
+    authorizationOptions.value?.fieldWriteModes?.[0]?.code ?? 'EDITABLE';
+  fieldPolicyForm.maskStrategy =
+    authorizationOptions.value?.maskStrategies?.[0]?.code ?? '';
+
+  previewForm.resourceCode = firstResource?.resourceCode ?? '';
+  previewForm.actionCode = firstResource?.actions?.[0]?.actionCode ?? '';
+  previewForm.businessObjectId = '';
+  previewForm.userId = '';
+}
+
+function changeDataPolicyResource(resourceCode: string) {
+  dataPolicyForm.resourceCode = resourceCode;
+  dataPolicyForm.actionCode = actionOptionsForResource(resourceCode)[0]?.value ?? '';
+}
+
+async function changeDataPolicyDimension(dimensionCode: string) {
+  dataPolicyForm.dimensionCode = dimensionCode;
+  dataPolicyForm.orgUnitIds = [];
+  if (dataPolicyForm.scopeType === 'ASSIGNED_ORGS') {
+    await ensureOrgOptions(dimensionCode);
+  }
+}
+
+async function changeDataPolicyScope(scopeType: string) {
+  dataPolicyForm.scopeType = scopeType;
+  if (scopeType !== 'ASSIGNED_ORGS') {
+    dataPolicyForm.orgUnitIds = [];
+    return;
+  }
+  await ensureOrgOptions(dataPolicyForm.dimensionCode);
+}
+
+function changeFieldPolicyResource(resourceCode: string) {
+  fieldPolicyForm.resourceCode = resourceCode;
+  fieldPolicyForm.fieldKey = fieldOptionsForResource(resourceCode)[0]?.value ?? '';
+}
+
+function changePreviewResource(resourceCode: string) {
+  previewForm.resourceCode = resourceCode;
+  previewForm.actionCode = actionOptionsForResource(resourceCode)[0]?.value ?? '';
+  previewResult.value = undefined;
+}
+
 function buildMenuTree(list: SystemMenuApi.SystemMenu[]) {
   const nodeMap = new Map<
     string,
@@ -393,6 +801,76 @@ async function loadMenusForAuthorization(force = false) {
   }
 }
 
+async function loadAuthorizationDimensions() {
+  if (!canQueryOrg.value) {
+    orgDimensions.value = [];
+    return;
+  }
+  if (orgDimensions.value.length > 0) {
+    return;
+  }
+  orgDimensions.value = await getOrgDimensions();
+}
+
+async function loadAuthorizationWorkbench(roleId: string) {
+  if (!canQueryAuthz.value) {
+    return;
+  }
+  authorizationLoading.value = true;
+  try {
+    const [tree, options, profile] = await Promise.all([
+      getAuthorizationResourceTree(),
+      getAuthorizationAdminOptions(),
+      getRoleAuthorizationProfile(roleId),
+      loadAuthorizationDimensions(),
+    ]);
+    authorizationTree.value = tree;
+    authorizationOptions.value = options;
+    applyAuthorizationProfile(profile);
+    resetAuthorizationQuickForms();
+  } catch {
+    message.warning('角色授权配置加载失败');
+  } finally {
+    authorizationLoading.value = false;
+  }
+}
+
+function flattenOrgTree(list: SystemOrgApi.OrgTreeNode[]) {
+  const result: SystemOrgApi.OrgTreeNode[] = [];
+  const walk = (nodes: SystemOrgApi.OrgTreeNode[]) => {
+    nodes.forEach((node) => {
+      result.push(node);
+      if (node.children?.length) {
+        walk(node.children);
+      }
+    });
+  };
+  walk(list);
+  return result;
+}
+
+async function ensureOrgOptions(dimensionCode: string) {
+  if (!canQueryOrg.value || !dimensionCode || orgOptionsMap.value[dimensionCode]) {
+    return;
+  }
+  const tree = await getOrgTree(dimensionCode);
+  orgOptionsMap.value = {
+    ...orgOptionsMap.value,
+    [dimensionCode]: flattenOrgTree(tree).map((item) => ({
+      label: `${item.unitName} (${item.unitCode})`,
+      value: item.id,
+    })),
+  };
+}
+
+async function refreshAuthorizationProfile(roleId = editingRole.value?.id) {
+  if (!roleId || !canQueryAuthz.value) {
+    return;
+  }
+  const profile = await getRoleAuthorizationProfile(roleId);
+  applyAuthorizationProfile(profile);
+}
+
 async function loadRoles(page = pagination.current) {
   if (!canQuery.value) {
     roles.value = [];
@@ -451,12 +929,14 @@ function selectRoleView(keys: Array<number | string>) {
 function resetForm() {
   editingRole.value = undefined;
   permissionOnly.value = false;
+  activeAuthorizationTab.value = canQueryMenus.value ? 'menu' : 'function';
   formModel.description = '';
   formModel.menuIds = [];
   formModel.roleCode = '';
   formModel.roleName = '';
   formModel.status = 1;
   menuCheckedKeys.value = [];
+  resetAuthorizationState();
 }
 
 async function openCreate() {
@@ -468,7 +948,10 @@ async function openCreate() {
 async function openEdit(record: SystemRoleApi.SystemRole, onlyPermissions = false) {
   resetForm();
   permissionOnly.value = onlyPermissions;
-  await loadMenusForAuthorization(true);
+  await Promise.all([
+    loadMenusForAuthorization(true),
+    loadAuthorizationWorkbench(record.id),
+  ]);
   const detail = await getRoleDetail(record.id);
   editingRole.value = detail;
   formModel.description = detail.description ?? '';
@@ -520,6 +1003,191 @@ function selectedMenuIds() {
     .filter((key) => menuIds.value.has(key));
 }
 
+async function syncFunctionGrants(roleId: string) {
+  if (!canManageAuthz.value || !canQueryAuthz.value) {
+    return;
+  }
+  const desiredKeys = new Set(selectedFunctionGrantKeys());
+  const existingIds = originalFunctionGrantIds.value;
+  const additions = [...desiredKeys].filter((key) => !existingIds[key]);
+  const removals = Object.entries(existingIds).filter(([key]) => !desiredKeys.has(key));
+
+  if (additions.length > 0 && !canCreateAuthz.value) {
+    message.warning('当前账号没有新增功能权限的权限');
+    return;
+  }
+  if (removals.length > 0 && !canDeleteAuthz.value) {
+    message.warning('当前账号没有删除功能权限的权限');
+    return;
+  }
+
+  await Promise.all([
+    ...additions.map((key) => {
+      const item = functionActionByKey.value.get(key);
+      if (!item) return undefined;
+      return saveAuthorizationGrant({
+        actionCode: item.action.actionCode,
+        description: `${item.resource.displayName || item.resource.resourceCode} / ${actionTitle(item.action)}`,
+        effect: 'ALLOW',
+        resourceCode: item.resource.resourceCode,
+        status: 1,
+        subjectId: roleId,
+        subjectType: 'ROLE',
+      });
+    }),
+    ...removals.map(([, id]) => deleteAuthorizationGrant(id)),
+  ].filter(Boolean));
+
+  if (additions.length > 0 || removals.length > 0) {
+    await refreshAuthorizationProfile(roleId);
+  }
+}
+
+async function addDataPolicy() {
+  if (!editingRole.value) return;
+  if (!canCreateDataPolicy.value) {
+    message.warning('当前账号没有新增授权配置的权限');
+    return;
+  }
+  if (
+    !dataPolicyForm.resourceCode ||
+    !dataPolicyForm.actionCode ||
+    !dataPolicyForm.scopeType ||
+    !dataPolicyForm.dimensionCode
+  ) {
+    message.warning('请选择数据范围配置');
+    return;
+  }
+  if (
+    dataPolicyForm.scopeType === 'ASSIGNED_ORGS' &&
+    dataPolicyForm.orgUnitIds.length === 0
+  ) {
+    message.warning('指定组织范围必须选择组织');
+    return;
+  }
+  const payload: SystemDataPolicyApi.SaveDataPolicyParams = {
+    actionCode: dataPolicyForm.actionCode,
+    combineMode: 'OR',
+    description: `数据范围：${dataScopeLabel(dataPolicyForm.scopeType)}`,
+    dimensions: [
+      {
+        dimensionCode: dataPolicyForm.dimensionCode,
+        orgUnitIds:
+          dataPolicyForm.scopeType === 'ASSIGNED_ORGS'
+            ? dataPolicyForm.orgUnitIds
+            : [],
+        scopeType: dataPolicyForm.scopeType,
+        sortOrder: 0,
+      },
+    ],
+    effect: 'ALLOW',
+    resourceCode: dataPolicyForm.resourceCode,
+    roleId: editingRole.value.id,
+    status: 1,
+  };
+  await createDataPolicy(payload);
+  message.success('数据范围已添加');
+  await refreshAuthorizationProfile();
+}
+
+async function removeDataPolicy(policy: SystemAuthorizationApi.DataPolicy) {
+  if (!policy.id) return;
+  if (!canDeleteDataPolicy.value) {
+    message.warning('当前账号没有删除授权配置的权限');
+    return;
+  }
+  await deleteDataPolicy(policy.id);
+  message.success('数据范围已删除');
+  await refreshAuthorizationProfile();
+}
+
+async function addFieldPolicy() {
+  if (!editingRole.value) return;
+  if (!canCreateAuthz.value) {
+    message.warning('当前账号没有新增授权配置的权限');
+    return;
+  }
+  if (
+    !fieldPolicyForm.resourceCode ||
+    !fieldPolicyForm.fieldKey ||
+    !fieldPolicyForm.readMode ||
+    !fieldPolicyForm.writeMode
+  ) {
+    message.warning('请选择字段规则配置');
+    return;
+  }
+  await saveAuthorizationFieldPolicy({
+    description: `字段规则：${fieldReadModeLabel(fieldPolicyForm.readMode)} / ${fieldWriteModeLabel(fieldPolicyForm.writeMode)}`,
+    effect: 'ALLOW',
+    fieldKey: fieldPolicyForm.fieldKey,
+    maskStrategy: fieldPolicyForm.maskStrategy || undefined,
+    readMode: fieldPolicyForm.readMode,
+    resourceCode: fieldPolicyForm.resourceCode,
+    status: 1,
+    subjectId: editingRole.value.id,
+    subjectType: 'ROLE',
+    writeMode: fieldPolicyForm.writeMode,
+  });
+  message.success('字段规则已添加');
+  await refreshAuthorizationProfile();
+}
+
+async function removeFieldPolicy(policy: SystemAuthorizationApi.FieldPolicy) {
+  if (!policy.id) return;
+  if (!canDeleteAuthz.value) {
+    message.warning('当前账号没有删除授权配置的权限');
+    return;
+  }
+  await deleteAuthorizationFieldPolicy(policy.id);
+  message.success('字段规则已删除');
+  await refreshAuthorizationProfile();
+}
+
+async function toggleGuardTemplate(
+  template: SystemAuthorizationApi.GuardTemplate,
+  checked: boolean,
+) {
+  if (!template.id) return;
+  if (!canUpdateAuthz.value) {
+    message.warning('当前账号没有更新业务规则的权限');
+    return;
+  }
+  await updateAuthorizationGuardTemplateStatus(template.id, checked ? 1 : 0);
+  message.success('业务规则状态已更新');
+  if (authorizationOptions.value) {
+    authorizationOptions.value.guardTemplates =
+      authorizationOptions.value.guardTemplates.map((item) =>
+        item.id === template.id ? { ...item, status: checked ? 1 : 0 } : item,
+      );
+  }
+}
+
+async function runDecisionPreview() {
+  if (!canCreateAuthz.value) {
+    message.warning('当前账号没有决策预览权限');
+    return;
+  }
+  if (!previewForm.userId.trim() || !previewForm.resourceCode || !previewForm.actionCode) {
+    message.warning('请输入预览用户并选择资源动作');
+    return;
+  }
+  const resource = findResource(previewForm.resourceCode);
+  previewLoading.value = true;
+  previewResult.value = undefined;
+  try {
+    previewResult.value = await previewAuthorizationDecision({
+      actionCode: previewForm.actionCode,
+      businessObjectId: previewForm.businessObjectId.trim() || undefined,
+      fieldKeys: (resource?.fields ?? []).map((field) => field.fieldKey),
+      ownerService: resource?.ownerService,
+      resourceCode: previewForm.resourceCode,
+      userId: previewForm.userId.trim(),
+    });
+  } finally {
+    previewLoading.value = false;
+  }
+}
+
 function validateForm() {
   if (!editingRole.value && !formModel.roleCode.trim()) {
     message.warning('请输入角色编码');
@@ -556,15 +1224,21 @@ async function submitForm() {
       payload.roleCode = formModel.roleCode.trim();
     }
 
+    let savedRoleId = editingRole.value?.id;
     if (editingRole.value) {
       await updateRole(editingRole.value.id, payload);
+      await syncFunctionGrants(editingRole.value.id);
       message.success(permissionOnly.value ? '角色授权已更新' : '角色已更新');
     } else {
-      await createRole(payload);
+      const created = await createRole(payload);
+      savedRoleId = created.id;
       message.success('角色已创建');
     }
 
     formOpen.value = false;
+    if (savedRoleId && savedRoleId === editingRole.value?.id) {
+      await refreshAuthorizationProfile(savedRoleId);
+    }
     await loadRoles();
   } finally {
     saving.value = false;
@@ -618,8 +1292,10 @@ onMounted(() => {
 
 <template>
   <Page auto-content-height>
-    <div
-      class="erp-compact-page role-page"
+    <BusinessPageScaffold
+      class="role-page"
+      pattern="master-detail"
+      :fullscreen="blockFullscreen"
       :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }"
     >
       <section v-show="!queryHidden" class="query-panel">
@@ -854,7 +1530,7 @@ onMounted(() => {
                       编辑
                     </Button>
                     <Button
-                      v-if="canUpdate && canQueryMenus"
+                      v-if="canOpenAuthorization"
                       size="small"
                       type="link"
                       @click="openEdit(asRole(record), true)"
@@ -892,7 +1568,7 @@ onMounted(() => {
           </div>
         </section>
       </section>
-    </div>
+    </BusinessPageScaffold>
 
     <Drawer
       v-model:open="formOpen"
@@ -939,19 +1615,372 @@ onMounted(() => {
           </FormItem>
         </div>
 
-        <FormItem v-if="canQueryMenus" class="permission-item" label="菜单授权">
-          <div class="permission-panel">
-            <Tree
-              v-model:checkedKeys="menuCheckedKeys"
-              :check-strictly="true"
-              :tree-data="menuTree"
-              block-node
-              checkable
-              default-expand-all
-              :loading="loadingMenus"
-            />
-          </div>
-        </FormItem>
+        <Tabs
+          v-if="canQueryMenus || canQueryAuthz"
+          v-model:active-key="activeAuthorizationTab"
+          class="authorization-tabs"
+          size="small"
+        >
+          <TabPane v-if="canQueryMenus" key="menu" tab="菜单导航">
+            <div class="permission-panel">
+              <Tree
+                v-model:checkedKeys="menuCheckedKeys"
+                :check-strictly="true"
+                :tree-data="menuTree"
+                block-node
+                checkable
+                default-expand-all
+                :loading="loadingMenus"
+              />
+            </div>
+          </TabPane>
+
+          <TabPane
+            v-if="canQueryAuthz"
+            key="function"
+            :disabled="!editingRole"
+            tab="功能权限"
+          >
+            <div v-if="editingRole" class="authorization-tab-body">
+              <div class="authorization-toolbar">
+                <span>资源动作</span>
+                <Tag color="blue">已选 {{ selectedFunctionGrantCount }}</Tag>
+              </div>
+              <div class="permission-panel">
+                <Tree
+                  v-model:checkedKeys="functionGrantCheckedKeys"
+                  :check-strictly="true"
+                  :tree-data="authorizationTreeData"
+                  block-node
+                  checkable
+                  default-expand-all
+                  :loading="authorizationLoading"
+                />
+              </div>
+            </div>
+            <Empty v-else description="保存角色后配置功能权限" />
+          </TabPane>
+
+          <TabPane v-if="canQueryAuthz" key="data" :disabled="!editingRole" tab="数据范围">
+            <div v-if="editingRole" class="authorization-tab-body">
+              <div class="authorization-inline-form">
+                <Select
+                  v-model:value="dataPolicyForm.resourceCode"
+                  class="auth-resource-select"
+                  :options="resourceOptions"
+                  placeholder="业务资源"
+                  show-search
+                  @change="(value) => changeDataPolicyResource(String(value))"
+                />
+                <Select
+                  v-model:value="dataPolicyForm.actionCode"
+                  class="auth-action-select"
+                  :options="dataPolicyActionOptions"
+                  placeholder="动作"
+                />
+                <Select
+                  v-model:value="dataPolicyForm.scopeType"
+                  class="auth-mode-select"
+                  :options="dataScopeOptions"
+                  placeholder="数据范围"
+                  @change="(value) => changeDataPolicyScope(String(value))"
+                />
+                <Select
+                  v-model:value="dataPolicyForm.dimensionCode"
+                  class="auth-mode-select"
+                  :disabled="!canQueryOrg"
+                  :options="dimensionOptions"
+                  placeholder="组织维度"
+                  @change="(value) => changeDataPolicyDimension(String(value))"
+                />
+                <Select
+                  v-if="dataPolicyForm.scopeType === 'ASSIGNED_ORGS'"
+                  v-model:value="dataPolicyForm.orgUnitIds"
+                  class="auth-org-select"
+                  :disabled="!canQueryOrg"
+                  mode="multiple"
+                  :options="assignedOrgOptions"
+                  placeholder="指定组织"
+                  show-search
+                />
+                <Button
+                  :disabled="!canCreateDataPolicy"
+                  type="primary"
+                  @click="addDataPolicy"
+                >
+                  添加
+                </Button>
+              </div>
+
+              <div v-if="dataPolicyRows.length > 0" class="authorization-list">
+                <div
+                  v-for="policy in dataPolicyRows"
+                  :key="policy.id || `${policy.resourceCode}:${policy.actionCode}`"
+                  class="authorization-list-item"
+                >
+                  <div>
+                    <div class="authorization-item-title">
+                      {{ policy.resourceCode }} / {{ policy.actionCode }}
+                    </div>
+                    <Space wrap :size="4">
+                      <Tag :color="grantEffectColor(policy.effect)">{{ policy.effect }}</Tag>
+                      <Tag v-for="dimension in policy.dimensions" :key="dimension.id || dimension.scopeType">
+                        {{ dimension.dimensionCode }} · {{ dataScopeLabel(dimension.scopeType) }}
+                      </Tag>
+                    </Space>
+                  </div>
+                  <Button
+                    v-if="canDeleteDataPolicy"
+                    danger
+                    size="small"
+                    type="link"
+                    @click="removeDataPolicy(policy)"
+                  >
+                    删除
+                  </Button>
+                </div>
+              </div>
+              <Empty v-else description="暂无数据范围" />
+            </div>
+            <Empty v-else description="保存角色后配置数据范围" />
+          </TabPane>
+
+          <TabPane v-if="canQueryAuthz" key="field" :disabled="!editingRole" tab="字段规则">
+            <div v-if="editingRole" class="authorization-tab-body">
+              <div class="authorization-inline-form">
+                <Select
+                  v-model:value="fieldPolicyForm.resourceCode"
+                  class="auth-resource-select"
+                  :options="fieldResourceOptions"
+                  placeholder="业务资源"
+                  show-search
+                  @change="(value) => changeFieldPolicyResource(String(value))"
+                />
+                <Select
+                  v-model:value="fieldPolicyForm.fieldKey"
+                  class="auth-field-select"
+                  :options="fieldPolicyFieldOptions"
+                  placeholder="字段"
+                />
+                <Select
+                  v-model:value="fieldPolicyForm.readMode"
+                  class="auth-mode-select"
+                  :options="fieldReadModeOptions"
+                  placeholder="读取"
+                />
+                <Select
+                  v-model:value="fieldPolicyForm.writeMode"
+                  class="auth-mode-select"
+                  :options="fieldWriteModeOptions"
+                  placeholder="写入"
+                />
+                <Select
+                  v-model:value="fieldPolicyForm.maskStrategy"
+                  class="auth-mode-select"
+                  allow-clear
+                  :options="maskStrategyOptions"
+                  placeholder="掩码"
+                />
+                <Button
+                  :disabled="!canCreateAuthz"
+                  type="primary"
+                  @click="addFieldPolicy"
+                >
+                  添加
+                </Button>
+              </div>
+
+              <div v-if="fieldPolicyRows.length > 0" class="authorization-list">
+                <div
+                  v-for="policy in fieldPolicyRows"
+                  :key="policy.id || `${policy.resourceCode}:${policy.fieldKey}`"
+                  class="authorization-list-item"
+                >
+                  <div>
+                    <div class="authorization-item-title">
+                      {{ policy.resourceCode }} / {{ policy.fieldKey }}
+                    </div>
+                    <Space wrap :size="4">
+                      <Tag :color="grantEffectColor(policy.effect)">{{ policy.effect }}</Tag>
+                      <Tag>{{ fieldReadModeLabel(policy.readMode) }}</Tag>
+                      <Tag>{{ fieldWriteModeLabel(policy.writeMode) }}</Tag>
+                      <Tag v-if="policy.maskStrategy">
+                        {{ maskStrategyLabel(policy.maskStrategy) }}
+                      </Tag>
+                    </Space>
+                  </div>
+                  <Button
+                    v-if="canDeleteAuthz"
+                    danger
+                    size="small"
+                    type="link"
+                    @click="removeFieldPolicy(policy)"
+                  >
+                    删除
+                  </Button>
+                </div>
+              </div>
+              <Empty v-else description="暂无字段规则" />
+            </div>
+            <Empty v-else description="保存角色后配置字段规则" />
+          </TabPane>
+
+          <TabPane v-if="canQueryAuthz" key="guard" :disabled="!editingRole" tab="业务规则">
+            <div v-if="editingRole" class="authorization-tab-body">
+              <div class="authorization-section-title">模板状态</div>
+              <div v-if="guardTemplateRows.length > 0" class="authorization-list">
+                <div
+                  v-for="template in guardTemplateRows"
+                  :key="template.id || template.guardCode"
+                  class="authorization-list-item"
+                >
+                  <div>
+                    <div class="authorization-item-title">{{ template.guardCode }}</div>
+                    <p>{{ template.description || '-' }}</p>
+                    <Space wrap :size="4">
+                      <Tag>{{ template.ownerService || 'service-auth' }}</Tag>
+                      <Tag v-if="template.supportedResourceTypes">
+                        {{ template.supportedResourceTypes }}
+                      </Tag>
+                    </Space>
+                  </div>
+                  <Switch
+                    :checked="template.status !== 0"
+                    :disabled="!canUpdateAuthz"
+                    checked-children="启用"
+                    un-checked-children="停用"
+                    @change="(checked) => toggleGuardTemplate(template, checked as boolean)"
+                  />
+                </div>
+              </div>
+              <Empty v-else description="暂无业务规则模板" />
+
+              <div class="authorization-section-title">资源规则</div>
+              <div v-if="resourceGuardRows.length > 0" class="authorization-list">
+                <div
+                  v-for="item in resourceGuardRows"
+                  :key="`${item.resource.resourceCode}:${item.guard.guardCode}`"
+                  class="authorization-list-item"
+                >
+                  <div>
+                    <div class="authorization-item-title">
+                      {{ item.resource.displayName || item.resource.resourceCode }}
+                    </div>
+                    <Space wrap :size="4">
+                      <Tag>{{ item.guard.guardCode }}</Tag>
+                      <Tag>{{ item.guard.ownerService || item.resource.ownerService }}</Tag>
+                    </Space>
+                  </div>
+                </div>
+              </div>
+              <Empty v-else description="暂无资源业务规则" />
+            </div>
+            <Empty v-else description="保存角色后查看业务规则" />
+          </TabPane>
+
+          <TabPane v-if="canQueryAuthz" key="preview" :disabled="!editingRole" tab="决策预览">
+            <div v-if="editingRole" class="authorization-tab-body">
+              <div class="authorization-inline-form">
+                <Input
+                  v-model:value="previewForm.userId"
+                  class="auth-user-input"
+                  allow-clear
+                  placeholder="用户 ID"
+                />
+                <Select
+                  v-model:value="previewForm.resourceCode"
+                  class="auth-resource-select"
+                  :options="resourceOptions"
+                  placeholder="业务资源"
+                  show-search
+                  @change="(value) => changePreviewResource(String(value))"
+                />
+                <Select
+                  v-model:value="previewForm.actionCode"
+                  class="auth-action-select"
+                  :options="previewActionOptions"
+                  placeholder="动作"
+                />
+                <Input
+                  v-model:value="previewForm.businessObjectId"
+                  class="auth-user-input"
+                  allow-clear
+                  placeholder="业务对象 ID"
+                />
+                <Button
+                  :loading="previewLoading"
+                  type="primary"
+                  @click="runDecisionPreview"
+                >
+                  预览
+                </Button>
+              </div>
+
+              <div
+                v-if="previewResult"
+                class="decision-preview"
+                :class="{ denied: !previewResult.allowed }"
+              >
+                <div class="decision-preview-header">
+                  <Tag :color="previewResult.allowed ? 'success' : 'error'">
+                    {{ previewResult.allowed ? '允许' : '拒绝' }}
+                  </Tag>
+                  <span>{{ previewResult.resourceCode }} / {{ previewResult.actionCode }}</span>
+                </div>
+                <div class="decision-preview-grid">
+                  <div>
+                    <span>数据范围</span>
+                    <strong>
+                      {{
+                        previewResult.dataScope?.scopeTypes
+                          ?.map((item) => dataScopeLabel(item))
+                          .join('、') || '-'
+                      }}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>匹配授权</span>
+                    <strong>{{ previewResult.matchedGrantId || '-' }}</strong>
+                  </div>
+                </div>
+                <div v-if="previewResult.reasons?.length" class="decision-reasons">
+                  <div
+                    v-for="reason in previewResult.reasons"
+                    :key="`${reason.code}:${reason.evidenceId}`"
+                  >
+                    <Tag>{{ reason.source || 'AUTHZ' }}</Tag>
+                    <span>{{ reason.message || reason.code }}</span>
+                  </div>
+                </div>
+                <div v-if="previewResult.fieldRules?.length" class="decision-reasons">
+                  <div
+                    v-for="field in previewResult.fieldRules"
+                    :key="field.fieldKey"
+                  >
+                    <Tag>{{ field.fieldKey }}</Tag>
+                    <span>
+                      {{ fieldReadModeLabel(field.readMode) }} /
+                      {{ fieldWriteModeLabel(field.writeMode) }}
+                    </span>
+                  </div>
+                </div>
+                <div
+                  v-if="previewResult.guardRequirements?.length"
+                  class="decision-reasons"
+                >
+                  <div
+                    v-for="guard in previewResult.guardRequirements"
+                    :key="guard.guardCode"
+                  >
+                    <Tag>{{ guard.guardCode }}</Tag>
+                    <span>{{ guard.description || guard.ownerService }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Empty v-else description="保存角色后进行决策预览" />
+          </TabPane>
+        </Tabs>
       </Form>
 
       <template #footer>
@@ -1242,6 +2271,141 @@ onMounted(() => {
   border-radius: 6px;
 }
 
+.authorization-tabs {
+  margin-top: 4px;
+}
+
+.authorization-tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.authorization-toolbar,
+.authorization-inline-form,
+.authorization-list-item,
+.decision-preview-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.authorization-toolbar,
+.authorization-list-item,
+.decision-preview-header {
+  justify-content: space-between;
+}
+
+.authorization-toolbar {
+  min-height: 28px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.authorization-inline-form {
+  flex-wrap: wrap;
+}
+
+.auth-resource-select {
+  width: 260px;
+}
+
+.auth-org-select {
+  width: 280px;
+}
+
+.auth-action-select,
+.auth-field-select,
+.auth-mode-select,
+.auth-user-input {
+  width: 160px;
+}
+
+.authorization-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.authorization-list-item {
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+}
+
+.authorization-list-item p {
+  margin: 2px 0 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.authorization-item-title,
+.authorization-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.authorization-section-title {
+  margin-top: 2px;
+}
+
+.decision-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #b7eb8f;
+  border-radius: 4px;
+  background: #f6ffed;
+}
+
+.decision-preview.denied {
+  border-color: #ffccc7;
+  background: #fff2f0;
+}
+
+.decision-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.decision-preview-grid div,
+.decision-reasons div {
+  min-width: 0;
+}
+
+.decision-preview-grid span {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.decision-preview-grid strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.decision-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.decision-reasons div {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: #374151;
+}
+
 :global(.role-column-popover .ant-popover-inner) {
   padding: 0;
   border-radius: 4px;
@@ -1324,6 +2488,15 @@ onMounted(() => {
   .query-grid,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .auth-action-select,
+  .auth-field-select,
+  .auth-mode-select,
+  .auth-org-select,
+  .auth-resource-select,
+  .auth-user-input {
+    width: 100%;
   }
 
   .table-footer {

@@ -17,6 +17,11 @@ import {
 } from 'ant-design-vue';
 
 import { getRuntimeApplicationList } from '#/api/lowcode';
+import {
+  BusinessPageScaffold,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const router = useRouter();
 const loading = ref(false);
@@ -85,21 +90,18 @@ onMounted(() => loadRecords(1));
 
 <template>
   <Page auto-content-height>
-    <div class="runtime-page">
-      <section class="list-panel">
-        <div class="list-header">
-          <div>
-            <h2>应用中心</h2>
-            <p>仅显示当前租户已发布且具备访问权限的快速应用。</p>
-          </div>
+    <BusinessPageScaffold class="runtime-page" pattern="single-table">
+      <template #toolbar>
+        <CompactToolbar title="应用中心" subtitle="仅显示当前租户已发布且具备访问权限的快速应用">
           <Tooltip title="刷新">
             <Button shape="circle" @click="loadRecords()">
               <span class="text-lg">↻</span>
             </Button>
           </Tooltip>
-        </div>
+        </CompactToolbar>
+      </template>
 
-        <div class="table-frame">
+      <CompactTableFrame>
           <Table
             :columns="columns"
             :data-source="records"
@@ -124,9 +126,8 @@ onMounted(() => loadRecords(1));
               </template>
             </template>
           </Table>
-        </div>
 
-        <div class="table-footer">
+        <template #footer>
           <div class="table-total">共 {{ pagination.total }} 个应用</div>
           <Pagination
             v-model:current="pagination.current"
@@ -139,9 +140,9 @@ onMounted(() => loadRecords(1));
             @change="onPageChange"
             @show-size-change="onPageChange"
           />
-        </div>
-      </section>
-    </div>
+        </template>
+      </CompactTableFrame>
+    </BusinessPageScaffold>
   </Page>
 </template>
 

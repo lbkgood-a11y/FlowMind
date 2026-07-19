@@ -16,6 +16,8 @@ spring:
     enabled: ${LOWCODE_FLYWAY_ENABLED:true}
     locations: classpath:db/migration
     table: flyway_schema_history_lowcode
+    baseline-on-migrate: true
+    baseline-version: 0
     validate-on-migrate: false
   cloud:
     nacos:
@@ -32,6 +34,8 @@ mybatis-plus:
 
 triobase:
   integrations:
+    action:
+      base-url: ${ACTION_SERVICE_URL:http://localhost:8089}
     auth:
       base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
     workflow:

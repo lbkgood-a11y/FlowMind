@@ -9,7 +9,16 @@ export namespace SystemGovernanceApi {
   }
 
   export interface AuditLog {
+    actionCorrelationId?: string;
+    actionId?: string;
+    actionIdempotencyKey?: string;
     actionName?: string;
+    actionSource?: string;
+    actionStatus?: string;
+    actionSummary?: string;
+    actionTargetId?: string;
+    actionTargetType?: string;
+    actionType?: string;
     clientIp?: string;
     errorMessage?: string;
     httpMethod?: string;

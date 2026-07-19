@@ -31,7 +31,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -52,6 +54,8 @@ class ApplicationServiceTest {
     private ApplicationMetadataValidator metadataValidator;
     @Mock
     private ApplicationReferenceValidator referenceValidator;
+    @Mock
+    private AuthorizationResourceSyncClient authorizationResourceSyncClient;
 
     @InjectMocks
     private ApplicationService service;
@@ -132,6 +136,7 @@ class ApplicationServiceTest {
         verify(metadataValidator).validateDraft(any(), any());
         verify(metadataValidator).validateFieldReferences(any(), any());
         verify(referenceValidator).validatePublication(any(), any());
+        verify(authorizationResourceSyncClient).syncPublishedApplication(eq(version), any(), any());
     }
 
     @Test
@@ -147,6 +152,67 @@ class ApplicationServiceTest {
         BizException exception = assertThrows(BizException.class, () -> service.publish("APPV001"));
 
         assertEquals("APPLICATION_PERMISSION_NOT_REGISTERED", exception.getMessage());
+    }
+
+    @Test
+    void offlinePublishedApplicationUpdatesStatusAndSyncsAuth() {
+        setTenantUser();
+        LcApplicationVersion version = publishedVersion();
+        LcApplication application = application();
+        application.setStatus("PUBLISHED");
+        when(applicationVersionMapper.selectOne(any())).thenReturn(version);
+        when(applicationMapper.selectById("APP001")).thenReturn(application);
+
+        var response = service.offline("APPV001");
+
+        assertThat(response.getStatus()).isEqualTo("OFFLINE");
+        verify(applicationVersionMapper).updateById(version);
+        verify(authorizationResourceSyncClient).syncOfflineApplication(eq(version));
+    }
+
+    @Test
+    void offlineContinuesOnSyncFailureAsBestEffort() {
+        setTenantUser();
+        LcApplicationVersion version = publishedVersion();
+        LcApplication application = application();
+        application.setStatus("PUBLISHED");
+        when(applicationVersionMapper.selectOne(any())).thenReturn(version);
+        when(applicationMapper.selectById("APP001")).thenReturn(application);
+        doThrow(new RuntimeException("Auth service unreachable"))
+                .when(authorizationResourceSyncClient).syncOfflineApplication(any());
+
+        var response = service.offline("APPV001");
+
+        assertThat(response.getStatus()).isEqualTo("OFFLINE");
+        verify(applicationVersionMapper).updateById(version);
+    }
+
+    @Test
+    void offlineRejectsNonPublishedVersion() {
+        setTenantUser();
+        when(applicationVersionMapper.selectOne(any())).thenReturn(draftVersion());
+
+        BizException exception = assertThrows(BizException.class, () -> service.offline("APPV001"));
+
+        assertEquals("ONLY_PUBLISHED_APPLICATION_CAN_BE_OFFLINE", exception.getMessage());
+    }
+
+    @Test
+    void publishPropagatesAuthorizationSyncFailureWithoutPublishingVersion() {
+        setTenantUser();
+        LcApplicationVersion version = draftVersion();
+        when(applicationVersionMapper.selectOne(any())).thenReturn(version);
+        when(formDefinitionMapper.selectOne(any())).thenReturn(publishedForm());
+        when(applicationPageMapper.selectList(any(Wrapper.class))).thenReturn(List.of(listPage()));
+        when(applicationActionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(submitAction()));
+        doThrow(new BizException(50290, "LOWCODE_AUTHZ_SYNC_FAILED"))
+                .when(authorizationResourceSyncClient).syncPublishedApplication(any(), any(), any());
+
+        BizException exception = assertThrows(BizException.class, () -> service.publish("APPV001"));
+
+        assertEquals("LOWCODE_AUTHZ_SYNC_FAILED", exception.getMessage());
+        verify(applicationVersionMapper, never()).updateById(any(LcApplicationVersion.class));
+        verify(applicationMapper, never()).updateById(any(LcApplication.class));
     }
 
     private CreateApplicationRequest createRequest() {
@@ -188,6 +254,13 @@ class ApplicationServiceTest {
         application.setStatus("DRAFT");
         application.setLatestVersion(1);
         return application;
+    }
+
+    private LcApplicationVersion publishedVersion() {
+        LcApplicationVersion version = draftVersion();
+        version.setStatus("PUBLISHED");
+        version.setPublishedAt(java.time.LocalDateTime.now());
+        return version;
     }
 
     private LcApplicationVersion draftVersion() {

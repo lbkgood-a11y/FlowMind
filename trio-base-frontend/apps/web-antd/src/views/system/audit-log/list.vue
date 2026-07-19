@@ -16,7 +16,6 @@ import {
   Input,
   Pagination,
   Select,
-  Space,
   Table,
   Tag,
   Tooltip,
@@ -24,6 +23,12 @@ import {
 
 import { getAuditLogDetail, getAuditLogPage } from '#/api';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const AUDIT_PERMISSIONS = {
   query: '/api/v1/audit-logs:GET',
@@ -41,6 +46,12 @@ const size = ref(20);
 const total = ref(0);
 
 const query = reactive({
+  actionId: '',
+  actionSource: undefined as string | undefined,
+  actionStatus: undefined as string | undefined,
+  actionTargetId: '',
+  actionTargetType: '',
+  actionType: '',
   requestPath: '',
   resultStatus: undefined as string | undefined,
   username: '',
@@ -51,6 +62,9 @@ const columns = computed<TableProps['columns']>(() => [
   { dataIndex: 'username', key: 'username', title: '用户', width: 140 },
   { dataIndex: 'httpMethod', key: 'httpMethod', title: '方法', width: 90 },
   { dataIndex: 'requestPath', key: 'requestPath', title: '路径', width: 260 },
+  { dataIndex: 'actionType', key: 'actionType', title: 'Action 类型', width: 230 },
+  { dataIndex: 'actionStatus', key: 'actionStatus', title: 'Action 状态', width: 120 },
+  { dataIndex: 'actionTargetId', key: 'actionTargetId', title: 'Action 目标', width: 180 },
   { dataIndex: 'resultStatus', key: 'resultStatus', title: '结果', width: 100 },
   { dataIndex: 'statusCode', key: 'statusCode', title: '状态码', width: 90 },
   { dataIndex: 'latencyMs', key: 'latencyMs', title: '耗时(ms)', width: 110 },
@@ -68,6 +82,12 @@ async function loadLogs() {
   loading.value = true;
   try {
     const result = await getAuditLogPage({
+      actionId: query.actionId || undefined,
+      actionSource: query.actionSource,
+      actionStatus: query.actionStatus,
+      actionTargetId: query.actionTargetId || undefined,
+      actionTargetType: query.actionTargetType || undefined,
+      actionType: query.actionType || undefined,
       page: page.value,
       requestPath: query.requestPath || undefined,
       resultStatus: query.resultStatus,
@@ -90,6 +110,12 @@ function resetQuery() {
   query.username = '';
   query.requestPath = '';
   query.resultStatus = undefined;
+  query.actionId = '';
+  query.actionType = '';
+  query.actionSource = undefined;
+  query.actionStatus = undefined;
+  query.actionTargetType = '';
+  query.actionTargetId = '';
   page.value = 1;
   loadLogs();
 }
@@ -103,11 +129,15 @@ onMounted(loadLogs);
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page audit-page">
-      <section class="toolbar">
-        <Space wrap>
+    <BusinessPageScaffold class="audit-page" pattern="single-table">
+      <template #query>
+        <CompactQueryBar :columns="4">
           <Input v-model:value="query.username" class="query-input" placeholder="用户" allow-clear />
           <Input v-model:value="query.requestPath" class="query-input path-input" placeholder="路径" allow-clear />
+          <Input v-model:value="query.actionId" class="query-input path-input" placeholder="ActionId" allow-clear />
+          <Input v-model:value="query.actionType" class="query-input path-input" placeholder="Action 类型" allow-clear />
+          <Input v-model:value="query.actionTargetType" class="query-input" placeholder="目标类型" allow-clear />
+          <Input v-model:value="query.actionTargetId" class="query-input" placeholder="目标 ID" allow-clear />
           <Select
             v-model:value="query.resultStatus"
             allow-clear
@@ -118,6 +148,21 @@ onMounted(loadLogs);
             ]"
             placeholder="结果"
           />
+          <Select
+            v-model:value="query.actionSource"
+            allow-clear
+            class="query-select"
+            :options="['GUI','LUI','AGENT','API','EVENT','SCHEDULER','WORKFLOW','SYSTEM'].map((value) => ({ label: value, value }))"
+            placeholder="Action 来源"
+          />
+          <Select
+            v-model:value="query.actionStatus"
+            allow-clear
+            class="query-select"
+            :options="['CREATED','VALIDATING','REJECTED','AUTHORIZED','ACCEPTED','RUNNING','SUCCEEDED','FAILED','CANCELLED','COMPENSATING','COMPENSATED'].map((value) => ({ label: value, value }))"
+            placeholder="Action 状态"
+          />
+          <template #actions>
           <Button v-if="canQuery" type="primary" @click="page = 1; loadLogs()">查询</Button>
           <Button v-if="canQuery" @click="resetQuery">重置</Button>
         <Tooltip v-if="canQuery" title="刷新">
@@ -125,17 +170,22 @@ onMounted(loadLogs);
             <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
           </Button>
         </Tooltip>
-        </Space>
-      </section>
+          </template>
+        </CompactQueryBar>
+      </template>
 
-      <section class="table-shell">
+      <template #toolbar>
+        <CompactToolbar title="审计日志" subtitle="按用户、请求、Action 和 TraceId 追踪操作链路" />
+      </template>
+
+      <CompactTableFrame>
         <Table
           row-key="id"
           :columns="columns"
           :data-source="logs"
           :loading="loading"
           :pagination="false"
-          :scroll="{ x: 1480 }"
+          :scroll="{ x: 2040 }"
           size="small"
           :sticky="{ offsetScroll: 0 }"
         >
@@ -145,12 +195,16 @@ onMounted(loadLogs);
                 {{ record.resultStatus === 'SUCCESS' ? '成功' : '失败' }}
               </Tag>
             </template>
+            <template v-else-if="column.key === 'actionStatus'">
+              <Tag v-if="record.actionStatus" color="blue">{{ record.actionStatus }}</Tag>
+              <span v-else>-</span>
+            </template>
             <template v-else-if="column.key === 'action'">
               <Button type="link" size="small" @click="openDetail(asAudit(record))">详情</Button>
             </template>
           </template>
         </Table>
-      </section>
+      </CompactTableFrame>
 
       <div class="pager">
         <Pagination
@@ -162,7 +216,7 @@ onMounted(loadLogs);
           @change="loadLogs"
         />
       </div>
-    </div>
+    </BusinessPageScaffold>
 
     <Drawer v-model:open="detailOpen" title="审计详情" width="720px">
       <Descriptions v-if="detail" bordered :column="1" size="small">
@@ -170,6 +224,16 @@ onMounted(loadLogs);
         <DescriptionsItem label="权限码">{{ detail.permissionCode || '-' }}</DescriptionsItem>
         <DescriptionsItem label="请求">{{ detail.httpMethod }} {{ detail.requestPath }}</DescriptionsItem>
         <DescriptionsItem label="查询参数">{{ detail.queryString || '-' }}</DescriptionsItem>
+        <DescriptionsItem label="ActionId">{{ detail.actionId || '-' }}</DescriptionsItem>
+        <DescriptionsItem label="Action 类型">{{ detail.actionType || '-' }}</DescriptionsItem>
+        <DescriptionsItem label="Action 来源">{{ detail.actionSource || '-' }}</DescriptionsItem>
+        <DescriptionsItem label="Action 状态">{{ detail.actionStatus || '-' }}</DescriptionsItem>
+        <DescriptionsItem label="Action 目标">
+          {{ detail.actionTargetType || '-' }} / {{ detail.actionTargetId || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="Action 关联">{{ detail.actionCorrelationId || '-' }}</DescriptionsItem>
+        <DescriptionsItem label="幂等 Key">{{ detail.actionIdempotencyKey || '-' }}</DescriptionsItem>
+        <DescriptionsItem label="Action 摘要">{{ detail.actionSummary || '-' }}</DescriptionsItem>
         <DescriptionsItem label="结果">{{ detail.resultStatus }} / {{ detail.statusCode }}</DescriptionsItem>
         <DescriptionsItem label="错误">{{ detail.errorMessage || '-' }}</DescriptionsItem>
         <DescriptionsItem label="TraceId">{{ detail.traceId || '-' }}</DescriptionsItem>

@@ -14,7 +14,6 @@ import {
   Pagination,
   Popconfirm,
   Select,
-  Space,
   Table,
   Tabs,
   Tag,
@@ -24,6 +23,12 @@ import {
 
 import { getLoginLogPage, getSessionPage, revokeSession } from '#/api';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const TabPane = Tabs.TabPane;
 
@@ -133,9 +138,9 @@ onMounted(loadData);
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page session-page">
-      <section class="toolbar">
-        <Space wrap>
+    <BusinessPageScaffold class="session-page" pattern="single-table">
+      <template #query>
+        <CompactQueryBar :columns="3">
           <Input v-model:value="query.username" class="query-input" placeholder="用户" allow-clear />
           <Select
             v-if="activeTab === 'sessions'"
@@ -160,6 +165,7 @@ onMounted(loadData);
             ]"
             placeholder="登录结果"
           />
+          <template #actions>
           <Button v-if="canQuery" type="primary" @click="page = 1; loadData()">查询</Button>
           <Button v-if="canQuery" @click="resetQuery">重置</Button>
           <Tooltip v-if="canQuery" title="刷新">
@@ -167,12 +173,17 @@ onMounted(loadData);
               <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
             </Button>
           </Tooltip>
-        </Space>
-      </section>
+          </template>
+        </CompactQueryBar>
+      </template>
+
+      <template #toolbar>
+        <CompactToolbar title="会话与登录日志" subtitle="查看在线会话、登录记录并维护会话状态" />
+      </template>
 
       <Tabs :active-key="activeTab" size="small" @change="(key) => changeTab(String(key))">
         <TabPane key="sessions" tab="会话">
-          <section class="table-shell">
+          <CompactTableFrame>
             <Table
               row-key="id"
               :columns="sessionColumns"
@@ -200,10 +211,10 @@ onMounted(loadData);
                 </template>
               </template>
             </Table>
-          </section>
+          </CompactTableFrame>
         </TabPane>
         <TabPane key="loginLogs" tab="登录日志">
-          <section class="table-shell">
+          <CompactTableFrame>
             <Table
               row-key="id"
               :columns="loginColumns"
@@ -222,7 +233,7 @@ onMounted(loadData);
                 </template>
               </template>
             </Table>
-          </section>
+          </CompactTableFrame>
         </TabPane>
       </Tabs>
 
@@ -236,7 +247,7 @@ onMounted(loadData);
           @change="loadData"
         />
       </div>
-    </div>
+    </BusinessPageScaffold>
   </Page>
 </template>
 

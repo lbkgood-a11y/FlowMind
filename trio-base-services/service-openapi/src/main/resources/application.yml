@@ -66,6 +66,16 @@ mybatis-plus:
       id-type: assign_uuid
 
 triobase:
+  internal:
+    token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-openapi,service-action}
+  integrations:
+    auth:
+      base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+    workflow:
+      base-url: ${WORKFLOW_SERVICE_URL:http://localhost:8086}
+    action:
+      base-url: ${ACTION_SERVICE_URL:http://localhost:8089}
   openapi:
     gateway-auth-secret: ${OPENAPI_GATEWAY_AUTH_SECRET:}
     runtime:

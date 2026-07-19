@@ -14,6 +14,7 @@ import com.triobase.service.workflow.dto.ProcessPackageDefinition;
 import com.triobase.service.workflow.dto.ProcessInstanceResponse;
 import com.triobase.service.workflow.dto.ProcessVersionConflictResponse;
 import com.triobase.service.workflow.dto.StartProcessRequest;
+import com.triobase.service.workflow.action.WorkflowActionExecutionContext;
 import com.triobase.service.workflow.entity.ProcessInstance;
 import com.triobase.service.workflow.entity.ProcessPackage;
 import com.triobase.service.workflow.entity.NodeRecord;
@@ -111,6 +112,7 @@ public class ProcessInstanceService {
         instance.setInitiatorId(userId);
         instance.setInitiatorName(userName);
         instance.setStartedAt(LocalDateTime.now());
+        applyActionMetadata(instance);
         processInstanceMapper.insert(instance);
 
         // 5. 启动 Temporal Workflow
@@ -230,6 +232,13 @@ public class ProcessInstanceService {
         item.setStatus(operation.getStatus());
         item.setTraceId(operation.getTraceId());
         item.setResultJson(operation.getResultJson());
+        item.setActionId(operation.getActionId());
+        item.setActionType(operation.getActionType());
+        item.setActionSource(operation.getActionSource());
+        item.setActionActorType(operation.getActionActorType());
+        item.setActionActorId(operation.getActionActorId());
+        item.setActionActorName(operation.getActionActorName());
+        item.setActionCorrelationId(operation.getActionCorrelationId());
         item.setCreatedAt(operation.getCreatedAt());
         return item;
     }
@@ -252,6 +261,14 @@ public class ProcessInstanceService {
         resp.setInitiatorId(instance.getInitiatorId());
         resp.setInitiatorName(instance.getInitiatorName());
         resp.setCurrentNodeId(instance.getCurrentNodeId());
+        resp.setActionId(instance.getActionId());
+        resp.setActionType(instance.getActionType());
+        resp.setActionSource(instance.getActionSource());
+        resp.setActionActorType(instance.getActionActorType());
+        resp.setActionActorId(instance.getActionActorId());
+        resp.setActionActorName(instance.getActionActorName());
+        resp.setActionTraceId(instance.getActionTraceId());
+        resp.setActionCorrelationId(instance.getActionCorrelationId());
         resp.setStartedAt(instance.getStartedAt());
         resp.setCompletedAt(instance.getCompletedAt());
         resp.setCreatedAt(instance.getCreatedAt());
@@ -260,5 +277,20 @@ public class ProcessInstanceService {
 
     private String normalizeBlank(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private void applyActionMetadata(ProcessInstance instance) {
+        WorkflowActionExecutionContext.Snapshot snapshot = WorkflowActionExecutionContext.current();
+        if (snapshot == null) {
+            return;
+        }
+        instance.setActionId(snapshot.actionId());
+        instance.setActionType(snapshot.actionType());
+        instance.setActionSource(snapshot.source());
+        instance.setActionActorType(snapshot.actorType());
+        instance.setActionActorId(snapshot.actorId());
+        instance.setActionActorName(snapshot.actorName());
+        instance.setActionTraceId(snapshot.traceId());
+        instance.setActionCorrelationId(snapshot.correlationId());
     }
 }

@@ -26,6 +26,14 @@ public class AuditLogController {
                                                     @RequestParam(required = false) String userId,
                                                     @RequestParam(required = false) String requestPath,
                                                     @RequestParam(required = false) String resultStatus,
+                                                    @RequestParam(required = false) String actionId,
+                                                    @RequestParam(required = false) String actionType,
+                                                    @RequestParam(required = false) String actionSource,
+                                                    @RequestParam(required = false) String actionStatus,
+                                                    @RequestParam(required = false) String actionTargetType,
+                                                    @RequestParam(required = false) String actionTargetId,
+                                                    @RequestParam(required = false) String actionCorrelationId,
+                                                    @RequestParam(required = false) String actionIdempotencyKey,
                                                     @RequestParam(required = false)
                                                     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
                                                     LocalDateTime operatedStart,
@@ -33,7 +41,8 @@ public class AuditLogController {
                                                     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
                                                     LocalDateTime operatedEnd) {
         return R.ok(operationAuditService.page(page, size, username, userId, requestPath,
-                resultStatus, operatedStart, operatedEnd));
+                resultStatus, actionId, actionType, actionSource, actionStatus, actionTargetType, actionTargetId,
+                actionCorrelationId, actionIdempotencyKey, operatedStart, operatedEnd));
     }
 
     @GetMapping("/{id}")

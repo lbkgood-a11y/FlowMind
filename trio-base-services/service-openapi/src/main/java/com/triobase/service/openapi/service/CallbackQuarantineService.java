@@ -8,6 +8,7 @@ import com.triobase.service.openapi.domain.entity.IntegrationExecution;
 import com.triobase.service.openapi.domain.enums.CallbackInboxState;
 import com.triobase.service.openapi.domain.enums.ExecutionState;
 import com.triobase.service.openapi.dto.ResolveCallbackQuarantineRequest;
+import com.triobase.service.openapi.action.OpenApiActionMetadata;
 import com.triobase.service.openapi.infrastructure.mapper.CallbackInboxMapper;
 import com.triobase.service.openapi.infrastructure.mapper.IntegrationExecutionMapper;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +63,7 @@ public class CallbackQuarantineService {
         inbox.setResolutionNote(request.note());
         inbox.setResolvedBy(operator());
         inbox.setResolvedAt(LocalDateTime.now());
+        OpenApiActionMetadata.apply(inbox);
         inbox.setUpdatedAt(LocalDateTime.now());
         inboxMapper.updateById(inbox);
         auditService.success("CALLBACK_QUARANTINE_RESOLVED", "CALLBACK_INBOX", inboxId,

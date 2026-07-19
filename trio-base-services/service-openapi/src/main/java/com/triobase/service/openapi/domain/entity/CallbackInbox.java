@@ -35,6 +35,14 @@ public class CallbackInbox {
     private String resolutionNote;
     private String resolvedBy;
     private LocalDateTime resolvedAt;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionTraceId;
+    private String actionCorrelationId;
     private LocalDateTime receivedAt;
     private LocalDateTime retentionUntil;
     private LocalDateTime updatedAt;

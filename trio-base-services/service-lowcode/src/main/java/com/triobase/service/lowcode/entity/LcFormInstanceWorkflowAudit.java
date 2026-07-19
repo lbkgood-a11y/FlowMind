@@ -18,4 +18,11 @@ public class LcFormInstanceWorkflowAudit extends BaseEntity {
     private String workflowStatus;
     private String changeType;
     private String traceId;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionCorrelationId;
 }

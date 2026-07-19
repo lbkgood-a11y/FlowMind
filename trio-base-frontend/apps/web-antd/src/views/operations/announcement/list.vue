@@ -31,6 +31,12 @@ import {
   updateAnnouncement,
 } from '#/api';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const Textarea = Input.TextArea;
 
@@ -216,9 +222,9 @@ onMounted(load);
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page ops-page">
-      <section class="toolbar">
-        <Space wrap>
+    <BusinessPageScaffold class="ops-page" pattern="single-table">
+      <template #query>
+        <CompactQueryBar :columns="3">
           <Input v-model:value="query.keyword" class="query-input" placeholder="标题/内容" allow-clear />
           <Select
             v-model:value="query.status"
@@ -242,6 +248,7 @@ onMounted(load);
             ]"
             placeholder="优先级"
           />
+          <template #actions>
           <Button v-if="canQuery" type="primary" @click="load">查询</Button>
           <Button v-if="canQuery" @click="resetQuery">重置</Button>
           <Tooltip v-if="canQuery" title="刷新">
@@ -253,10 +260,16 @@ onMounted(load);
             <Plus class="size-4" />
             新增公告
           </Button>
-        </Space>
-      </section>
+          </template>
+        </CompactQueryBar>
+      </template>
 
-      <Table
+      <template #toolbar>
+        <CompactToolbar title="公告管理" subtitle="维护公告草稿、发布和下线状态" />
+      </template>
+
+      <CompactTableFrame>
+        <Table
         row-key="id"
         :columns="columns"
         :data-source="records"
@@ -304,7 +317,8 @@ onMounted(load);
           </template>
         </template>
       </Table>
-    </div>
+      </CompactTableFrame>
+    </BusinessPageScaffold>
 
     <Modal
       v-model:open="modalOpen"

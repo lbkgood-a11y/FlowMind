@@ -18,6 +18,7 @@ import com.triobase.service.openapi.domain.enums.ExecutionState;
 import com.triobase.service.openapi.dto.CompiledRouteRelease;
 import com.triobase.service.openapi.dto.OrchestrationExecutionResponse;
 import com.triobase.service.openapi.dto.RuntimeAdmissionContext;
+import com.triobase.service.openapi.action.OpenApiActionMetadata;
 import com.triobase.service.openapi.infrastructure.mapper.IdempotencyRecordMapper;
 import com.triobase.service.openapi.infrastructure.mapper.IntegrationExecutionMapper;
 import com.triobase.service.openapi.infrastructure.mapper.RouteVersionMapper;
@@ -211,6 +212,7 @@ public class OrchestrationRuntimeService {
         execution.setIdempotencyKey(idempotencyKey);
         execution.setTraceId(TraceUtil.getTraceId());
         execution.setCallerId(caller(applicationClientId));
+        OpenApiActionMetadata.apply(execution);
         execution.setStartedAt(now);
         execution.setDiagnosticEnabled(false);
         execution.setRetentionUntil(now.plusDays(180));

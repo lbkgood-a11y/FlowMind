@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.trace.TraceUtil;
+import com.triobase.service.openapi.action.OpenApiActionMetadata;
 import com.triobase.service.openapi.domain.entity.AuditEvent;
 import com.triobase.service.openapi.infrastructure.mapper.AuditEventMapper;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,7 @@ public class IntegrationAuditService {
         event.setReason(reason);
         event.setTraceId(TraceUtil.getTraceId());
         event.setChangeSummary(summary == null ? JsonNodeFactory.instance.objectNode() : summary.deepCopy());
+        OpenApiActionMetadata.apply(event);
         event.setCreatedAt(LocalDateTime.now());
         auditEventMapper.insert(event);
     }

@@ -28,6 +28,14 @@ public class ProcessInstance extends BaseEntity {
     private String currentNodeId;
     private String workflowId;      // Temporal Workflow ID
     private String runId;           // Temporal Run ID
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionTraceId;
+    private String actionCorrelationId;
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
 }

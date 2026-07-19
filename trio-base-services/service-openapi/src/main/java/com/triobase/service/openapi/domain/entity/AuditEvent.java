@@ -24,6 +24,14 @@ public class AuditEvent {
     private String reason;
     private String traceId;
     private String sourceIp;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionTraceId;
+    private String actionCorrelationId;
     @TableField(typeHandler = PostgresJsonbTypeHandler.class)
     private JsonNode changeSummary;
     private LocalDateTime createdAt;

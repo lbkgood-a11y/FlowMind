@@ -28,6 +28,13 @@ public class ClosureEffect extends BaseEntity {
     private LocalDateTime nextRetryAt;
     private String operatorId;
     private String traceId;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionCorrelationId;
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
 }

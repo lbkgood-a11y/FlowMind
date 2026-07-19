@@ -28,6 +28,12 @@ import {
   getImportExportTaskResult,
   getImportExportTasks,
 } from '#/api';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const Textarea = Input.TextArea;
 
@@ -186,9 +192,9 @@ onMounted(load);
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page ops-page">
-      <section class="toolbar">
-        <Space wrap>
+    <BusinessPageScaffold class="ops-page" pattern="single-table">
+      <template #query>
+        <CompactQueryBar :columns="3">
           <Input v-model:value="query.businessType" allow-clear class="query-input" placeholder="业务类型" />
           <Select
             v-model:value="query.taskType"
@@ -213,78 +219,86 @@ onMounted(load);
             ]"
             placeholder="状态"
           />
-          <Button v-if="canQuery" type="primary" @click="load">查询</Button>
-          <Button v-if="canQuery" @click="resetQuery">重置</Button>
-          <Button v-if="canCreateImport" type="primary" @click="openCreate('IMPORT')">
-            <Plus class="size-4" />
-            新建导入
-          </Button>
-          <Button v-if="canCreateExport" @click="openCreate('EXPORT')">
-            <Plus class="size-4" />
-            新建导出
-          </Button>
-        </Space>
-      </section>
+          <template #actions>
+            <Button v-if="canQuery" type="primary" @click="load">查询</Button>
+            <Button v-if="canQuery" @click="resetQuery">重置</Button>
+            <Button v-if="canCreateImport" type="primary" @click="openCreate('IMPORT')">
+              <Plus class="size-4" />
+              新建导入
+            </Button>
+            <Button v-if="canCreateExport" @click="openCreate('EXPORT')">
+              <Plus class="size-4" />
+              新建导出
+            </Button>
+          </template>
+        </CompactQueryBar>
+      </template>
 
-      <Table
-        row-key="id"
-        :columns="columns"
-        :data-source="records"
-        :loading="loading"
-        :pagination="pagination"
-        :scroll="{ x: 1180 }"
-        size="small"
-        :sticky="{ offsetScroll: 0 }"
-        @change="handleTableChange"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'taskType'">
-            <Tag color="blue">{{ record.taskType }}</Tag>
-          </template>
-          <template v-else-if="column.key === 'status'">
-            <Tag :color="statusColor(record.status)">{{ record.status }}</Tag>
-          </template>
-          <template v-else-if="column.key === 'progress'">
-            {{ record.progress ?? 0 }}%
-          </template>
-          <template v-else-if="column.key === 'action'">
-            <Space>
-              <Button v-if="canResult" type="link" size="small" @click="viewResult(asTask(record))">
-                结果
-              </Button>
-              <Popconfirm
-                v-if="canCancel && ['PENDING', 'RUNNING'].includes(record.status)"
-                title="确认取消该任务？"
-                @confirm="cancelTask(asTask(record))"
-              >
-                <Button danger type="link" size="small">取消</Button>
-              </Popconfirm>
-            </Space>
-          </template>
-        </template>
-      </Table>
+      <template #toolbar>
+        <CompactToolbar title="导入导出任务" subtitle="创建、跟踪和取消批量数据任务" />
+      </template>
 
-      <Modal
-        v-model:open="modalOpen"
-        :confirm-loading="saving"
-        :title="taskType === 'IMPORT' ? '新建导入任务' : '新建导出任务'"
-        ok-text="保存"
-        width="720px"
-        @ok="submit"
-      >
-        <div class="form-grid">
-          <FormItem label="任务名称" required>
-            <Input v-model:value="form.taskName" placeholder="请输入任务名称" />
-          </FormItem>
-          <FormItem label="业务类型" required>
-            <Input v-model:value="form.businessType" placeholder="如 USER、ORDER" />
-          </FormItem>
-          <FormItem class="form-wide" label="请求参数">
-            <Textarea v-model:value="form.requestParams" :rows="5" placeholder="JSON 参数，可选" />
-          </FormItem>
-        </div>
-      </Modal>
-    </div>
+      <CompactTableFrame>
+        <Table
+          row-key="id"
+          :columns="columns"
+          :data-source="records"
+          :loading="loading"
+          :pagination="pagination"
+          :scroll="{ x: 1180 }"
+          size="small"
+          :sticky="{ offsetScroll: 0 }"
+          @change="handleTableChange"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'taskType'">
+              <Tag color="blue">{{ record.taskType }}</Tag>
+            </template>
+            <template v-else-if="column.key === 'status'">
+              <Tag :color="statusColor(record.status)">{{ record.status }}</Tag>
+            </template>
+            <template v-else-if="column.key === 'progress'">
+              {{ record.progress ?? 0 }}%
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <Space>
+                <Button v-if="canResult" type="link" size="small" @click="viewResult(asTask(record))">
+                  结果
+                </Button>
+                <Popconfirm
+                  v-if="canCancel && ['PENDING', 'RUNNING'].includes(record.status)"
+                  title="确认取消该任务？"
+                  @confirm="cancelTask(asTask(record))"
+                >
+                  <Button danger type="link" size="small">取消</Button>
+                </Popconfirm>
+              </Space>
+            </template>
+          </template>
+        </Table>
+      </CompactTableFrame>
+    </BusinessPageScaffold>
+
+    <Modal
+      v-model:open="modalOpen"
+      :confirm-loading="saving"
+      :title="taskType === 'IMPORT' ? '新建导入任务' : '新建导出任务'"
+      ok-text="保存"
+      width="720px"
+      @ok="submit"
+    >
+      <div class="form-grid">
+        <FormItem label="任务名称" required>
+          <Input v-model:value="form.taskName" placeholder="请输入任务名称" />
+        </FormItem>
+        <FormItem label="业务类型" required>
+          <Input v-model:value="form.businessType" placeholder="如 USER、ORDER" />
+        </FormItem>
+        <FormItem class="form-wide" label="请求参数">
+          <Textarea v-model:value="form.requestParams" :rows="5" placeholder="JSON 参数，可选" />
+        </FormItem>
+      </div>
+    </Modal>
   </Page>
 </template>
 

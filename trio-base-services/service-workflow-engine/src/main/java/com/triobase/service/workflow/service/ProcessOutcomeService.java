@@ -84,9 +84,14 @@ public class ProcessOutcomeService {
         outcome.setReason(reason);
         outcome.setTenantId(StringUtils.hasText(instance.getTenantId())
                 ? instance.getTenantId() : "GLOBAL");
+        TaskOperation lastOperation = lastOperation(processInstanceId);
         outcome.setInitiatorId(instance.getInitiatorId());
-        outcome.setLastOperatorId(lastOperatorId(processInstanceId, instance.getInitiatorId()));
-        outcome.setTraceId(TraceUtil.getTraceId());
+        outcome.setLastOperatorId(lastOperation != null && StringUtils.hasText(lastOperation.getOperatorId())
+                ? lastOperation.getOperatorId()
+                : instance.getInitiatorId());
+        outcome.setTraceId(firstText(TraceUtil.getTraceId(),
+                firstText(lastOperation != null ? lastOperation.getTraceId() : null, instance.getActionTraceId())));
+        applyActionMetadata(outcome, instance, lastOperation);
         outcome.setPayloadJson(writeJson(Map.of(
                 "processInstanceId", processInstanceId,
                 "processKey", instance.getProcessKey(),
@@ -118,14 +123,11 @@ public class ProcessOutcomeService {
                 .last("LIMIT 1"));
     }
 
-    private String lastOperatorId(String processInstanceId, String fallback) {
-        TaskOperation operation = taskOperationMapper.selectOne(new LambdaQueryWrapper<TaskOperation>()
+    private TaskOperation lastOperation(String processInstanceId) {
+        return taskOperationMapper.selectOne(new LambdaQueryWrapper<TaskOperation>()
                 .eq(TaskOperation::getProcessInstanceId, processInstanceId)
                 .orderByDesc(TaskOperation::getCreatedAt)
                 .last("LIMIT 1"));
-        return operation != null && StringUtils.hasText(operation.getOperatorId())
-                ? operation.getOperatorId()
-                : fallback;
     }
 
     private void createClosureRecords(ProcessOutcome outcome,
@@ -150,6 +152,7 @@ public class ProcessOutcomeService {
         closure.setBusinessId(outcome.getBusinessId());
         closure.setClosureStatus(effects.isArray() && !effects.isEmpty() ? "PENDING" : "SKIPPED");
         closure.setTraceId(outcome.getTraceId());
+        copyActionMetadata(closure, outcome);
         closure.setStartedAt(LocalDateTime.now());
         if (!effects.isArray() || effects.isEmpty()) {
             closure.setCompletedAt(LocalDateTime.now());
@@ -253,6 +256,11 @@ public class ProcessOutcomeService {
         payload.put("initiatorId", outcome.getInitiatorId());
         payload.put("lastOperatorId", outcome.getLastOperatorId());
         payload.put("traceId", outcome.getTraceId());
+        payload.put("actionId", outcome.getActionId());
+        payload.put("actionType", outcome.getActionType());
+        payload.put("actionSource", outcome.getActionSource());
+        payload.put("actionActorId", outcome.getActionActorId());
+        payload.put("actionCorrelationId", outcome.getActionCorrelationId());
         return payload;
     }
 
@@ -292,7 +300,50 @@ public class ProcessOutcomeService {
         effect.setAttemptCount(0);
         effect.setOperatorId(outcome.getLastOperatorId());
         effect.setTraceId(outcome.getTraceId());
+        copyActionMetadata(effect, outcome);
         return effect;
+    }
+
+    private void applyActionMetadata(ProcessOutcome outcome,
+                                     ProcessInstance instance,
+                                     TaskOperation lastOperation) {
+        if (lastOperation != null && StringUtils.hasText(lastOperation.getActionId())) {
+            outcome.setActionId(lastOperation.getActionId());
+            outcome.setActionType(lastOperation.getActionType());
+            outcome.setActionSource(lastOperation.getActionSource());
+            outcome.setActionActorType(lastOperation.getActionActorType());
+            outcome.setActionActorId(lastOperation.getActionActorId());
+            outcome.setActionActorName(lastOperation.getActionActorName());
+            outcome.setActionCorrelationId(lastOperation.getActionCorrelationId());
+            return;
+        }
+        outcome.setActionId(instance.getActionId());
+        outcome.setActionType(instance.getActionType());
+        outcome.setActionSource(instance.getActionSource());
+        outcome.setActionActorType(instance.getActionActorType());
+        outcome.setActionActorId(instance.getActionActorId());
+        outcome.setActionActorName(instance.getActionActorName());
+        outcome.setActionCorrelationId(instance.getActionCorrelationId());
+    }
+
+    private void copyActionMetadata(ProcessClosure closure, ProcessOutcome outcome) {
+        closure.setActionId(outcome.getActionId());
+        closure.setActionType(outcome.getActionType());
+        closure.setActionSource(outcome.getActionSource());
+        closure.setActionActorType(outcome.getActionActorType());
+        closure.setActionActorId(outcome.getActionActorId());
+        closure.setActionActorName(outcome.getActionActorName());
+        closure.setActionCorrelationId(outcome.getActionCorrelationId());
+    }
+
+    private void copyActionMetadata(ClosureEffect effect, ProcessOutcome outcome) {
+        effect.setActionId(outcome.getActionId());
+        effect.setActionType(outcome.getActionType());
+        effect.setActionSource(outcome.getActionSource());
+        effect.setActionActorType(outcome.getActionActorType());
+        effect.setActionActorId(outcome.getActionActorId());
+        effect.setActionActorName(outcome.getActionActorName());
+        effect.setActionCorrelationId(outcome.getActionCorrelationId());
     }
 
     private JsonNode selector(String selectorType, JsonNode effectNode) {

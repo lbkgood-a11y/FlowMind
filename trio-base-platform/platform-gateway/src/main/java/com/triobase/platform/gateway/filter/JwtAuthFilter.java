@@ -78,6 +78,9 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
                                 setIfPresent(headers, "X-Auth-Version", result.getAuthVersion());
                                 setIfPresent(headers, "X-Role-Version", result.getRoleVersion());
                                 setIfPresent(headers, "X-Data-Policy-Version", result.getDataPolicyVersion());
+                                setIfPresent(headers, "X-Authorization-Version", result.getAuthorizationVersion());
+                                setIfPresent(headers, "X-Field-Policy-Version", result.getFieldPolicyVersion());
+                                setIfPresent(headers, "X-Guard-Template-Version", result.getGuardTemplateVersion());
                             }))
                             .build();
                     return chain.filter(mutated);

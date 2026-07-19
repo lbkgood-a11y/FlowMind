@@ -2,15 +2,21 @@ import type { LowcodeApi } from '#/api/lowcode';
 
 import {
   getProcessFormFields,
+  type ProcessFormSchema,
   type ProcessFormField,
+  type ProcessUiSchema,
 } from '../../process/components/process-form';
 
 export interface RuntimeFieldDescriptor {
+  editable: boolean;
   fieldKey: string;
   format?: string;
   label: string;
+  maskStrategy?: string;
+  readMode?: string;
   visible: boolean;
   width?: number;
+  writeMode?: string;
 }
 
 export interface RuntimeSectionDescriptor {
@@ -30,15 +36,33 @@ const CREATE_ACTION_TYPES = new Set([
   'SUBMIT_AND_LAUNCH_WORKFLOW',
 ]);
 const RETRY_ACTION_TYPES = new Set(['RETRY_WORKFLOW', 'SUBMIT_AND_LAUNCH_WORKFLOW']);
+const HIDDEN_READ_MODES = new Set(['HIDDEN']);
+const WRITE_BLOCKING_MODES = new Set(['DENIED', 'READONLY', 'READ_ONLY']);
+
+export interface RuntimeAuthorizedFormSchemas {
+  schemaJson?: string;
+  uiSchemaJson?: string;
+}
 
 export function getRuntimePage(
   descriptor: LowcodeApi.RuntimeApplicationDescriptor | undefined,
   pageType: string,
 ) {
   return descriptor?.pages
+    ?.filter((page) => page.allowed !== false)
     ?.slice()
     .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
     .find((page) => page.pageType?.toUpperCase() === pageType.toUpperCase());
+}
+
+export function getRuntimeFieldRuleMap(
+  descriptor: LowcodeApi.RuntimeApplicationDescriptor | undefined,
+) {
+  return new Map(
+    (descriptor?.fieldRules ?? [])
+      .filter((rule) => rule.fieldKey)
+      .map((rule) => [rule.fieldKey, rule]),
+  );
 }
 
 export function getRuntimeListColumns(
@@ -46,15 +70,20 @@ export function getRuntimeListColumns(
 ): RuntimeFieldDescriptor[] {
   const listPage = getRuntimePage(descriptor, 'LIST');
   const metadata = parseMetadata<{ columns?: unknown[] }>(listPage?.metadataJson);
+  const fieldRules = getRuntimeFieldRuleMap(descriptor);
   const fields = getSchemaFields(descriptor);
-  const fieldsByKey = new Map(fields.map((field) => [field.key, field]));
+  const fieldsByKey = new Map(
+    fields
+      .filter((field) => isFieldReadable(fieldRules.get(field.key)))
+      .map((field) => [field.key, field]),
+  );
   const columns = Array.isArray(metadata?.columns)
     ? metadata.columns
-        .map((item) => toFieldDescriptor(item, fieldsByKey))
+        .map((item) => toFieldDescriptor(item, fieldsByKey, fieldRules))
         .filter((item): item is RuntimeFieldDescriptor => Boolean(item))
         .filter((item) => item.visible)
     : [];
-  return columns.length > 0 ? columns : fallbackFields(fields);
+  return columns.length > 0 ? columns : fallbackFields(fields, fieldRules);
 }
 
 export function getRuntimeDetailSections(
@@ -63,22 +92,35 @@ export function getRuntimeDetailSections(
 ): RuntimeSectionDescriptor[] {
   const page = getRuntimePage(descriptor, pageType);
   const metadata = parseMetadata<{ sections?: unknown[] }>(page?.metadataJson);
+  const fieldRules = getRuntimeFieldRuleMap(descriptor);
   const fields = getSchemaFields(descriptor);
-  const fieldsByKey = new Map(fields.map((field) => [field.key, field]));
+  const fieldsByKey = new Map(
+    fields
+      .filter((field) => isFieldReadable(fieldRules.get(field.key)))
+      .map((field) => [field.key, field]),
+  );
   const sections = Array.isArray(metadata?.sections)
     ? metadata.sections
-        .map((item, index) => toSectionDescriptor(item, fieldsByKey, index))
+        .map((item, index) =>
+          toSectionDescriptor(item, fieldsByKey, fieldRules, index),
+        )
         .filter((item): item is RuntimeSectionDescriptor => Boolean(item))
     : [];
   return sections.length > 0
     ? sections
-    : [{ fields: fallbackFields(fields), title: pageType === 'CREATE' ? '填写信息' : '基本信息' }];
+    : [
+        {
+          fields: fallbackFields(fields, fieldRules),
+          title: pageType === 'CREATE' ? '填写信息' : '基本信息',
+        },
+      ];
 }
 
 export function getRuntimeActions(
   descriptor: LowcodeApi.RuntimeApplicationDescriptor | undefined,
 ) {
   return (descriptor?.actions ?? [])
+    .filter((action) => action.allowed !== false)
     .filter((action) => (action.status || 'ENABLED').toUpperCase() === 'ENABLED')
     .slice()
     .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0));
@@ -102,6 +144,48 @@ export function getRetryWorkflowAction(
   return getRuntimeActions(descriptor).find((action) =>
     RETRY_ACTION_TYPES.has(action.actionType.toUpperCase()),
   );
+}
+
+export function getAuthorizedRuntimeFormSchemas(
+  descriptor: LowcodeApi.RuntimeApplicationDescriptor | undefined,
+): RuntimeAuthorizedFormSchemas {
+  const schema = parseMetadata<ProcessFormSchema>(descriptor?.schemaJson);
+  if (!schema?.properties) {
+    return {
+      schemaJson: descriptor?.schemaJson,
+      uiSchemaJson: descriptor?.uiSchemaJson,
+    };
+  }
+
+  const uiSchema =
+    parseMetadata<ProcessUiSchema>(descriptor?.uiSchemaJson) ?? {};
+  const fieldRules = getRuntimeFieldRuleMap(descriptor);
+  const properties = Object.fromEntries(
+    Object.entries(schema.properties).filter(([fieldKey]) =>
+      isFieldReadable(fieldRules.get(fieldKey)),
+    ),
+  );
+  const required = (schema.required ?? []).filter(
+    (fieldKey) =>
+      fieldKey in properties && isFieldWritable(fieldRules.get(fieldKey)),
+  );
+  const nextUiSchema = Object.fromEntries(
+    Object.keys(properties).map((fieldKey) => {
+      const rule = fieldRules.get(fieldKey);
+      const fieldUi = uiSchema[fieldKey] ?? {};
+      return [
+        fieldKey,
+        isFieldWritable(rule)
+          ? fieldUi
+          : { ...fieldUi, 'ui:disabled': true, 'ui:readonly': true },
+      ];
+    }),
+  );
+
+  return {
+    schemaJson: JSON.stringify({ ...schema, properties, required }),
+    uiSchemaJson: JSON.stringify(nextUiSchema),
+  };
 }
 
 export function toRuntimeTableRecord(
@@ -177,13 +261,14 @@ export function createRuntimeRetryKey(
 function toSectionDescriptor(
   value: unknown,
   fieldsByKey: Map<string, ProcessFormField>,
+  fieldRules: Map<string, LowcodeApi.RuntimeFieldAuthorization>,
   index: number,
 ): RuntimeSectionDescriptor | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const section = value as Record<string, unknown>;
   const fields = Array.isArray(section.fields)
     ? section.fields
-        .map((item) => toFieldDescriptor(item, fieldsByKey))
+        .map((item) => toFieldDescriptor(item, fieldsByKey, fieldRules))
         .filter((item): item is RuntimeFieldDescriptor => Boolean(item))
         .filter((item) => item.visible)
     : [];
@@ -197,28 +282,47 @@ function toSectionDescriptor(
 function toFieldDescriptor(
   value: unknown,
   fieldsByKey: Map<string, ProcessFormField>,
+  fieldRules: Map<string, LowcodeApi.RuntimeFieldAuthorization>,
 ): RuntimeFieldDescriptor | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const node = value as Record<string, unknown>;
   const fieldKey = String(node.fieldKey || '').trim();
   if (!fieldKey) return undefined;
   const schemaField = fieldsByKey.get(fieldKey);
+  const rule = fieldRules.get(fieldKey);
+  if (!isFieldReadable(rule)) return undefined;
   return {
+    editable: isFieldWritable(rule),
     fieldKey,
     format: String(node.format || schemaField?.widget || ''),
     label: String(node.label || node.title || schemaField?.label || fieldKey),
+    maskStrategy: rule?.maskStrategy,
+    readMode: normalizeMode(rule?.readMode),
     visible: node.visible === undefined ? true : Boolean(node.visible),
     width: typeof node.width === 'number' ? node.width : undefined,
+    writeMode: normalizeMode(rule?.writeMode),
   };
 }
 
-function fallbackFields(fields: ProcessFormField[]): RuntimeFieldDescriptor[] {
-  return fields.map((field) => ({
-    fieldKey: field.key,
-    format: field.widget,
-    label: field.label,
-    visible: true,
-  }));
+function fallbackFields(
+  fields: ProcessFormField[],
+  fieldRules: Map<string, LowcodeApi.RuntimeFieldAuthorization>,
+): RuntimeFieldDescriptor[] {
+  return fields
+    .filter((field) => isFieldReadable(fieldRules.get(field.key)))
+    .map((field) => {
+      const rule = fieldRules.get(field.key);
+      return {
+        editable: isFieldWritable(rule),
+        fieldKey: field.key,
+        format: field.widget,
+        label: field.label,
+        maskStrategy: rule?.maskStrategy,
+        readMode: normalizeMode(rule?.readMode),
+        visible: true,
+        writeMode: normalizeMode(rule?.writeMode),
+      };
+    });
 }
 
 function getSchemaFields(
@@ -239,4 +343,16 @@ function parseMetadata<T>(json?: string): T | undefined {
   } catch {
     return undefined;
   }
+}
+
+function isFieldReadable(rule?: LowcodeApi.RuntimeFieldAuthorization) {
+  return !HIDDEN_READ_MODES.has(normalizeMode(rule?.readMode));
+}
+
+function isFieldWritable(rule?: LowcodeApi.RuntimeFieldAuthorization) {
+  return !WRITE_BLOCKING_MODES.has(normalizeMode(rule?.writeMode));
+}
+
+function normalizeMode(value?: string) {
+  return String(value || '').trim().toUpperCase();
 }

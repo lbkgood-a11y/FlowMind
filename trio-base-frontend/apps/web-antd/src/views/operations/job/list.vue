@@ -31,6 +31,12 @@ import {
   updateJob,
   updateJobEnabled,
 } from '#/api';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const Textarea = Input.TextArea;
 
@@ -264,9 +270,9 @@ onMounted(load);
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page ops-page">
-      <section class="toolbar">
-        <Space wrap>
+    <BusinessPageScaffold class="ops-page" pattern="single-table">
+      <template #query>
+        <CompactQueryBar :columns="3">
           <Input v-model:value="query.keyword" class="query-input" placeholder="任务名称/编码" allow-clear />
           <Select
             v-model:value="query.enabled"
@@ -278,54 +284,62 @@ onMounted(load);
             ]"
             placeholder="状态"
           />
-          <Button v-if="canQuery" type="primary" @click="load">查询</Button>
-          <Button v-if="canQuery" @click="resetQuery">重置</Button>
-          <Button v-if="canCreate" type="primary" @click="openCreate">
-            <Plus class="size-4" />
-            新增任务
-          </Button>
-        </Space>
-      </section>
+          <template #actions>
+            <Button v-if="canQuery" type="primary" @click="load">查询</Button>
+            <Button v-if="canQuery" @click="resetQuery">重置</Button>
+            <Button v-if="canCreate" type="primary" @click="openCreate">
+              <Plus class="size-4" />
+              新增任务
+            </Button>
+          </template>
+        </CompactQueryBar>
+      </template>
 
-      <Table
-        row-key="id"
-        :columns="columns"
-        :data-source="records"
-        :loading="loading"
-        :pagination="pagination"
-        :scroll="{ x: 1380 }"
-        size="small"
-        :sticky="{ offsetScroll: 0 }"
-        @change="handleTableChange"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'enabled'">
-            <Tag :color="record.enabled === 1 ? 'green' : 'default'">
-              {{ record.enabled === 1 ? '启用' : '停用' }}
-            </Tag>
+      <template #toolbar>
+        <CompactToolbar title="后台任务" subtitle="维护定时任务定义、触发执行和查看日志" />
+      </template>
+
+      <CompactTableFrame>
+        <Table
+          row-key="id"
+          :columns="columns"
+          :data-source="records"
+          :loading="loading"
+          :pagination="pagination"
+          :scroll="{ x: 1380 }"
+          size="small"
+          :sticky="{ offsetScroll: 0 }"
+          @change="handleTableChange"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'enabled'">
+              <Tag :color="record.enabled === 1 ? 'green' : 'default'">
+                {{ record.enabled === 1 ? '启用' : '停用' }}
+              </Tag>
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <Space>
+                <Button v-if="canUpdate" type="link" size="small" @click="openEdit(asJob(record))">
+                  编辑
+                </Button>
+                <Button v-if="canUpdate" type="link" size="small" @click="toggleEnabled(asJob(record))">
+                  {{ record.enabled === 1 ? '停用' : '启用' }}
+                </Button>
+                <Button v-if="canTrigger" type="link" size="small" @click="trigger(asJob(record))">
+                  触发
+                </Button>
+                <Button v-if="canLogs" type="link" size="small" @click="openLogs(asJob(record))">
+                  日志
+                </Button>
+                <Popconfirm v-if="canDelete" title="确认删除该任务？" @confirm="remove(asJob(record))">
+                  <Button danger type="link" size="small">删除</Button>
+                </Popconfirm>
+              </Space>
+            </template>
           </template>
-          <template v-else-if="column.key === 'action'">
-            <Space>
-              <Button v-if="canUpdate" type="link" size="small" @click="openEdit(asJob(record))">
-                编辑
-              </Button>
-              <Button v-if="canUpdate" type="link" size="small" @click="toggleEnabled(asJob(record))">
-                {{ record.enabled === 1 ? '停用' : '启用' }}
-              </Button>
-              <Button v-if="canTrigger" type="link" size="small" @click="trigger(asJob(record))">
-                触发
-              </Button>
-              <Button v-if="canLogs" type="link" size="small" @click="openLogs(asJob(record))">
-                日志
-              </Button>
-              <Popconfirm v-if="canDelete" title="确认删除该任务？" @confirm="remove(asJob(record))">
-                <Button danger type="link" size="small">删除</Button>
-              </Popconfirm>
-            </Space>
-          </template>
-        </template>
-      </Table>
-    </div>
+        </Table>
+      </CompactTableFrame>
+    </BusinessPageScaffold>
 
     <Modal
       v-model:open="modalOpen"

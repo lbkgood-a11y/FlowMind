@@ -40,6 +40,7 @@ class AuthServiceTest {
     @Mock private StringRedisTemplate redis;
     @Mock private ValueOperations<String, String> valueOperations;
     @Mock private LoginSessionService loginSessionService;
+    @Mock private AuthorizationVersionService authorizationVersionService;
 
     @InjectMocks
     private AuthService authService;
@@ -53,6 +54,7 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(authService, "refreshTokenTtl", 1800);
         lenient().when(redis.opsForValue()).thenReturn(valueOperations);
         lenient().when(redis.hasKey(anyString())).thenReturn(false);
+        lenient().when(authorizationVersionService.current(anyString())).thenReturn(1L);
     }
 
     @Test
@@ -112,6 +114,12 @@ class AuthServiceTest {
     @Test
     void validate_shouldReturnValid_whenTokenOk() {
         String token = JwtUtil.createAccessToken("U001", "admin", List.of("ADMIN"), SECRET, 300);
+        SysUser user = new SysUser();
+        user.setId("U001");
+        user.setUsername("admin");
+        user.setTenantId("tenant-a");
+        user.setStatus(1);
+        when(userMapper.selectById("U001")).thenReturn(user);
         when(userMapper.selectPermissionsByUserId("U001")).thenReturn(List.of("GET:/api/v1/users"));
 
         TokenValidateResult result = authService.validate(token);
@@ -119,6 +127,7 @@ class AuthServiceTest {
         assertTrue(result.isValid());
         assertEquals("U001", result.getUserId());
         assertEquals("admin", result.getUsername());
+        assertEquals("tenant-a", result.getTenantId());
     }
 
     @Test

@@ -71,6 +71,17 @@ public class OperationAuditFilter extends OncePerRequestFilter {
             audit.setUserAgent(limit(request.getHeader("User-Agent"), 512));
             audit.setRequestSummary(limit(request.getMethod() + " " + request.getRequestURI(), 1000));
             audit.setResultStatus(thrown == null && response.getStatus() < 400 ? "SUCCESS" : "FAILURE");
+            audit.setActionId(header(request, "X-Action-Id"));
+            audit.setActionType(header(request, "X-Action-Type"));
+            audit.setActionSource(header(request, "X-Action-Source"));
+            audit.setActionStatus(header(request, "X-Action-Status"));
+            audit.setActionTargetType(header(request, "X-Action-Target-Type"));
+            audit.setActionTargetId(header(request, "X-Action-Target-Id"));
+            audit.setActionCorrelationId(header(request, "X-Action-Correlation-Id"));
+            audit.setActionIdempotencyKey(firstNonBlank(
+                    header(request, "X-Action-Idempotency-Key"),
+                    header(request, "Idempotency-Key")));
+            audit.setActionSummary(limit(header(request, "X-Action-Summary"), 2000));
             audit.setStatusCode(response.getStatus());
             audit.setErrorMessage(thrown != null ? limit(thrown.getMessage(), 512) : null);
             audit.setLatencyMs(System.currentTimeMillis() - start);
@@ -114,6 +125,14 @@ public class OperationAuditFilter extends OncePerRequestFilter {
     private String traceId(HttpServletRequest request) {
         String traceId = request.getHeader("X-B3-TraceId");
         return StringUtils.hasText(traceId) ? traceId : request.getHeader("traceparent");
+    }
+
+    private String header(HttpServletRequest request, String name) {
+        return limit(request.getHeader(name), 512);
+    }
+
+    private String firstNonBlank(String first, String fallback) {
+        return StringUtils.hasText(first) ? first : fallback;
     }
 
     private String limit(String value, int max) {

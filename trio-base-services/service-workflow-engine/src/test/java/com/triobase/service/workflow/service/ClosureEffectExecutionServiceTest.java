@@ -1,6 +1,12 @@
 package com.triobase.service.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.triobase.common.action.enums.ActionActorType;
+import com.triobase.common.action.enums.ActionSource;
+import com.triobase.common.action.model.ActionActor;
+import com.triobase.common.action.model.ActionContext;
+import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
+import com.triobase.service.workflow.action.WorkflowActionExecutionContext;
 import com.triobase.service.workflow.entity.ClosureEffect;
 import com.triobase.service.workflow.entity.ClosureOutbox;
 import com.triobase.service.workflow.entity.ProcessClosure;
@@ -17,6 +23,7 @@ import com.triobase.service.workflow.mapper.ClosureOutboxMapper;
 import com.triobase.service.workflow.mapper.ProcessClosureMapper;
 import com.triobase.service.workflow.mapper.ProcessOutcomeMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
@@ -45,6 +52,11 @@ class ClosureEffectExecutionServiceTest {
             closureOutboxMapper,
             executorRegistry,
             new ObjectMapper());
+
+    @AfterEach
+    void tearDown() {
+        WorkflowActionExecutionContext.clear();
+    }
 
     @Test
     void executesBusinessActionEffectAndRecalculatesClosureStatus() {
@@ -229,6 +241,7 @@ class ClosureEffectExecutionServiceTest {
         when(processClosureMapper.selectById("CLO001")).thenReturn(closure);
         when(closureOutboxMapper.selectList(any())).thenReturn(List.of(outbox));
         when(closureEffectMapper.selectList(any())).thenReturn(List.of(effect));
+        WorkflowActionExecutionContext.set(ownerRequest());
 
         ClosureEffect result = service.markManuallyHandled(
                 "EFF001",
@@ -241,6 +254,9 @@ class ClosureEffectExecutionServiceTest {
         assertTrue(result.getResultJson().contains("线下通知已补发"));
         assertEquals("SKIPPED", outbox.getStatus());
         assertEquals("SUCCEEDED", closure.getClosureStatus());
+        assertEquals("act_closure_001", result.getActionId());
+        assertEquals("process.closure.effect.markHandled", result.getActionType());
+        assertEquals("act_closure_001", closure.getActionId());
         verify(closureEffectMapper).updateById(effect);
         verify(closureOutboxMapper).updateById(outbox);
         verify(processClosureMapper).updateById(closure);
@@ -284,5 +300,22 @@ class ClosureEffectExecutionServiceTest {
         outcome.setBusinessId("ER100");
         outcome.setPayloadJson("{\"outcomeStatus\":\"APPROVED\"}");
         return outcome;
+    }
+
+    private ActionOwnerDispatchRequest ownerRequest() {
+        ActionOwnerDispatchRequest request = new ActionOwnerDispatchRequest();
+        request.setActionId("act_closure_001");
+        request.setActionType("process.closure.effect.markHandled");
+        request.setSource(ActionSource.GUI);
+        ActionActor actor = new ActionActor();
+        actor.setType(ActionActorType.USER);
+        actor.setId("admin-1");
+        actor.setDisplayName("Admin");
+        request.setActor(actor);
+        ActionContext context = new ActionContext();
+        context.setTraceId("trace-action-1");
+        context.setCorrelationId("corr-closure-001");
+        request.setContext(context);
+        return request;
     }
 }

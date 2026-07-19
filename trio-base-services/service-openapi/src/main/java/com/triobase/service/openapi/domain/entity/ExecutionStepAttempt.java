@@ -23,6 +23,14 @@ public class ExecutionStepAttempt {
     private Integer externalStatus;
     private String errorCode;
     private String sanitizedError;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionTraceId;
+    private String actionCorrelationId;
     @TableField(typeHandler = PostgresJsonbTypeHandler.class)
     private JsonNode evidence;
     private LocalDateTime createdAt;

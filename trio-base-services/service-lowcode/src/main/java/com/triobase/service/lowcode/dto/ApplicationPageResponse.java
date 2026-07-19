@@ -8,4 +8,6 @@ public class ApplicationPageResponse {
     private String pageType;
     private String metadataJson;
     private Integer sortOrder;
+    private Boolean allowed;
+    private String authorizationActionCode;
 }

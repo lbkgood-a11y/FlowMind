@@ -45,6 +45,24 @@ describe('process form runtime', () => {
     ]);
   });
 
+  it('maps authorization ui hints to disabled fields', () => {
+    const fields = getProcessFormFields(
+      schemaJson,
+      JSON.stringify({
+        amount: {
+          'ui:disabled': true,
+          'ui:readonly': true,
+          'ui:widget': 'money',
+        },
+      }),
+    );
+    expect(fields.find((field) => field.key === 'amount')).toMatchObject({
+      disabled: true,
+      readOnly: true,
+      widget: 'money',
+    });
+  });
+
   it('returns required, type, range, and unknown field errors', () => {
     const errors = validateProcessFormData(schemaJson, {
       amount: 'invalid',

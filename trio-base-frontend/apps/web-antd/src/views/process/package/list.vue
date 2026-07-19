@@ -38,6 +38,12 @@ import {
   publishProcessPackage,
   updateProcessPackage,
 } from '#/api/process';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 import { validateProcessDefinition } from '../components/process-designer';
 
@@ -145,6 +151,11 @@ async function loadRecords(page = pagination.current) {
   } finally {
     loading.value = false;
   }
+}
+
+function resetQuery() {
+  query.keyword = '';
+  loadRecords(1);
 }
 
 async function loadFormDefinitions() {
@@ -277,10 +288,26 @@ onMounted(loadFormDefinitions);
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page">
-      <section class="list-panel">
-        <div class="list-header">
-          <h2>流程包管理</h2>
+    <BusinessPageScaffold pattern="single-table">
+      <template #query>
+        <CompactQueryBar :columns="3">
+          <FormItem label="关键字">
+            <Input
+              v-model:value="query.keyword"
+              allow-clear
+              placeholder="流程名称 / 标识"
+              @press-enter="loadRecords(1)"
+            />
+          </FormItem>
+          <template #actions>
+            <Button v-if="canQuery" type="primary" @click="loadRecords(1)">查询</Button>
+            <Button v-if="canQuery" @click="resetQuery">重置</Button>
+          </template>
+        </CompactQueryBar>
+      </template>
+
+      <template #toolbar>
+        <CompactToolbar title="流程包管理" subtitle="维护流程包草稿、发布版本和流程定义">
           <Space :size="8">
             <Button v-if="canCreate" type="primary" @click="openCreate">
               <Plus class="size-4" />
@@ -292,9 +319,10 @@ onMounted(loadFormDefinitions);
               </Button>
             </Tooltip>
           </Space>
-        </div>
+        </CompactToolbar>
+      </template>
 
-        <div class="table-frame">
+      <CompactTableFrame>
           <Table
             :columns="columns"
             :data-source="records"
@@ -323,9 +351,8 @@ onMounted(loadFormDefinitions);
               </template>
             </template>
           </Table>
-        </div>
 
-        <div class="table-footer">
+        <template #footer>
           <div class="table-total">共 {{ pagination.total }} 条记录</div>
           <Pagination
             v-model:current="pagination.current"
@@ -338,9 +365,9 @@ onMounted(loadFormDefinitions);
             @change="onPageChange"
             @show-size-change="onPageChange"
           />
-        </div>
-      </section>
-    </div>
+        </template>
+      </CompactTableFrame>
+    </BusinessPageScaffold>
 
     <Drawer
       v-model:open="formOpen"

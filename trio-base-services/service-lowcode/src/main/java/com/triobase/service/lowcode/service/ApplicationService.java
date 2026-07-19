@@ -23,6 +23,8 @@ import com.triobase.service.lowcode.mapper.ApplicationPageMapper;
 import com.triobase.service.lowcode.mapper.ApplicationVersionMapper;
 import com.triobase.service.lowcode.mapper.FormDefinitionMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.DigestUtils;
@@ -37,6 +39,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ApplicationService {
 
+    private static final Logger logger = LoggerFactory.getLogger(ApplicationService.class);
+
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_PUBLISHED = "PUBLISHED";
     private static final String STATUS_OFFLINE = "OFFLINE";
@@ -50,6 +54,7 @@ public class ApplicationService {
     private final FormDefinitionMapper formDefinitionMapper;
     private final ApplicationMetadataValidator metadataValidator;
     private final ApplicationReferenceValidator referenceValidator;
+    private final AuthorizationResourceSyncClient authorizationResourceSyncClient;
 
     @Transactional
     public ApplicationResponse create(CreateApplicationRequest request, String operator) {
@@ -228,6 +233,7 @@ public class ApplicationService {
         metadataValidator.validateDraft(pages, actions);
         metadataValidator.validateFieldReferences(form.getSchemaJson(), pages);
         referenceValidator.validatePublication(version, actions);
+        authorizationResourceSyncClient.syncPublishedApplication(version, pages, actions);
         LocalDateTime now = LocalDateTime.now();
         String metadataHash = metadataHash(version, pages, actions);
 
@@ -276,6 +282,11 @@ public class ApplicationService {
         }
         application.setUpdatedAt(now);
         applicationMapper.updateById(application);
+        try {
+            authorizationResourceSyncClient.syncOfflineApplication(version);
+        } catch (RuntimeException e) {
+            logger.warn("Failed to sync offline application authorization resources: {}", e.getMessage());
+        }
         return getVersion(versionId);
     }
 

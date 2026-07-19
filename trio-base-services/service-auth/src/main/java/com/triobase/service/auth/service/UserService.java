@@ -122,6 +122,7 @@ public class UserService {
 
         SysUser user = new SysUser();
         user.setId(UlidGenerator.nextUlid());
+        user.setTenantId("default");
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setEmail(request.getEmail());

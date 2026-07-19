@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
@@ -7,6 +7,7 @@ import { Page } from '@vben/common-ui';
 import { getRuntimeApplicationDescriptor } from '#/api/lowcode';
 
 const router = useRouter();
+const unavailable = ref(false);
 
 onMounted(async () => {
   try {
@@ -17,14 +18,16 @@ onMounted(async () => {
       query: { version: descriptor.version },
     });
   } catch {
-    await router.replace({ name: 'LowcodeExpenseLegacy' });
+    unavailable.value = true;
   }
 });
 </script>
 
 <template>
   <Page auto-content-height>
-    <div class="compat-loading">正在打开费用报销...</div>
+    <div class="compat-loading">
+      {{ unavailable ? '费用报销应用尚未发布，请先在低代码运行中心发布应用。' : '正在打开费用报销...' }}
+    </div>
   </Page>
 </template>
 

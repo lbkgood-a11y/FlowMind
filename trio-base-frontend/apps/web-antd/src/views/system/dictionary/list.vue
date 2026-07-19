@@ -36,6 +36,12 @@ import {
   updateDictType,
 } from '#/api';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const Textarea = Input.TextArea;
 
@@ -395,9 +401,9 @@ onMounted(async () => {
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page dictionary-page">
-      <section class="toolbar">
-        <Space wrap>
+    <BusinessPageScaffold class="dictionary-page" pattern="master-detail">
+      <template #query>
+        <CompactQueryBar :columns="3">
           <Input v-model:value="typeQuery.keyword" class="query-input" placeholder="字典编码/名称" allow-clear />
           <Select
             v-model:value="typeQuery.status"
@@ -409,19 +415,25 @@ onMounted(async () => {
             ]"
             placeholder="类型状态"
           />
-          <Button v-if="canQuery" type="primary" @click="loadTypes">查询</Button>
-          <Button v-if="canQuery" @click="resetTypeQuery">重置</Button>
-          <Tooltip v-if="canQuery" title="刷新">
-            <Button shape="circle" @click="loadTypes">
-              <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+          <template #actions>
+            <Button v-if="canQuery" type="primary" @click="loadTypes">查询</Button>
+            <Button v-if="canQuery" @click="resetTypeQuery">重置</Button>
+            <Tooltip v-if="canQuery" title="刷新">
+              <Button shape="circle" @click="loadTypes">
+                <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+              </Button>
+            </Tooltip>
+            <Button v-if="canCreate" type="primary" @click="openCreateType">
+              <Plus class="size-4" />
+              新增类型
             </Button>
-          </Tooltip>
-          <Button v-if="canCreate" type="primary" @click="openCreateType">
-            <Plus class="size-4" />
-            新增类型
-          </Button>
-        </Space>
-      </section>
+          </template>
+        </CompactQueryBar>
+      </template>
+
+      <template #toolbar>
+        <CompactToolbar title="字典管理" subtitle="维护字典类型、字典项和内置状态" />
+      </template>
 
       <div class="dictionary-layout">
         <section class="data-panel type-panel">
@@ -429,7 +441,8 @@ onMounted(async () => {
             <div class="panel-title">字典列表</div>
             <div class="panel-meta">点击字典行查看下方字典项</div>
           </div>
-          <Table
+          <CompactTableFrame>
+            <Table
             row-key="id"
             :columns="typeColumns"
             :data-source="types"
@@ -469,6 +482,7 @@ onMounted(async () => {
               </template>
             </template>
           </Table>
+          </CompactTableFrame>
         </section>
 
         <section class="data-panel item-panel">
@@ -496,8 +510,8 @@ onMounted(async () => {
           </div>
 
           <Empty v-if="!selectedType" description="请选择上方字典类型" />
-          <Table
-            v-else
+          <CompactTableFrame v-else>
+            <Table
             row-key="id"
             :columns="itemColumns"
             :data-source="items"
@@ -534,9 +548,10 @@ onMounted(async () => {
               </template>
             </template>
           </Table>
+          </CompactTableFrame>
         </section>
       </div>
-    </div>
+    </BusinessPageScaffold>
 
     <Drawer
       v-model:open="typeFormOpen"

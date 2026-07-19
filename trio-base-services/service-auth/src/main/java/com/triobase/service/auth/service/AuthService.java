@@ -41,6 +41,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final StringRedisTemplate redis;
     private final LoginSessionService loginSessionService;
+    private final AuthorizationVersionService authorizationVersionService;
 
     @Value("${auth.jwt.secret}")
     private String jwtSecret;
@@ -65,6 +66,7 @@ public class AuthService {
         }
         SysUser user = new SysUser();
         user.setId(UlidGenerator.nextUlid());
+        user.setTenantId(DEFAULT_TENANT_ID);
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(password));
         user.setEmail(email);
@@ -137,10 +139,21 @@ public class AuthService {
         if (loginSessionService.isAccessJtiInactive(payload.jti())) {
             return TokenValidateResult.fail("会话已失效");
         }
+        SysUser user = userMapper.selectById(payload.userId());
+        if (user == null || user.getStatus() != 1) {
+            return TokenValidateResult.fail("账号不可用");
+        }
         List<String> roles = userMapper.selectRoleCodesByUserId(payload.userId());
         List<String> permissions = userMapper.selectPermissionsByUserId(payload.userId());
-        return TokenValidateResult.success(payload.userId(), payload.username(), DEFAULT_TENANT_ID,
-                roles, permissions, null, null, null);
+        return TokenValidateResult.success(payload.userId(), payload.username(), tenantId(user),
+                roles,
+                permissions,
+                authorizationVersionService.current(AuthorizationVersionService.AUTHORIZATION),
+                authorizationVersionService.current(AuthorizationVersionService.GRANT),
+                authorizationVersionService.current(AuthorizationVersionService.DATA_POLICY),
+                authorizationVersionService.current(AuthorizationVersionService.AUTHORIZATION),
+                authorizationVersionService.current(AuthorizationVersionService.FIELD_POLICY),
+                authorizationVersionService.current(AuthorizationVersionService.GUARD_TEMPLATE));
     }
 
     public void logout(String accessToken, String refreshToken) {
@@ -197,5 +210,11 @@ public class AuthService {
         resp.setRoles(roles);
         loginSessionService.recordSession(user, resp, jwtSecret);
         return resp;
+    }
+
+    private String tenantId(SysUser user) {
+        return user != null && user.getTenantId() != null && !user.getTenantId().isBlank()
+                ? user.getTenantId()
+                : DEFAULT_TENANT_ID;
     }
 }

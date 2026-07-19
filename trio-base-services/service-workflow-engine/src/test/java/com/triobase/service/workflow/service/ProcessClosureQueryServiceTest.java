@@ -53,8 +53,11 @@ class ProcessClosureQueryServiceTest {
 
         verify(authorizationService).requireCanView(instance);
         assertEquals("APPROVED", response.getOutcome().getOutcomeStatus());
+        assertEquals("act_task_001", response.getOutcome().getActionId());
         assertEquals("PARTIAL_FAILED", response.getClosure().getClosureStatus());
+        assertEquals("act_task_001", response.getClosure().getActionId());
         assertEquals("notifyApplicant", response.getEffects().getFirst().getBusinessActionCode());
+        assertEquals("act_retry_001", response.getEffects().getFirst().getActionId());
         assertEquals("通知申请人", response.getEffects().getFirst().getBusinessActionName());
         assertTrue(response.getEffects().getFirst().isRetryAvailable());
         assertTrue(response.getEffects().getFirst().isManualHandlingAvailable());
@@ -80,6 +83,13 @@ class ProcessClosureQueryServiceTest {
         outcome.setBusinessType("expense_report");
         outcome.setBusinessId("ER100");
         outcome.setOutcomeStatus("APPROVED");
+        outcome.setActionId("act_task_001");
+        outcome.setActionType("process.task.approve");
+        outcome.setActionSource("GUI");
+        outcome.setActionActorType("USER");
+        outcome.setActionActorId("approver-1");
+        outcome.setActionActorName("Approver");
+        outcome.setActionCorrelationId("corr-001");
         return outcome;
     }
 
@@ -90,6 +100,7 @@ class ProcessClosureQueryServiceTest {
         closure.setClosureStatus("PARTIAL_FAILED");
         closure.setBusinessType("expense_report");
         closure.setBusinessId("ER100");
+        closure.setActionId("act_task_001");
         return closure;
     }
 
@@ -104,6 +115,13 @@ class ProcessClosureQueryServiceTest {
         effect.setRequestJson("{\"manualHandlingEnabled\":true}");
         effect.setAttemptCount(3);
         effect.setLastError("temporary failure");
+        effect.setActionId("act_retry_001");
+        effect.setActionType("process.closure.effect.retry");
+        effect.setActionSource("GUI");
+        effect.setActionActorType("USER");
+        effect.setActionActorId("admin-1");
+        effect.setActionActorName("Admin");
+        effect.setActionCorrelationId("corr-retry-001");
         return effect;
     }
 

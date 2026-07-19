@@ -23,6 +23,7 @@ export namespace ProcessApi {
     launchPlanJson?: string;
     permissionPlanJson?: string;
     sourcePackageId?: string;
+    tenantId?: string;
     publishedAt?: string;
     createdAt: string;
     updatedAt: string;
@@ -338,20 +339,6 @@ async function getProcessHistory(id: string) {
   return requestClient.get<ProcessApi.ProcessHistory>(`/process-instances/${id}/history`);
 }
 
-async function startProcessInstance(data: {
-  businessId?: string;
-  businessType?: string;
-  formData?: Record<string, any>;
-  idempotencyKey?: string;
-  launchMode?: string;
-  processKey: string;
-  processPackageId?: string;
-  title?: string;
-  version?: number;
-}) {
-  return requestClient.post<ProcessApi.ProcessInstance>('/process-instances/start', data);
-}
-
 // ── 任务 API ──
 async function getMyPendingTasks(params: Recordable<any>) {
   const page = await requestClient.get<{
@@ -373,31 +360,6 @@ async function getTaskById(id: string) {
   return requestClient.get<ProcessApi.TaskItem>(`/tasks/${id}`);
 }
 
-async function approveTask(id: string, data: { comment?: string; operationId: string }) {
-  return requestClient.post<ProcessApi.TaskItem>(`/tasks/${id}/approve`, data);
-}
-
-async function rejectTask(
-  id: string,
-  data: { comment?: string; operationId: string; targetNodeId?: string },
-) {
-  return requestClient.post<ProcessApi.TaskItem>(`/tasks/${id}/reject`, data);
-}
-
-async function transferTask(
-  id: string,
-  data: { newAssigneeId: string; newAssigneeName?: string; operationId: string },
-) {
-  return requestClient.post<ProcessApi.TaskItem>(`/tasks/${id}/transfer`, data);
-}
-
-async function addSignTask(
-  id: string,
-  data: { assigneeId: string; assigneeName?: string; operationId: string },
-) {
-  return requestClient.post<ProcessApi.TaskItem>(`/tasks/${id}/add-sign`, data);
-}
-
 async function getRejectTargets(processInstanceId: string) {
   return requestClient.get<string[]>(`/tasks/reject-targets/${processInstanceId}`);
 }
@@ -409,22 +371,7 @@ async function getProcessClosureDetail(processInstanceId: string) {
   );
 }
 
-async function retryClosureEffect(effectId: string) {
-  return requestClient.post<ProcessApi.ProcessClosureDetail['effects'][number]>(
-    `/process-closures/effects/${effectId}/retry`,
-  );
-}
-
-async function markClosureEffectHandled(effectId: string, data: { reason?: string }) {
-  return requestClient.post<ProcessApi.ProcessClosureDetail['effects'][number]>(
-    `/process-closures/effects/${effectId}/manual-handled`,
-    data,
-  );
-}
-
 export {
-  addSignTask,
-  approveTask,
   createProcessPackage,
   createProcessPackageVersion,
   deleteProcessPackage,
@@ -441,12 +388,7 @@ export {
   getProcessPackageList,
   getTaskById,
   getRejectTargets,
-  markClosureEffectHandled,
   offlineProcessPackage,
   publishProcessPackage,
-  rejectTask,
-  retryClosureEffect,
-  startProcessInstance,
-  transferTask,
   updateProcessPackage,
 };

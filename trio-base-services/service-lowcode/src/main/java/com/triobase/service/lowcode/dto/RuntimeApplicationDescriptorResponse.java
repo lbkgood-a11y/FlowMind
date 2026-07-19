@@ -13,4 +13,5 @@ public class RuntimeApplicationDescriptorResponse extends RuntimeApplicationSumm
     private String uiSchemaJson;
     private List<ApplicationPageResponse> pages;
     private List<ApplicationActionResponse> actions;
+    private List<RuntimeFieldAuthorizationResponse> fieldRules;
 }

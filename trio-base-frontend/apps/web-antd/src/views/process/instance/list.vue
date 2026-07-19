@@ -2,6 +2,7 @@
 import type { TableProps } from 'ant-design-vue';
 
 import type { SystemOrgApi } from '#/api';
+import type { ActionApi } from '#/api/action-client';
 import type { ProcessApi } from '#/api/process';
 
 import { computed, h, onMounted, reactive, ref } from 'vue';
@@ -30,16 +31,31 @@ import {
   TimelineItem,
 } from 'ant-design-vue';
 
-import { getOrgDimensions, getOrgTree } from '#/api';
+import {
+  ACTION_TARGET_TYPES,
+  ACTION_TYPES,
+  createActionIdempotencyKey,
+  getActionErrorCode,
+  getOrgDimensions,
+  getOrgTree,
+  requireActionData,
+} from '#/api';
 import {
   getProcessClosureDetail,
   getProcessHistory,
   getProcessInstanceList,
   getProcessPackageList,
-  markClosureEffectHandled,
-  retryClosureEffect,
-  startProcessInstance,
 } from '#/api/process';
+import {
+  isActionDispatchError,
+  useActionDispatch,
+} from '#/composables/useActionDispatch';
+import {
+  BusinessActionButton,
+  BusinessPageScaffold,
+  refreshByScopes,
+  useActionAvailability,
+} from '#/shared';
 
 import DynamicProcessForm from '../components/DynamicProcessForm.vue';
 import { getProcessFormFields, parseFormSchema } from '../components/process-form';
@@ -47,7 +63,6 @@ import { getProcessFormFields, parseFormSchema } from '../components/process-for
 const PERMISSIONS = {
   history: '/api/v1/process-instances/*/history:GET',
   query: '/api/v1/process-instances:GET',
-  retryClosure: '/api/v1/process-closures/*/retry:POST',
   start: '/api/v1/process-instances/start:POST',
 } as const;
 
@@ -56,12 +71,15 @@ const ORG_PERMISSIONS = {
 } as const;
 
 const { hasAccessByCodes } = useAccess();
+const { dispatchAction } = useActionDispatch();
+const {
+  getAvailability,
+  loadAvailability: loadActionAvailability,
+  loading: actionAvailabilityLoading,
+} = useActionAvailability();
 const canQuery = computed(() => hasAccessByCodes([PERMISSIONS.query]));
 const canStart = computed(() => hasAccessByCodes([PERMISSIONS.start]));
 const canHistory = computed(() => hasAccessByCodes([PERMISSIONS.history]));
-const canRetryClosure = computed(() =>
-  hasAccessByCodes([PERMISSIONS.retryClosure]),
-);
 const canQueryOrg = computed(() => hasAccessByCodes([ORG_PERMISSIONS.query]));
 
 const loading = ref(false);
@@ -339,25 +357,166 @@ async function loadClosure(instanceId: string) {
   closureLoading.value = true;
   try {
     detailClosure.value = await getProcessClosureDetail(instanceId);
+    await loadClosureEffectAvailability();
   } catch {
     detailClosure.value = undefined;
+    await loadActionAvailability([]);
   } finally {
     closureLoading.value = false;
   }
 }
 
+async function loadClosureEffectAvailability() {
+  if (!detailRecord.value || !detailClosure.value?.effects.length) {
+    await loadActionAvailability([]);
+    return;
+  }
+  await loadActionAvailability(buildClosureEffectCandidates());
+}
+
+function buildClosureEffectCandidates() {
+  return detailClosure.value!.effects.flatMap((effect) => {
+    const candidates: ActionApi.ActionCandidate[] = [];
+    if (effect.retryAvailable) {
+      candidates.push(
+        buildClosureEffectCandidate(
+          ACTION_TYPES.processClosureEffectRetry,
+          effect,
+          { effectId: effect.id },
+        ),
+      );
+    }
+    if (effect.manualHandlingAvailable) {
+      candidates.push(
+        buildClosureEffectCandidate(
+          ACTION_TYPES.processClosureEffectMarkHandled,
+          effect,
+          { effectId: effect.id, reason: '人工确认已处理' },
+        ),
+      );
+    }
+    return candidates;
+  });
+}
+
+function buildClosureEffectCandidate(
+  actionType: string,
+  effect: ProcessApi.ProcessClosureDetail['effects'][number],
+  payload: Record<string, unknown>,
+): ActionApi.ActionCandidate {
+  return {
+    actionType,
+    candidateId: closureEffectCandidateId(actionType, effect.id),
+    executionMode: 'SYNC',
+    payload,
+    target: {
+      id: effect.id,
+      ownerService: 'service-workflow-engine',
+      tenantId: detailRecord.value?.tenantId,
+      type: ACTION_TARGET_TYPES.processClosureEffect,
+    },
+  };
+}
+
+function closureEffectCandidateId(actionType: string, effectId: string) {
+  return `${actionType}:${effectId}`;
+}
+
+function retryEffectAvailability(effectId: string) {
+  return getAvailability(
+    closureEffectCandidateId(ACTION_TYPES.processClosureEffectRetry, effectId),
+  );
+}
+
+function markEffectHandledAvailability(effectId: string) {
+  return getAvailability(
+    closureEffectCandidateId(
+      ACTION_TYPES.processClosureEffectMarkHandled,
+      effectId,
+    ),
+  );
+}
+
 async function retryEffect(effectId: string) {
   if (!detailRecord.value) return;
-  await retryClosureEffect(effectId);
-  message.success('已提交重试');
-  await loadClosure(detailRecord.value.id);
+  await dispatchAction(
+    {
+      actionType: ACTION_TYPES.processClosureEffectRetry,
+      executionMode: 'SYNC',
+      idempotencyKey: createActionIdempotencyKey(
+        ACTION_TYPES.processClosureEffectRetry,
+        effectId,
+      ),
+      payload: { effectId },
+      target: {
+        id: effectId,
+        ownerService: 'service-workflow-engine',
+        tenantId: detailRecord.value.tenantId,
+        type: ACTION_TARGET_TYPES.processClosureEffect,
+      },
+    },
+    {
+      failureMessage: '闭环重试提交失败',
+      onSuccess: async (result) => {
+        await refreshByScopes(result, {
+          actions: () => {
+            if (detailRecord.value) return loadClosure(detailRecord.value.id);
+          },
+          document: () => {
+            if (detailRecord.value) return loadClosure(detailRecord.value.id);
+          },
+          timeline: () => {
+            if (detailRecord.value) return loadHistory(detailRecord.value.id);
+          },
+          workflow: () => {
+            if (detailRecord.value) return loadClosure(detailRecord.value.id);
+          },
+        });
+      },
+      successMessage: '已提交重试',
+    },
+  );
 }
 
 async function markEffectHandled(effectId: string) {
   if (!detailRecord.value) return;
-  await markClosureEffectHandled(effectId, { reason: '人工确认已处理' });
-  message.success('已标记为人工处理');
-  await loadClosure(detailRecord.value.id);
+  await dispatchAction(
+    {
+      actionType: ACTION_TYPES.processClosureEffectMarkHandled,
+      executionMode: 'SYNC',
+      idempotencyKey: createActionIdempotencyKey(
+        ACTION_TYPES.processClosureEffectMarkHandled,
+        effectId,
+      ),
+      payload: { effectId, reason: '人工确认已处理' },
+      target: {
+        id: effectId,
+        ownerService: 'service-workflow-engine',
+        tenantId: detailRecord.value.tenantId,
+        type: ACTION_TARGET_TYPES.processClosureEffect,
+      },
+    },
+    {
+      failureMessage: '人工处理标记失败',
+      onSuccess: async (result) => {
+        await refreshByScopes(result, {
+          actions: () => {
+            if (detailRecord.value) return loadClosure(detailRecord.value.id);
+          },
+          document: () => {
+            if (detailRecord.value) return loadClosure(detailRecord.value.id);
+          },
+          timeline: () => {
+            if (detailRecord.value) return loadHistory(detailRecord.value.id);
+          },
+          workflow: () => {
+            if (detailRecord.value) return loadClosure(detailRecord.value.id);
+          },
+        });
+      },
+      successMessage: '已标记为人工处理',
+    },
+  );
 }
 
 async function submitStart() {
@@ -384,25 +543,63 @@ async function submitStart() {
         formDataObj.dept = selectedOrgUnit.value.unitCode;
       }
     }
-    await startProcessInstance({
-      processKey: pkg.processKey,
-      processPackageId: pkg.id,
-      title: formModel.title || undefined,
-      formData: formDataObj,
-      version: pkg.version,
-    });
+    const idempotencyKey = createActionIdempotencyKey(
+      ACTION_TYPES.processInstanceStart,
+      pkg.id,
+      pkg.version,
+    );
+    const result = await dispatchAction<{ processInstance: ProcessApi.ProcessInstance }>(
+      {
+        actionType: ACTION_TYPES.processInstanceStart,
+        executionMode: 'WORKFLOW',
+        idempotencyKey,
+        payload: {
+          processKey: pkg.processKey,
+          processPackageId: pkg.id,
+          title: formModel.title || undefined,
+          formData: formDataObj,
+          idempotencyKey,
+          version: pkg.version,
+        },
+        target: {
+          id: pkg.id,
+          ownerService: 'service-workflow-engine',
+          tenantId: pkg.tenantId,
+          type: ACTION_TARGET_TYPES.processInstance,
+          version: String(pkg.version),
+        },
+      },
+      { failureMessage: '流程发起失败' },
+    );
+    requireActionData<ProcessApi.ProcessInstance>(result, 'processInstance');
     message.success('流程已发起');
     formOpen.value = false;
-    await loadInstances();
+    await refreshByScopes(result, {
+      actions: () => loadInstances(),
+      document: () => loadInstances(),
+      list: () => loadInstances(),
+      timeline: () => loadInstances(),
+      workflow: () => loadInstances(),
+    });
   } catch (error: any) {
+    const actionResult = isActionDispatchError(error) ? error.result : undefined;
+    const actionErrorCode = getActionErrorCode(actionResult);
     const responseData = error?.response?.data ?? error;
-    if (responseData?.message === 'FORM_DATA_VALIDATION_FAILED') {
+    if (
+      actionErrorCode === 'FORM_DATA_VALIDATION_FAILED' ||
+      responseData?.message === 'FORM_DATA_VALIDATION_FAILED'
+    ) {
       dynamicFormRef.value?.applyServerErrors(
-        responseData?.data?.fieldErrors ?? [],
+        (actionResult?.data as Record<string, unknown> | undefined)?.fieldErrors ??
+          responseData?.data?.fieldErrors ??
+          [],
       );
       return;
     }
-    if (responseData?.message === 'PROCESS_VERSION_CONFLICT') {
+    if (
+      actionErrorCode === 'PROCESS_VERSION_CONFLICT' ||
+      responseData?.message === 'PROCESS_VERSION_CONFLICT'
+    ) {
       const processKey = pkg.processKey;
       await loadPackageOptions();
       const latest = packages.value.find((item) => item.processKey === processKey);
@@ -461,15 +658,20 @@ onMounted(() => loadInstances(1));
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page">
+    <BusinessPageScaffold pattern="single-table">
       <section class="list-panel">
         <div class="list-header">
           <h2>流程实例</h2>
           <Space :size="8">
-            <Button v-if="canStart" type="primary" @click="openStart">
+            <BusinessActionButton
+              v-if="canStart"
+              label="发起流程"
+              primary
+              @execute="openStart"
+            >
               <Plus class="size-4" />
               发起流程
-            </Button>
+            </BusinessActionButton>
             <Select
               v-model:value="query.status"
               allow-clear
@@ -520,7 +722,7 @@ onMounted(() => loadInstances(1));
           />
         </div>
       </section>
-    </div>
+    </BusinessPageScaffold>
 
     <Drawer
       v-model:open="formOpen"
@@ -626,22 +828,24 @@ onMounted(() => loadInstances(1));
                   <span v-if="effectResultSummary(effect)">{{ effectResultSummary(effect) }}</span>
                 </div>
                 <div class="effect-actions">
-                  <Button
-                    v-if="canRetryClosure && effect.retryAvailable"
-                    size="small"
-                    type="link"
-                    @click="retryEffect(effect.id)"
+                  <BusinessActionButton
+                    v-if="effect.retryAvailable"
+                    :availability="retryEffectAvailability(effect.id)"
+                    :loading="actionAvailabilityLoading"
+                    label="重试"
+                    @execute="retryEffect(effect.id)"
                   >
                     重试
-                  </Button>
-                  <Button
-                    v-if="canRetryClosure && effect.manualHandlingAvailable"
-                    size="small"
-                    type="link"
-                    @click="markEffectHandled(effect.id)"
+                  </BusinessActionButton>
+                  <BusinessActionButton
+                    v-if="effect.manualHandlingAvailable"
+                    :availability="markEffectHandledAvailability(effect.id)"
+                    :loading="actionAvailabilityLoading"
+                    label="标记已处理"
+                    @execute="markEffectHandled(effect.id)"
                   >
                     标记已处理
-                  </Button>
+                  </BusinessActionButton>
                 </div>
               </div>
             </div>

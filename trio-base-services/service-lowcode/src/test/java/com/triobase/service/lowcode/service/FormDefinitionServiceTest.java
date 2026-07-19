@@ -40,6 +40,9 @@ class FormDefinitionServiceTest {
     @Mock
     private LowcodeFormSchemaValidator formSchemaValidator;
 
+    @Mock
+    private AuthorizationResourceSyncClient authorizationResourceSyncClient;
+
     @InjectMocks
     private FormDefinitionService service;
 
@@ -168,7 +171,23 @@ class FormDefinitionServiceTest {
 
         assertEquals("PUBLISHED", response.getStatus());
         verify(formSchemaValidator).validate(any(), any(), any());
+        verify(authorizationResourceSyncClient).syncPublishedForm(any(), any());
         verify(formDefinitionMapper).updateById(definition);
+    }
+
+    @Test
+    void publishDraftRejectsWhenAuthorizationSyncFails() {
+        setTenantUser();
+        LcFormDefinition definition = definition("DRAFT");
+        when(formDefinitionMapper.selectOne(any())).thenReturn(definition);
+        when(formFieldDefinitionMapper.selectList(any())).thenReturn(List.of(fieldDefinition("amount")));
+        doThrow(new BizException(50290, "LOWCODE_AUTHZ_SYNC_FAILED"))
+                .when(authorizationResourceSyncClient).syncPublishedForm(any(), any());
+
+        BizException exception = assertThrows(BizException.class, () -> service.publish("FORM001"));
+
+        assertEquals("LOWCODE_AUTHZ_SYNC_FAILED", exception.getMessage());
+        verify(formDefinitionMapper, never()).updateById(any(LcFormDefinition.class));
     }
 
     @Test

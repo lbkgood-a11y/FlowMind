@@ -40,6 +40,11 @@ import {
   publishFormDefinition,
   updateFormDefinition,
 } from '#/api/lowcode';
+import {
+  BusinessPageScaffold,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 import DynamicProcessForm from '../../process/components/DynamicProcessForm.vue';
 import { validateFormDefinition } from '../../process/components/process-form';
@@ -383,10 +388,9 @@ onMounted(() => loadRecords(1));
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page">
-      <section class="list-panel">
-        <div class="list-header">
-          <h2>表单管理</h2>
+    <BusinessPageScaffold pattern="single-table">
+      <template #toolbar>
+        <CompactToolbar title="表单管理" subtitle="维护低代码表单草稿、发布版本和字段元数据">
           <Space :size="8">
             <Button v-if="canCreate" type="primary" @click="openCreate">
               <Plus class="size-4" />
@@ -398,9 +402,10 @@ onMounted(() => loadRecords(1));
               </Button>
             </Tooltip>
           </Space>
-        </div>
+        </CompactToolbar>
+      </template>
 
-        <div class="table-frame">
+      <CompactTableFrame>
           <Table
             :columns="columns"
             :data-source="records"
@@ -463,9 +468,8 @@ onMounted(() => loadRecords(1));
               </template>
             </template>
           </Table>
-        </div>
 
-        <div class="table-footer">
+        <template #footer>
           <div class="table-total">共 {{ pagination.total }} 条记录</div>
           <Pagination
             v-model:current="pagination.current"
@@ -478,9 +482,9 @@ onMounted(() => loadRecords(1));
             @change="onPageChange"
             @show-size-change="onPageChange"
           />
-        </div>
-      </section>
-    </div>
+        </template>
+      </CompactTableFrame>
+    </BusinessPageScaffold>
 
     <Drawer
       v-model:open="formOpen"

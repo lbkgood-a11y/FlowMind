@@ -33,6 +33,10 @@ spring:
           uri: ${WF_SERVICE_URL:http://localhost:8086}
           predicates:
             - Path=/api/v1/process-packages,/api/v1/process-packages/**,/api/v1/process-instances,/api/v1/process-instances/**,/api/v1/process-business-objects,/api/v1/process-business-objects/**,/api/v1/tasks,/api/v1/tasks/**
+        - id: service-action
+          uri: ${ACTION_SERVICE_URL:http://localhost:8089}
+          predicates:
+            - Path=/api/v1/actions,/api/v1/actions/**
         - id: data-analytics
           uri: ${DATA_ANALYTICS_URL:http://localhost:8091}
           predicates:

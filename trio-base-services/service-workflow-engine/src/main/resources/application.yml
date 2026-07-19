@@ -51,7 +51,10 @@ workflow:
 triobase:
   internal:
     token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
-    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-lowcode}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-lowcode,service-action}
+  integrations:
+    action:
+      base-url: ${ACTION_SERVICE_URL:http://localhost:8089}
 
 logging:
   level:

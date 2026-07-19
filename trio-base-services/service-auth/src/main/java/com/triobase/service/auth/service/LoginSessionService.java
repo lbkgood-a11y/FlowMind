@@ -65,7 +65,7 @@ public class LoginSessionService {
         HttpServletRequest request = currentRequest();
         SysUserSession session = new SysUserSession();
         session.setId(UlidGenerator.nextUlid());
-        session.setTenantId(DEFAULT_TENANT);
+        session.setTenantId(tenantId(user));
         session.setUserId(user.getId());
         session.setUsername(user.getUsername());
         session.setAccessJti(access.jti());
@@ -211,5 +211,9 @@ public class LoginSessionService {
             return value;
         }
         return value.substring(0, max);
+    }
+
+    private String tenantId(SysUser user) {
+        return user != null && StringUtils.hasText(user.getTenantId()) ? user.getTenantId() : DEFAULT_TENANT;
     }
 }

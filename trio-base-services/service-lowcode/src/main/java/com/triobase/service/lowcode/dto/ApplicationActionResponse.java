@@ -2,6 +2,8 @@ package com.triobase.service.lowcode.dto;
 
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class ApplicationActionResponse {
     private String id;
@@ -14,4 +16,7 @@ public class ApplicationActionResponse {
     private String metadataJson;
     private String status;
     private Integer sortOrder;
+    private Boolean allowed;
+    private String authorizationActionCode;
+    private List<GuardRequirementResponse> guardRequirements;
 }

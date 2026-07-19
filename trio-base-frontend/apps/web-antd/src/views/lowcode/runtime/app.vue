@@ -20,19 +20,28 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
+import { ACTION_TARGET_TYPES, ACTION_TYPES } from '#/api';
 import {
   getRuntimeApplicationDescriptor,
   getRuntimeApplicationInstance,
   getRuntimeApplicationInstances,
-  retryRuntimeApplicationWorkflow,
-  runRuntimeApplicationAction,
 } from '#/api/lowcode';
+import { useActionDispatch } from '#/composables/useActionDispatch';
+import {
+  BusinessActionButton,
+  CompactTableFrame,
+  DocumentActionBar,
+  DocumentHeader,
+  DocumentPage,
+  refreshByScopes,
+} from '#/shared';
 
 import DynamicProcessForm from '../../process/components/DynamicProcessForm.vue';
 import {
   createRuntimeDraftKey,
   createRuntimeRetryKey,
   formatRuntimeValue,
+  getAuthorizedRuntimeFormSchemas,
   getPrimaryCreateAction,
   getRetryWorkflowAction,
   getRuntimeDetailSections,
@@ -45,6 +54,7 @@ import {
 } from './runtime-metadata';
 
 const route = useRoute();
+const { dispatchAction } = useActionDispatch();
 const loading = ref(false);
 const descriptorLoading = ref(false);
 const detailLoading = ref(false);
@@ -74,6 +84,14 @@ const retryAction = computed(() => getRetryWorkflowAction(descriptor.value));
 const tableRecords = computed(() => records.value.map(toRuntimeTableRecord));
 const detailData = computed(() => parseInstanceData(detailRecord.value?.dataJson));
 const detailSections = computed(() => getRuntimeDetailSections(descriptor.value, 'DETAIL'));
+const documentSubtitle = computed(() =>
+  descriptor.value
+    ? `${descriptor.value.description || '发布版快速应用运行台'} · v${descriptor.value.version}`
+    : '发布版快速应用运行台',
+);
+const createFormSchemas = computed(() =>
+  getAuthorizedRuntimeFormSchemas(descriptor.value),
+);
 
 const columns = computed<TableProps['columns']>(() => {
   const metadataColumns = getRuntimeListColumns(descriptor.value).map((column) => ({
@@ -166,28 +184,110 @@ async function submit() {
   }
   saving.value = true;
   try {
-    const response = await runRuntimeApplicationAction(
-      descriptor.value.appKey,
-      action.actionCode,
+    const result = await dispatchAction(
       {
-        data: formData.value,
+        actionType: lowcodeGlobalActionType(action),
+        executionMode: 'SYNC',
         idempotencyKey: draftIdempotencyKey.value,
-        title: buildTitle(formData.value),
+        payload: {
+          appKey: descriptor.value.appKey,
+          actionCode: action.actionCode,
+          version: descriptor.value.version,
+          title: buildTitle(formData.value),
+          data: formData.value,
+        },
+        target: {
+          id: action.formDefinitionId ?? descriptor.value.primaryFormDefinitionId,
+          ownerService: 'service-lowcode',
+          tenantId: descriptor.value.tenantId,
+          type: ACTION_TARGET_TYPES.lowcodeForm,
+          version: String(descriptor.value.version),
+        },
       },
-      { version: descriptor.value.version },
+      {
+        failureMessage: '表单提交失败',
+      },
     );
-    if (response.status === 'WORKFLOW_PENDING') {
+    const runtimeStatus = String(
+      (result.data as Record<string, unknown> | undefined)?.runtimeStatus ?? result.status,
+    );
+    if (runtimeStatus === 'WORKFLOW_PENDING') {
       message.warning('表单已保存，流程启动待重试');
-    } else if (response.status === 'WORKFLOW_STARTED') {
+    } else if (runtimeStatus === 'WORKFLOW_STARTED') {
       message.success('表单已提交并启动流程');
     } else {
       message.success('表单已保存');
     }
     drawerOpen.value = false;
-    await loadRecords(1);
+    await refreshByScopes(result, {
+      actions: () => loadRecords(1),
+      document: () => loadRecords(1),
+      list: () => loadRecords(1),
+      timeline: () => loadRecords(1),
+      workflow: () => loadRecords(1),
+    });
   } finally {
     saving.value = false;
   }
+}
+
+function lowcodeGlobalActionType(action: LowcodeApi.ApplicationAction) {
+  const actionType = action.actionType.toUpperCase();
+  if (actionType === 'CREATE') {
+    return ACTION_TYPES.lowcodeFormCreate;
+  }
+  if (actionType === 'SAVE') {
+    return ACTION_TYPES.lowcodeFormSave;
+  }
+  return ACTION_TYPES.lowcodeFormSubmit;
+}
+
+async function retryWorkflow(record: RuntimeTableRecord) {
+  const action = retryAction.value;
+  if (!descriptor.value || !action) {
+    message.warning('当前应用未配置流程重试动作');
+    return;
+  }
+  const idempotencyKey = createRuntimeRetryKey(
+    descriptor.value.appKey,
+    descriptor.value.version,
+    record.id,
+    action.actionCode,
+  );
+  await dispatchAction(
+    {
+      actionType: ACTION_TYPES.lowcodeWorkflowRetry,
+      executionMode: 'SYNC',
+      idempotencyKey,
+      payload: {
+        appKey: descriptor.value.appKey,
+        actionCode: action.actionCode,
+        idempotencyKey,
+        instanceId: record.id,
+        version: descriptor.value.version,
+      },
+      target: {
+        id: record.id,
+        ownerService: 'service-lowcode',
+        tenantId: descriptor.value.tenantId,
+        type: ACTION_TARGET_TYPES.lowcodeForm,
+        version: String(descriptor.value.version),
+      },
+    },
+    {
+      failureMessage: '流程重试提交失败',
+      onSuccess: async (result) => {
+        await refreshByScopes(result, {
+          actions: loadRecords,
+          document: loadRecords,
+          list: loadRecords,
+          timeline: loadRecords,
+          workflow: loadRecords,
+        });
+      },
+      successMessage: '流程重试已提交',
+    },
+  );
 }
 
 async function openDetail(record: RuntimeTableRecord) {
@@ -203,30 +303,6 @@ async function openDetail(record: RuntimeTableRecord) {
   } finally {
     detailLoading.value = false;
   }
-}
-
-async function retryWorkflow(record: RuntimeTableRecord) {
-  const action = retryAction.value;
-  if (!descriptor.value || !action) {
-    message.warning('当前应用未配置流程重试动作');
-    return;
-  }
-  await retryRuntimeApplicationWorkflow(
-    descriptor.value.appKey,
-    record.id,
-    {
-      actionCode: action.actionCode,
-      idempotencyKey: createRuntimeRetryKey(
-        descriptor.value.appKey,
-        descriptor.value.version,
-        record.id,
-        action.actionCode,
-      ),
-    },
-    { version: descriptor.value.version },
-  );
-  message.success('流程重试已提交');
-  await loadRecords();
 }
 
 function buildTitle(data: Record<string, unknown>) {
@@ -258,30 +334,34 @@ watch(
 
 <template>
   <Page auto-content-height>
-    <div class="runtime-page">
-      <section class="list-panel">
-        <div class="list-header">
-          <div>
-            <h2>{{ descriptor?.name || appKey }}</h2>
-            <p>
-              {{ descriptor?.description || '发布版快速应用运行台' }}
-              <span v-if="descriptor"> · v{{ descriptor.version }}</span>
-            </p>
-          </div>
-          <Space :size="8">
-            <Button v-if="createAction" type="primary" @click="openCreate">
-              <Plus class="size-4" />
-              {{ createAction.label || '新建' }}
-            </Button>
+    <DocumentPage>
+      <template #header>
+        <DocumentHeader
+          :title="descriptor?.name || appKey"
+          :subtitle="documentSubtitle"
+        >
+          <template #actions>
+            <DocumentActionBar>
+              <BusinessActionButton
+                v-if="createAction"
+                :label="createAction.label || '新建'"
+                primary
+                @execute="openCreate"
+              >
+                <Plus class="size-4" />
+                {{ createAction.label || '新建' }}
+              </BusinessActionButton>
             <Tooltip title="刷新">
               <Button shape="circle" @click="loadRecords()">
                 <span class="text-lg">↻</span>
               </Button>
             </Tooltip>
-          </Space>
-        </div>
+            </DocumentActionBar>
+          </template>
+        </DocumentHeader>
+      </template>
 
-        <div class="table-frame">
+      <CompactTableFrame>
           <Table
             :columns="columns"
             :data-source="tableRecords"
@@ -302,21 +382,19 @@ watch(
                   >
                     详情
                   </Button>
-                  <Button
+                  <BusinessActionButton
                     v-if="record.workflowStatus === 'PENDING_WORKFLOW' && retryAction"
-                    size="small"
-                    type="link"
-                    @click="retryWorkflow(record as RuntimeTableRecord)"
+                    label="重试流程"
+                    @execute="retryWorkflow(record as RuntimeTableRecord)"
                   >
                     重试流程
-                  </Button>
+                  </BusinessActionButton>
                 </Space>
               </template>
             </template>
           </Table>
-        </div>
 
-        <div class="table-footer">
+        <template #footer>
           <div class="table-total">共 {{ pagination.total }} 条记录</div>
           <Pagination
             v-model:current="pagination.current"
@@ -329,9 +407,9 @@ watch(
             @change="onPageChange"
             @show-size-change="onPageChange"
           />
-        </div>
-      </section>
-    </div>
+        </template>
+      </CompactTableFrame>
+    </DocumentPage>
 
     <Drawer
       v-model:open="drawerOpen"
@@ -344,8 +422,8 @@ watch(
         <DynamicProcessForm
           ref="formRef"
           v-model="formData"
-          :schema-json="descriptor?.schemaJson"
-          :ui-schema-json="descriptor?.uiSchemaJson"
+          :schema-json="createFormSchemas.schemaJson"
+          :ui-schema-json="createFormSchemas.uiSchemaJson"
         />
       </Form>
 

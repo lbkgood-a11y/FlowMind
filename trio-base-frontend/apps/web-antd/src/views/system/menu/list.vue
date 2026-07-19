@@ -43,6 +43,7 @@ import {
 } from '#/api';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
 import { componentKeys } from '#/router/routes';
+import { BusinessPageScaffold } from '#/shared';
 
 import {
   allExpandableKeys,
@@ -544,7 +545,7 @@ onMounted(loadMenus);
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page menu-page">
+    <BusinessPageScaffold class="menu-page" pattern="master-detail">
       <header class="workbench-toolbar">
         <div class="toolbar-title">
           <h2>菜单管理</h2>
@@ -741,7 +742,7 @@ onMounted(loadMenus);
         </Form>
         <template #footer><Space><Button @click="closeEditor">取消</Button><Button :loading="saving" type="primary" @click="submitForm">保存</Button></Space></template>
       </Drawer>
-    </div>
+    </BusinessPageScaffold>
   </Page>
 </template>
 

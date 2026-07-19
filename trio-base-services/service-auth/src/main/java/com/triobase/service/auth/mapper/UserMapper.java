@@ -18,7 +18,19 @@ public interface UserMapper extends BaseMapper<SysUser> {
             "LEFT JOIN sys_permission p ON p.id = m.permission_id " +
             "JOIN sys_user_role ur ON rm.role_id = ur.role_id " +
             "JOIN sys_role r ON r.id = ur.role_id " +
-            "WHERE ur.user_id = #{userId} AND r.status = 1" +
+            "WHERE ur.user_id = #{userId} AND r.status = 1 " +
+            "UNION " +
+            "SELECT g.resource_code || ':' || g.action_code AS code " +
+            "FROM sys_auth_grant g " +
+            "JOIN sys_user_role ur ON ur.role_id = g.subject_id " +
+            "JOIN sys_role r ON r.id = ur.role_id " +
+            "WHERE ur.user_id = #{userId} AND r.status = 1 " +
+            "AND g.subject_type = 'ROLE' AND g.effect = 'ALLOW' AND g.status = 1 " +
+            "UNION " +
+            "SELECT g.resource_code || ':' || g.action_code AS code " +
+            "FROM sys_auth_grant g " +
+            "WHERE g.subject_type = 'USER' AND g.subject_id = #{userId} " +
+            "AND g.effect = 'ALLOW' AND g.status = 1" +
             ") permissions WHERE code IS NOT NULL AND code <> ''")
     List<String> selectPermissionsByUserId(String userId);
 

@@ -4,10 +4,14 @@ import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.dto.internal.ResolvedUserDto;
 import com.triobase.service.workflow.dto.AddSignRequest;
+import com.triobase.service.workflow.dto.ApproveTaskRequest;
 import com.triobase.service.workflow.dto.ResolvedParticipants;
+import com.triobase.service.workflow.dto.TaskResponse;
+import com.triobase.service.workflow.entity.ProcessInstance;
 import com.triobase.service.workflow.entity.Task;
 import com.triobase.service.workflow.entity.TaskOperation;
 import com.triobase.service.workflow.mapper.NodeRecordMapper;
+import com.triobase.service.workflow.mapper.ProcessInstanceMapper;
 import com.triobase.service.workflow.mapper.TaskMapper;
 import com.triobase.service.workflow.mapper.TaskOperationMapper;
 import com.triobase.service.workflow.workflow.ProcessWorkflow;
@@ -39,6 +43,8 @@ class TaskServiceCandidateAuthorizationTest {
     @Mock
     private NodeRecordMapper nodeRecordMapper;
     @Mock
+    private ProcessInstanceMapper processInstanceMapper;
+    @Mock
     private WorkflowClient workflowClient;
     @Mock
     private ParticipantResolver participantResolver;
@@ -46,6 +52,7 @@ class TaskServiceCandidateAuthorizationTest {
     private ProcessWorkflow workflow;
 
     private TaskService taskService;
+    private final GuardResultComposer guardResultComposer = new GuardResultComposer();
 
     @BeforeEach
     void setUp() {
@@ -53,6 +60,8 @@ class TaskServiceCandidateAuthorizationTest {
                 taskMapper,
                 taskOperationMapper,
                 nodeRecordMapper,
+                processInstanceMapper,
+                guardResultComposer,
                 workflowClient,
                 participantResolver);
         SecurityContextHolder.set(new SecurityContextHolder.SecurityContext(
@@ -76,7 +85,81 @@ class TaskServiceCandidateAuthorizationTest {
                 () -> taskService.addSign("task-1", request));
 
         assertEquals("TASK_NOT_CANDIDATE", exception.getMessage());
+        TaskGuardDeniedException guardDenied = (TaskGuardDeniedException) exception;
+        assertEquals(GuardResultComposer.GUARD_WORKFLOW_CANDIDATE,
+                guardDenied.getGuardResults().getFirst().getGuardCode());
         verify(participantResolver, never()).resolve(any());
+    }
+
+    @Test
+    void candidateCanApprovePendingTask() {
+        Task task = pendingTask();
+        when(taskOperationMapper.selectOne(any())).thenReturn(null);
+        when(taskMapper.claimPendingTask("task-1", "user-1", "Alice")).thenReturn(1);
+        when(taskMapper.selectById("task-1")).thenReturn(task);
+        when(processInstanceMapper.selectById("instance-1")).thenReturn(processInstance("user-2"));
+        when(taskOperationMapper.insertIfAbsent(any(TaskOperation.class))).thenReturn(1);
+        when(workflowClient.newWorkflowStub(ProcessWorkflow.class, "process-instance-1"))
+                .thenReturn(workflow);
+
+        TaskResponse response = taskService.approve("task-1", approveRequest("op-1", "APPROVE"));
+
+        assertEquals("APPROVED", response.getStatus());
+        verify(taskMapper).updateById(task);
+        verify(workflow).approveTask(any());
+    }
+
+    @Test
+    void claimedTaskDeniesOtherUserWithGuardReason() {
+        Task task = pendingTask();
+        task.setAssigneeId("user-2");
+        when(taskOperationMapper.selectOne(any())).thenReturn(null);
+        when(taskMapper.claimPendingTask("task-1", "user-1", "Alice")).thenReturn(0);
+        when(taskMapper.selectById("task-1")).thenReturn(task);
+
+        TaskGuardDeniedException exception = assertThrows(TaskGuardDeniedException.class,
+                () -> taskService.approve("task-1", approveRequest("op-1", "APPROVE")));
+
+        assertEquals("TASK_CLAIMED_BY_ANOTHER_USER", exception.getMessage());
+        assertEquals(GuardResultComposer.GUARD_WORKFLOW_CANDIDATE,
+                exception.getGuardResults().getFirst().getGuardCode());
+        verify(workflowClient, never()).newWorkflowStub(any(), any(String.class));
+    }
+
+    @Test
+    void alreadyProcessedTaskDeniesWithDocumentStatusGuardReason() {
+        Task task = pendingTask();
+        task.setStatus("APPROVED");
+        when(taskOperationMapper.selectOne(any())).thenReturn(null);
+        when(taskMapper.claimPendingTask("task-1", "user-1", "Alice")).thenReturn(0);
+        when(taskMapper.selectById("task-1")).thenReturn(task);
+
+        TaskGuardDeniedException exception = assertThrows(TaskGuardDeniedException.class,
+                () -> taskService.approve("task-1", approveRequest("op-1", "APPROVE")));
+
+        assertEquals("TASK_ALREADY_PROCESSED", exception.getMessage());
+        assertEquals(GuardResultComposer.GUARD_DOCUMENT_STATUS,
+                exception.getGuardResults().getFirst().getGuardCode());
+        verify(workflowClient, never()).newWorkflowStub(any(), any(String.class));
+    }
+
+
+    @Test
+    void selfApprovalDeniesWithGuardReason() {
+        Task task = pendingTask();
+        when(taskOperationMapper.selectOne(any())).thenReturn(null);
+        when(taskMapper.claimPendingTask("task-1", "user-1", "Alice")).thenReturn(1);
+        when(taskMapper.selectById("task-1")).thenReturn(task);
+        when(processInstanceMapper.selectById("instance-1")).thenReturn(processInstance("user-1"));
+
+        TaskGuardDeniedException exception = assertThrows(TaskGuardDeniedException.class,
+                () -> taskService.approve("task-1", approveRequest("op-1", "APPROVE")));
+
+        assertEquals("SELF_APPROVAL_DENIED", exception.getMessage());
+        assertEquals(GuardResultComposer.GUARD_NO_SELF_APPROVAL,
+                exception.getGuardResults().getFirst().getGuardCode());
+        verify(taskOperationMapper, never()).insertIfAbsent(any(TaskOperation.class));
+        verify(workflowClient, never()).newWorkflowStub(any(), any(String.class));
     }
 
     @Test
@@ -128,6 +211,21 @@ class TaskServiceCandidateAuthorizationTest {
         request.setAssigneeId("user-2");
         request.setAssigneeName("Bob");
         return request;
+    }
+
+    private ApproveTaskRequest approveRequest(String operationId, String action) {
+        ApproveTaskRequest request = new ApproveTaskRequest();
+        request.setOperationId(operationId);
+        request.setAction(action);
+        request.setComment("ok");
+        return request;
+    }
+
+    private ProcessInstance processInstance(String initiatorId) {
+        ProcessInstance processInstance = new ProcessInstance();
+        processInstance.setId("instance-1");
+        processInstance.setInitiatorId(initiatorId);
+        return processInstance;
     }
 
     private Task pendingTask() {

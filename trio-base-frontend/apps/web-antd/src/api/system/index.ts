@@ -1,3 +1,4 @@
+export * from './authorization';
 export * from './data-policy';
 export * from './dept';
 export * from './governance';

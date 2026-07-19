@@ -6,6 +6,7 @@ import com.triobase.service.openapi.dto.CancelOrchestrationRequest;
 import com.triobase.service.openapi.dto.OrchestrationExecutionResponse;
 import com.triobase.service.openapi.dto.RuntimeAdmissionContext;
 import com.triobase.service.openapi.dto.StartOrchestrationRequest;
+import com.triobase.service.openapi.action.OpenApiActionDispatchService;
 import com.triobase.service.openapi.service.RuntimeAdmissionContextResolver;
 import com.triobase.service.openapi.service.OrchestrationRuntimeService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,6 +27,7 @@ public class OrchestrationRuntimeController {
 
     private final OrchestrationRuntimeService service;
     private final RuntimeAdmissionContextResolver admissionContextResolver;
+    private final OpenApiActionDispatchService actionDispatchService;
 
     @PostMapping("/{routeKey}/orchestrations")
     public R<OrchestrationExecutionResponse> start(
@@ -36,7 +38,7 @@ public class OrchestrationRuntimeController {
             HttpServletRequest request) {
         RuntimeAdmissionContext admission = admissionContextResolver.resolve(
                 request, routeKey, environment, request.getMethod());
-        return R.ok(service.start(routeKey, environment, admission,
+        return R.ok(actionDispatchService.startOrchestration(routeKey, environment, admission,
                 request.getMethod(), idempotencyKey, body.payload()));
     }
 
@@ -58,7 +60,9 @@ public class OrchestrationRuntimeController {
     public R<OrchestrationExecutionResponse> cancel(
             @PathVariable String executionId,
             @RequestHeader("X-Application-Client-Id") String clientId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody CancelOrchestrationRequest request) {
-        return R.ok(service.cancel(executionId, clientId, request.reason()));
+        return R.ok(actionDispatchService.cancelOrchestration(
+                executionId, clientId, idempotencyKey, request.reason()));
     }
 }

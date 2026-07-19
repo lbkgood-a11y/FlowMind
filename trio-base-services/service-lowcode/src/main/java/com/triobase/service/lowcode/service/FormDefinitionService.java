@@ -16,6 +16,8 @@ import com.triobase.service.lowcode.entity.LcFormFieldDefinition;
 import com.triobase.service.lowcode.mapper.FormDefinitionMapper;
 import com.triobase.service.lowcode.mapper.FormFieldDefinitionMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.DigestUtils;
@@ -32,6 +34,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FormDefinitionService {
 
+    private static final Logger logger = LoggerFactory.getLogger(FormDefinitionService.class);
+
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_PUBLISHED = "PUBLISHED";
     private static final String STATUS_OFFLINE = "OFFLINE";
@@ -41,6 +45,7 @@ public class FormDefinitionService {
     private final FormDefinitionMapper formDefinitionMapper;
     private final FormFieldDefinitionMapper formFieldDefinitionMapper;
     private final LowcodeFormSchemaValidator formSchemaValidator;
+    private final AuthorizationResourceSyncClient authorizationResourceSyncClient;
 
     @Transactional
     public FormDefinitionResponse create(CreateFormDefinitionRequest request, String operator) {
@@ -88,6 +93,8 @@ public class FormDefinitionService {
                 fieldDefinition.setPlaceholder(field.getPlaceholder());
                 fieldDefinition.setOptionsJson(field.getOptionsJson());
                 fieldDefinition.setSortOrder(field.getSortOrder() != null ? field.getSortOrder() : 0);
+                fieldDefinition.setSensitivityClassification(field.getSensitivityClassification());
+                fieldDefinition.setDefaultMaskStrategy(field.getDefaultMaskStrategy());
                 fieldDefinition.setCreatedAt(now);
                 formFieldDefinitionMapper.insert(fieldDefinition);
             }
@@ -257,6 +264,7 @@ public class FormDefinitionService {
                 .map(this::toFieldRequest)
                 .toList();
         formSchemaValidator.validate(definition.getSchemaJson(), definition.getUiSchemaJson(), fields);
+        authorizationResourceSyncClient.syncPublishedForm(definition, fields);
         LocalDateTime now = LocalDateTime.now();
         definition.setStatus(STATUS_PUBLISHED);
         definition.setSchemaHash(schemaHash(definition.getSchemaJson(), definition.getUiSchemaJson()));
@@ -277,6 +285,11 @@ public class FormDefinitionService {
         definition.setOfflineAt(now);
         definition.setUpdatedAt(now);
         formDefinitionMapper.updateById(definition);
+        try {
+            authorizationResourceSyncClient.syncOfflineForm(definition);
+        } catch (RuntimeException e) {
+            logger.warn("Failed to sync offline form authorization resources: {}", e.getMessage());
+        }
         return getById(id);
     }
 
@@ -353,6 +366,8 @@ public class FormDefinitionService {
         response.setPlaceholder(field.getPlaceholder());
         response.setOptionsJson(field.getOptionsJson());
         response.setSortOrder(field.getSortOrder());
+        response.setSensitivityClassification(field.getSensitivityClassification());
+        response.setDefaultMaskStrategy(field.getDefaultMaskStrategy());
         return response;
     }
 
@@ -424,6 +439,8 @@ public class FormDefinitionService {
             fieldDefinition.setPlaceholder(field.getPlaceholder());
             fieldDefinition.setOptionsJson(field.getOptionsJson());
             fieldDefinition.setSortOrder(field.getSortOrder() != null ? field.getSortOrder() : 0);
+            fieldDefinition.setSensitivityClassification(field.getSensitivityClassification());
+            fieldDefinition.setDefaultMaskStrategy(field.getDefaultMaskStrategy());
             fieldDefinition.setCreatedAt(now);
             fieldDefinition.setUpdatedAt(now);
             formFieldDefinitionMapper.insert(fieldDefinition);

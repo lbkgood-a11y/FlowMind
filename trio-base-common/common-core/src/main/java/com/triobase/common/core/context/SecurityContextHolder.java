@@ -58,9 +58,24 @@ public final class SecurityContextHolder {
                                   List<String> permissions,
                                   Long authVersion,
                                   Long roleVersion,
-                                  Long dataPolicyVersion) {
+                                  Long dataPolicyVersion,
+                                  Long authorizationVersion,
+                                  Long fieldPolicyVersion,
+                                  Long guardTemplateVersion) {
         public SecurityContext(String userId, String username, List<String> permissions) {
             this(userId, username, null, Collections.emptyList(), permissions, null, null, null);
+        }
+
+        public SecurityContext(String userId,
+                               String username,
+                               String tenantId,
+                               List<String> roles,
+                               List<String> permissions,
+                               Long authVersion,
+                               Long roleVersion,
+                               Long dataPolicyVersion) {
+            this(userId, username, tenantId, roles, permissions,
+                    authVersion, roleVersion, dataPolicyVersion, null, null, null);
         }
 
         public SecurityContext {

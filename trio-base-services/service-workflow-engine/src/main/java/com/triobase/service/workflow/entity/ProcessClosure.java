@@ -18,6 +18,13 @@ public class ProcessClosure extends BaseEntity {
     private String closureStatus;
     private String hardFailurePolicy;
     private String traceId;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionCorrelationId;
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
 }

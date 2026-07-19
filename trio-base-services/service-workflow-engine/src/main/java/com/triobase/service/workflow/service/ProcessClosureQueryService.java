@@ -82,6 +82,13 @@ public class ProcessClosureQueryService {
         item.setInitiatorId(outcome.getInitiatorId());
         item.setLastOperatorId(outcome.getLastOperatorId());
         item.setTraceId(outcome.getTraceId());
+        item.setActionId(outcome.getActionId());
+        item.setActionType(outcome.getActionType());
+        item.setActionSource(outcome.getActionSource());
+        item.setActionActorType(outcome.getActionActorType());
+        item.setActionActorId(outcome.getActionActorId());
+        item.setActionActorName(outcome.getActionActorName());
+        item.setActionCorrelationId(outcome.getActionCorrelationId());
         item.setCreatedAt(outcome.getCreatedAt());
         return item;
     }
@@ -94,6 +101,13 @@ public class ProcessClosureQueryService {
         item.setBusinessType(closure.getBusinessType());
         item.setBusinessId(closure.getBusinessId());
         item.setTraceId(closure.getTraceId());
+        item.setActionId(closure.getActionId());
+        item.setActionType(closure.getActionType());
+        item.setActionSource(closure.getActionSource());
+        item.setActionActorType(closure.getActionActorType());
+        item.setActionActorId(closure.getActionActorId());
+        item.setActionActorName(closure.getActionActorName());
+        item.setActionCorrelationId(closure.getActionCorrelationId());
         item.setStartedAt(closure.getStartedAt());
         item.setCompletedAt(closure.getCompletedAt());
         return item;
@@ -121,6 +135,13 @@ public class ProcessClosureQueryService {
         item.setAttemptCount(effect.getAttemptCount());
         item.setNextRetryAt(effect.getNextRetryAt());
         item.setTraceId(effect.getTraceId());
+        item.setActionId(effect.getActionId());
+        item.setActionType(effect.getActionType());
+        item.setActionSource(effect.getActionSource());
+        item.setActionActorType(effect.getActionActorType());
+        item.setActionActorId(effect.getActionActorId());
+        item.setActionActorName(effect.getActionActorName());
+        item.setActionCorrelationId(effect.getActionCorrelationId());
         item.setRetryAvailable("FAILED".equals(effect.getStatus()) || "RETRYING".equals(effect.getStatus()));
         item.setManualHandlingAvailable(item.isRetryAvailable() && manualHandlingEnabled(effect));
         return item;

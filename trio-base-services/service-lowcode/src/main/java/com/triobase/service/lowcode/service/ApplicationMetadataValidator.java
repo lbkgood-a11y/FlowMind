@@ -21,9 +21,6 @@ import java.util.Set;
 public class ApplicationMetadataValidator {
 
     private static final Set<String> SUPPORTED_PAGE_TYPES = Set.of("LIST", "DETAIL", "CREATE");
-    private static final Set<String> SUPPORTED_ACTION_TYPES = Set.of(
-            "CREATE", "SAVE", "SUBMIT", "SUBMIT_AND_LAUNCH_WORKFLOW",
-            "OPEN_DETAIL", "OPEN_PROCESS", "RETRY_WORKFLOW");
     private static final Set<String> FORBIDDEN_KEYS = Set.of(
             "script", "scripts", "javascript", "eval", "function", "handler", "onClick",
             "sql", "querySql", "whereSql", "url", "endpoint", "webhook", "callbackUrl",
@@ -118,9 +115,10 @@ public class ApplicationMetadataValidator {
             throw new BizException(40050, "APPLICATION_ACTION_DUPLICATE");
         }
         String actionType = normalized(action.getActionType());
-        if (!SUPPORTED_ACTION_TYPES.contains(actionType)) {
+        if (!LowcodeAuthorizationActionCatalog.supportedApplicationActionTypes().contains(actionType)) {
             throw new BizException(40050, "APPLICATION_ACTION_TYPE_UNSUPPORTED");
         }
+        LowcodeAuthorizationActionCatalog.formActionForApplicationActionType(actionType);
         if (requiresProcessKey(actionType) && !StringUtils.hasText(action.getProcessKey())) {
             throw new BizException(40050, "APPLICATION_ACTION_PROCESS_KEY_REQUIRED");
         }

@@ -30,6 +30,12 @@ import {
   markInboxMessageRead,
   sendMessage,
 } from '#/api';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const Textarea = Input.TextArea;
 const TabPane = Tabs.TabPane;
@@ -236,114 +242,122 @@ onMounted(() => {
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page ops-page">
+    <BusinessPageScaffold class="ops-page" pattern="single-table">
+      <template #toolbar>
+        <CompactToolbar title="消息中心" subtitle="维护站内消息并查看个人收件箱" />
+      </template>
+
       <Tabs v-model:active-key="activeTab" size="small">
         <TabPane key="admin" tab="消息管理">
-          <section class="toolbar">
-            <Space wrap>
-              <Input v-model:value="adminQuery.keyword" class="query-input" placeholder="标题/内容" allow-clear />
-              <Select
-                v-model:value="adminQuery.messageType"
-                allow-clear
-                class="query-select"
-                :options="[
-                  { label: '系统', value: 'SYSTEM' },
-                  { label: '公告', value: 'ANNOUNCEMENT' },
-                  { label: '任务', value: 'TASK' },
-                ]"
-                placeholder="类型"
-              />
+          <CompactQueryBar :columns="3">
+            <Input v-model:value="adminQuery.keyword" class="query-input" placeholder="标题/内容" allow-clear />
+            <Select
+              v-model:value="adminQuery.messageType"
+              allow-clear
+              class="query-select"
+              :options="[
+                { label: '系统', value: 'SYSTEM' },
+                { label: '公告', value: 'ANNOUNCEMENT' },
+                { label: '任务', value: 'TASK' },
+              ]"
+              placeholder="类型"
+            />
+            <template #actions>
               <Button v-if="canQuery" type="primary" @click="loadAdmin">查询</Button>
               <Button v-if="canQuery" @click="resetAdminQuery">重置</Button>
               <Button v-if="canSend" type="primary" @click="openSend">
                 <Plus class="size-4" />
                 发送消息
               </Button>
-            </Space>
-          </section>
-
-          <Table
-            row-key="message.id"
-            :columns="adminColumns"
-            :data-source="adminRecords"
-            :loading="adminLoading"
-            :pagination="adminPagination"
-            :scroll="{ x: 960 }"
-            size="small"
-            :sticky="{ offsetScroll: 0 }"
-            @change="handleAdminTableChange"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'messageType'">
-                <Tag color="blue">{{ record.message.messageType || 'SYSTEM' }}</Tag>
-              </template>
-              <template v-else-if="column.key === 'action'">
-                <Popconfirm v-if="canDelete" title="确认删除该消息？" @confirm="removeAdmin(asAdmin(record))">
-                  <Button danger type="link" size="small">删除</Button>
-                </Popconfirm>
-              </template>
             </template>
-          </Table>
+          </CompactQueryBar>
+
+          <CompactTableFrame>
+            <Table
+              row-key="message.id"
+              :columns="adminColumns"
+              :data-source="adminRecords"
+              :loading="adminLoading"
+              :pagination="adminPagination"
+              :scroll="{ x: 960 }"
+              size="small"
+              :sticky="{ offsetScroll: 0 }"
+              @change="handleAdminTableChange"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'messageType'">
+                  <Tag color="blue">{{ record.message.messageType || 'SYSTEM' }}</Tag>
+                </template>
+                <template v-else-if="column.key === 'action'">
+                  <Popconfirm v-if="canDelete" title="确认删除该消息？" @confirm="removeAdmin(asAdmin(record))">
+                    <Button danger type="link" size="small">删除</Button>
+                  </Popconfirm>
+                </template>
+              </template>
+            </Table>
+          </CompactTableFrame>
         </TabPane>
 
         <TabPane key="inbox" tab="我的收件箱">
-          <section class="toolbar">
-            <Space wrap>
-              <Select
-                v-model:value="inboxQuery.readStatus"
-                allow-clear
-                class="query-select"
-                :options="[
-                  { label: '未读', value: 0 },
-                  { label: '已读', value: 1 },
-                ]"
-                placeholder="阅读状态"
-              />
+          <CompactQueryBar :columns="2">
+            <Select
+              v-model:value="inboxQuery.readStatus"
+              allow-clear
+              class="query-select"
+              :options="[
+                { label: '未读', value: 0 },
+                { label: '已读', value: 1 },
+              ]"
+              placeholder="阅读状态"
+            />
+            <template #actions>
               <Button type="primary" @click="loadInbox">查询</Button>
               <Button @click="resetInboxQuery">重置</Button>
-            </Space>
-          </section>
-
-          <Table
-            row-key="recipient.id"
-            :columns="inboxColumns"
-            :data-source="inboxRecords"
-            :loading="inboxLoading"
-            :pagination="inboxPagination"
-            :scroll="{ x: 960 }"
-            size="small"
-            :sticky="{ offsetScroll: 0 }"
-            @change="handleInboxTableChange"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'messageType'">
-                <Tag color="blue">{{ record.message.messageType || 'SYSTEM' }}</Tag>
-              </template>
-              <template v-else-if="column.key === 'readStatus'">
-                <Tag :color="record.recipient.readStatus === 1 ? 'green' : 'orange'">
-                  {{ record.recipient.readStatus === 1 ? '已读' : '未读' }}
-                </Tag>
-              </template>
-              <template v-else-if="column.key === 'action'">
-                <Space>
-                  <Button
-                    v-if="record.recipient.readStatus !== 1"
-                    type="link"
-                    size="small"
-                    @click="markRead(asInbox(record))"
-                  >
-                    标记已读
-                  </Button>
-                  <Popconfirm title="确认删除该收件消息？" @confirm="removeInbox(asInbox(record))">
-                    <Button danger type="link" size="small">删除</Button>
-                  </Popconfirm>
-                </Space>
-              </template>
             </template>
-          </Table>
+          </CompactQueryBar>
+
+          <CompactTableFrame>
+            <Table
+              row-key="recipient.id"
+              :columns="inboxColumns"
+              :data-source="inboxRecords"
+              :loading="inboxLoading"
+              :pagination="inboxPagination"
+              :scroll="{ x: 960 }"
+              size="small"
+              :sticky="{ offsetScroll: 0 }"
+              @change="handleInboxTableChange"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'messageType'">
+                  <Tag color="blue">{{ record.message.messageType || 'SYSTEM' }}</Tag>
+                </template>
+                <template v-else-if="column.key === 'readStatus'">
+                  <Tag :color="record.recipient.readStatus === 1 ? 'green' : 'orange'">
+                    {{ record.recipient.readStatus === 1 ? '已读' : '未读' }}
+                  </Tag>
+                </template>
+                <template v-else-if="column.key === 'action'">
+                  <Space>
+                    <Button
+                      v-if="record.recipient.readStatus !== 1"
+                      type="link"
+                      size="small"
+                      @click="markRead(asInbox(record))"
+                    >
+                      标记已读
+                    </Button>
+                    <Popconfirm title="确认删除该收件消息？" @confirm="removeInbox(asInbox(record))">
+                      <Button danger type="link" size="small">删除</Button>
+                    </Popconfirm>
+                  </Space>
+                </template>
+              </template>
+            </Table>
+          </CompactTableFrame>
         </TabPane>
       </Tabs>
-    </div>
+    </BusinessPageScaffold>
 
     <Modal
       v-model:open="sendOpen"

@@ -178,6 +178,11 @@
             </dependency>
             <dependency>
                 <groupId>com.triobase</groupId>
+                <artifactId>common-action</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.triobase</groupId>
                 <artifactId>common-temporal</artifactId>
                 <version>${project.version}</version>
             </dependency>

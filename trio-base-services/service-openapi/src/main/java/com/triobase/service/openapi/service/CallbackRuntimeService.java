@@ -17,6 +17,7 @@ import com.triobase.service.openapi.domain.enums.CallbackInboxState;
 import com.triobase.service.openapi.domain.enums.Environment;
 import com.triobase.service.openapi.domain.enums.ExecutionState;
 import com.triobase.service.openapi.dto.CallbackAcknowledgement;
+import com.triobase.service.openapi.action.OpenApiActionMetadata;
 import com.triobase.service.openapi.infrastructure.mapper.CallbackInboxMapper;
 import com.triobase.service.openapi.infrastructure.mapper.CallbackNonceMapper;
 import com.triobase.service.openapi.infrastructure.mapper.IntegrationExecutionMapper;
@@ -115,6 +116,7 @@ public class CallbackRuntimeService {
         inbox.setSignalName(profile.getSignalName());
         inbox.setSignalAttempts(0);
         inbox.setNextSignalAt(correlated.reason() == null ? now : null);
+        OpenApiActionMetadata.apply(inbox);
         inbox.setQuarantineReason(correlated.reason());
         inbox.setReceivedAt(now);
         inbox.setRetentionUntil(now.plusDays(180));

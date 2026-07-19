@@ -3,15 +3,20 @@ package com.triobase.service.lowcode.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.triobase.common.core.auth.DataScope;
-import com.triobase.common.core.auth.DataScope.Dimension;
-import com.triobase.common.core.auth.DataScope.Policy;
-import com.triobase.common.core.auth.DataScopeProvider;
+import com.triobase.common.action.enums.ActionActorType;
+import com.triobase.common.action.enums.ActionSource;
+import com.triobase.common.action.model.ActionActor;
+import com.triobase.common.action.model.ActionContext;
+import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
 import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.dto.authz.AuthorizationDecisionResponse;
+import com.triobase.service.lowcode.action.LowcodeActionExecutionContext;
 import com.triobase.service.lowcode.dto.BindFormProcessRequest;
 import com.triobase.service.lowcode.dto.FormFieldValidationError;
+import com.triobase.service.lowcode.dto.FormInstanceResponse;
 import com.triobase.service.lowcode.dto.SubmitFormInstanceRequest;
+import com.triobase.service.lowcode.dto.UpdateFormInstanceRequest;
 import com.triobase.service.lowcode.dto.UpdateWorkflowStatusRequest;
 import com.triobase.service.lowcode.entity.LcFormDefinition;
 import com.triobase.service.lowcode.entity.LcFormInstance;
@@ -36,8 +41,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,9 +60,9 @@ class FormInstanceServiceTest {
     @Mock
     private ObjectMapper objectMapper;
     @Mock
-    private DataScopeProvider dataScopeProvider;
-    @Mock
     private LowcodeFormDataValidator formDataValidator;
+    @Mock
+    private LowcodeAuthorizationService authorizationService;
 
     @InjectMocks
     private FormInstanceService service;
@@ -63,14 +70,20 @@ class FormInstanceServiceTest {
     @AfterEach
     void clearContext() {
         SecurityContextHolder.clear();
+        LowcodeActionExecutionContext.clear();
     }
 
     @Test
     void listUsesDatabasePagination() {
         SecurityContextHolder.set(new SecurityContextHolder.SecurityContext(
                 "U001", "alice", "tenant-a", List.of(), List.of(), null, null, null));
-        when(dataScopeProvider.resolve(eq("U001"), eq("FORM:EXPENSE"), eq("QUERY")))
-                .thenReturn(allowAllScope());
+        AuthorizationDecisionResponse decision = allowDecision("VIEW");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("VIEW"), isNull(), any()))
+                .thenReturn(decision);
+        when(authorizationService.dataAccessMode(decision))
+                .thenReturn(LowcodeAuthorizationService.DataAccessMode.ALL);
+        when(authorizationService.applyReadRules(any(FormInstanceResponse.class), eq(decision)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         LcFormInstance instance = new LcFormInstance();
         instance.setId("INS001");
         instance.setTenantId("tenant-a");
@@ -92,11 +105,29 @@ class FormInstanceServiceTest {
     }
 
     @Test
+    void listFailsClosedForOrganizationScopeUntilOwnershipPredicateExists() {
+        setTenantUser();
+        AuthorizationDecisionResponse decision = allowDecision("VIEW");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("VIEW"), isNull(), any()))
+                .thenReturn(decision);
+        when(authorizationService.dataAccessMode(decision))
+                .thenReturn(LowcodeAuthorizationService.DataAccessMode.ORG);
+
+        var result = service.list("expense", 1, 10);
+
+        assertThat(result.getRecords()).isEmpty();
+        assertThat(result.getTotal()).isZero();
+        verify(formInstanceMapper, never()).selectPage(any(Page.class), any(Wrapper.class));
+    }
+
+    @Test
     void submitValidationFailureDoesNotInsert() {
         setTenantUser();
         when(formDefinitionService.findLatestByFormKey("expense")).thenReturn(publishedForm());
-        when(dataScopeProvider.resolve(eq("U001"), eq("FORM:EXPENSE"), eq("CREATE")))
-                .thenReturn(allowAllScope("CREATE"));
+        AuthorizationDecisionResponse decision = allowDecision("CREATE");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("CREATE"), isNull(), any()))
+                .thenReturn(decision);
+        when(authorizationService.allowsCreate(decision)).thenReturn(true);
         doThrow(new FormDataValidationException(List.of(
                 new FormFieldValidationError("amount", "REQUIRED", "required", "required"))))
                 .when(formDataValidator).validate(any(), any());
@@ -108,12 +139,43 @@ class FormInstanceServiceTest {
     }
 
     @Test
+    void submitPersistsActionMetadataWhenOwnerContextExists() throws Exception {
+        setTenantUser();
+        AtomicReference<LcFormInstance> instanceRef = new AtomicReference<>();
+        when(formDefinitionService.findLatestByFormKey("expense")).thenReturn(publishedForm());
+        AuthorizationDecisionResponse decision = allowDecision("SUBMIT");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("SUBMIT"), isNull(), any()))
+                .thenReturn(decision);
+        when(authorizationService.allowsCreate(decision)).thenReturn(true);
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(formInstanceMapper.insert(any(LcFormInstance.class))).thenAnswer(invocation -> {
+            instanceRef.set(invocation.getArgument(0));
+            return 1;
+        });
+        LowcodeActionExecutionContext.set(ownerDispatchRequest());
+
+        var response = service.submit("expense", submitRequest(), "SUBMIT");
+
+        assertEquals("act_lowcode_001", response.getActionId());
+        assertEquals("lowcode.form.submit", response.getActionType());
+        assertEquals("GUI", response.getActionSource());
+        assertEquals("USER", response.getActionActorType());
+        assertEquals("U001", response.getActionActorId());
+        assertEquals("alice", response.getActionActorName());
+        assertEquals("trace-action-1", response.getActionTraceId());
+        assertEquals("corr-001", response.getActionCorrelationId());
+        assertEquals("act_lowcode_001", instanceRef.get().getActionId());
+    }
+
+    @Test
     void detailDeniedWhenSelfScopeDoesNotOwnInstance() {
         setTenantUser();
         LcFormInstance instance = instance("INS001", "U999");
         when(formInstanceMapper.selectOne(any())).thenReturn(instance);
-        when(dataScopeProvider.resolve(eq("U001"), eq("FORM:EXPENSE"), eq("QUERY")))
-                .thenReturn(allowSelfScope());
+        AuthorizationDecisionResponse decision = allowDecision("VIEW");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("VIEW"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(false);
 
         BizException exception = assertThrows(BizException.class, () -> service.getById("INS001"));
 
@@ -138,8 +200,12 @@ class FormInstanceServiceTest {
         instance.setProcessInstanceId("PROC001");
         instance.setWorkflowStatus("RUNNING");
         when(formInstanceMapper.selectOne(any())).thenReturn(instance);
-        when(dataScopeProvider.resolve(eq("U001"), eq("FORM:EXPENSE"), eq("QUERY")))
-                .thenReturn(allowAllScope("QUERY"));
+        AuthorizationDecisionResponse decision = allowDecision("EDIT");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("EDIT"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(true);
+        when(authorizationService.applyReadRules(any(FormInstanceResponse.class), eq(decision)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = service.bindProcess("expense", "INS001", bindRequest("PROC001", "RUNNING"));
 
@@ -155,8 +221,10 @@ class FormInstanceServiceTest {
         instance.setProcessKey("expense_report");
         instance.setProcessInstanceId("PROC000");
         when(formInstanceMapper.selectOne(any())).thenReturn(instance);
-        when(dataScopeProvider.resolve(eq("U001"), eq("FORM:EXPENSE"), eq("QUERY")))
-                .thenReturn(allowAllScope("QUERY"));
+        AuthorizationDecisionResponse decision = allowDecision("EDIT");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("EDIT"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(true);
 
         BizException exception = assertThrows(BizException.class,
                 () -> service.bindProcess("expense", "INS001", bindRequest("PROC001", "RUNNING")));
@@ -170,19 +238,30 @@ class FormInstanceServiceTest {
         LcFormInstance instance = instance("INS001", "U001");
         AtomicReference<LcFormInstanceWorkflowAudit> auditRef = new AtomicReference<>();
         when(formInstanceMapper.selectOne(any())).thenReturn(instance);
-        when(dataScopeProvider.resolve(eq("U001"), eq("FORM:EXPENSE"), eq("QUERY")))
-                .thenReturn(allowAllScope("QUERY"));
+        AuthorizationDecisionResponse decision = allowDecision("EDIT");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("EDIT"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(true);
+        when(authorizationService.applyReadRules(any(FormInstanceResponse.class), eq(decision)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         when(workflowAuditMapper.insert(any(LcFormInstanceWorkflowAudit.class))).thenAnswer(invocation -> {
             auditRef.set(invocation.getArgument(0));
             return 1;
         });
+        LowcodeActionExecutionContext.set(ownerDispatchRequest());
 
         var response = service.bindProcess("expense", "INS001", bindRequest("PROC001", "RUNNING"));
 
         assertEquals("RUNNING", response.getWorkflowStatus());
         assertEquals("PROC001", response.getProcessInstanceId());
+        assertEquals("act_lowcode_001", response.getActionId());
         assertEquals("BIND_PROCESS", auditRef.get().getChangeType());
         assertEquals("RUNNING", auditRef.get().getWorkflowStatus());
+        assertEquals("act_lowcode_001", auditRef.get().getActionId());
+        assertEquals("lowcode.form.submit", auditRef.get().getActionType());
+        assertEquals("GUI", auditRef.get().getActionSource());
+        assertEquals("U001", auditRef.get().getActionActorId());
+        assertEquals("corr-001", auditRef.get().getActionCorrelationId());
     }
 
     @Test
@@ -194,8 +273,12 @@ class FormInstanceServiceTest {
         instance.setWorkflowStatus("RUNNING");
         AtomicReference<LcFormInstanceWorkflowAudit> auditRef = new AtomicReference<>();
         when(formInstanceMapper.selectOne(any())).thenReturn(instance);
-        when(dataScopeProvider.resolve(eq("U001"), eq("FORM:EXPENSE"), eq("QUERY")))
-                .thenReturn(allowAllScope("QUERY"));
+        AuthorizationDecisionResponse decision = allowDecision("EDIT");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("EDIT"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(true);
+        when(authorizationService.applyReadRules(any(FormInstanceResponse.class), eq(decision)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         when(workflowAuditMapper.insert(any(LcFormInstanceWorkflowAudit.class))).thenAnswer(invocation -> {
             auditRef.set(invocation.getArgument(0));
             return 1;
@@ -210,20 +293,119 @@ class FormInstanceServiceTest {
         assertEquals("trace-1", auditRef.get().getTraceId());
     }
 
-    private DataScope allowAllScope() {
-        return allowAllScope("QUERY");
+    @Test
+    void updateEnforcesEditAuthorizationAndWritableFields() {
+        setTenantUser();
+        when(formDefinitionService.findLatestByFormKey("expense")).thenReturn(publishedForm());
+        LcFormInstance instance = instance("INS001", "U001");
+        when(formInstanceMapper.selectOne(any())).thenReturn(instance);
+        AuthorizationDecisionResponse decision = allowDecision("EDIT");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("EDIT"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(true);
+        when(authorizationService.applyReadRules(any(FormInstanceResponse.class), eq(decision)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        UpdateFormInstanceRequest request = new UpdateFormInstanceRequest();
+        request.setData(Map.of("amount", 100));
+        var response = service.update("expense", "INS001", request);
+
+        assertEquals("INS001", response.getId());
+        verify(formInstanceMapper).updateById(any(LcFormInstance.class));
+        verify(authorizationService).requireWritableFields(eq(decision), any());
     }
 
-    private DataScope allowAllScope(String actionCode) {
-        return new DataScope("U001", "FORM:EXPENSE", actionCode, false, true, List.of(),
-                List.of(new Policy("R001", "ALLOW", "AND",
-                        List.of(new Dimension("CREATOR", "ALL", List.of())))));
+    @Test
+    void exportEnforcesExportAuthorization() {
+        setTenantUser();
+        LcFormInstance instance = instance("INS001", "U001");
+        when(formInstanceMapper.selectOne(any())).thenReturn(instance);
+        AuthorizationDecisionResponse decision = allowDecision("EXPORT");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("EXPORT"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(true);
+        when(authorizationService.applyReadRules(any(FormInstanceResponse.class), eq(decision)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.export("expense", "INS001");
+
+        assertEquals("INS001", response.getId());
     }
 
-    private DataScope allowSelfScope() {
-        return new DataScope("U001", "FORM:EXPENSE", "QUERY", false, true, List.of(),
-                List.of(new Policy("R001", "ALLOW", "AND",
-                        List.of(new Dimension("CREATOR", "SELF", List.of())))));
+    @Test
+    void deleteEnforcesDeleteAuthorization() {
+        setTenantUser();
+        LcFormInstance instance = instance("INS001", "U001");
+        when(formInstanceMapper.selectOne(any())).thenReturn(instance);
+        AuthorizationDecisionResponse decision = allowDecision("DELETE");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("DELETE"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(true);
+
+        service.delete("expense", "INS001");
+
+        verify(formInstanceMapper, times(1)).deleteById((java.io.Serializable) "INS001");
+    }
+
+    @Test
+    void deleteDeniedWhenNotAuthorized() {
+        setTenantUser();
+        LcFormInstance instance = instance("INS001", "U001");
+        when(formInstanceMapper.selectOne(any())).thenReturn(instance);
+        AuthorizationDecisionResponse decision = allowDecision("DELETE");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("DELETE"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(false);
+
+        BizException exception = assertThrows(BizException.class,
+                () -> service.delete("expense", "INS001"));
+
+        assertEquals("FORM_INSTANCE_DELETE_DENIED", exception.getMessage());
+        verify(formInstanceMapper, never()).deleteById(any(java.io.Serializable.class));
+    }
+
+    @Test
+    void updateDeniedWhenSelfScopeDoesNotOwnInstance() {
+        setTenantUser();
+        when(formDefinitionService.findLatestByFormKey("expense")).thenReturn(publishedForm());
+        LcFormInstance instance = instance("INS001", "U999");
+        when(formInstanceMapper.selectOne(any())).thenReturn(instance);
+        AuthorizationDecisionResponse decision = allowDecision("EDIT");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("EDIT"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(false);
+
+        BizException exception = assertThrows(BizException.class,
+                () -> service.update("expense", "INS001", new UpdateFormInstanceRequest()));
+
+        assertEquals("FORM_INSTANCE_EDIT_DENIED", exception.getMessage());
+        verify(formInstanceMapper, never()).updateById(any(LcFormInstance.class));
+    }
+
+    @Test
+    void exportDeniedWhenNotAuthorized() {
+        setTenantUser();
+        LcFormInstance instance = instance("INS001", "U001");
+        when(formInstanceMapper.selectOne(any())).thenReturn(instance);
+        AuthorizationDecisionResponse decision = allowDecision("EXPORT");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("EXPORT"), eq("INS001"), any()))
+                .thenReturn(decision);
+        when(authorizationService.canAccessInstance(decision, instance)).thenReturn(false);
+
+        BizException exception = assertThrows(BizException.class,
+                () -> service.export("expense", "INS001"));
+
+        assertEquals("FORM_INSTANCE_EXPORT_DENIED", exception.getMessage());
+    }
+
+    private AuthorizationDecisionResponse allowDecision(String actionCode) {
+        AuthorizationDecisionResponse decision = new AuthorizationDecisionResponse();
+        decision.setAllowed(true);
+        decision.setTenantId("tenant-a");
+        decision.setUserId("U001");
+        decision.setResourceCode("LOWCODE_FORM:EXPENSE");
+        decision.setActionCode(actionCode);
+        return decision;
     }
 
     private LcFormDefinition publishedForm() {
@@ -277,5 +459,24 @@ class FormInstanceServiceTest {
     private void setTenantUser() {
         SecurityContextHolder.set(new SecurityContextHolder.SecurityContext(
                 "U001", "alice", "tenant-a", List.of(), List.of(), null, null, null));
+    }
+
+    private ActionOwnerDispatchRequest ownerDispatchRequest() {
+        ActionOwnerDispatchRequest request = new ActionOwnerDispatchRequest();
+        request.setActionId("act_lowcode_001");
+        request.setActionType("lowcode.form.submit");
+        request.setSource(ActionSource.GUI);
+        ActionActor actor = new ActionActor();
+        actor.setType(ActionActorType.USER);
+        actor.setId("U001");
+        actor.setDisplayName("alice");
+        actor.setTenantId("tenant-a");
+        request.setActor(actor);
+        ActionContext context = new ActionContext();
+        context.setTenantId("tenant-a");
+        context.setTraceId("trace-action-1");
+        context.setCorrelationId("corr-001");
+        request.setContext(context);
+        return request;
     }
 }

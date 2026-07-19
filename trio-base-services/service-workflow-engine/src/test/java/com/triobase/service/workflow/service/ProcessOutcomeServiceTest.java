@@ -67,6 +67,14 @@ class ProcessOutcomeServiceTest {
         when(processPackageMapper.selectById("PKG001")).thenReturn(packageWithClosurePlan());
         TaskOperation operation = new TaskOperation();
         operation.setOperatorId("approver-1");
+        operation.setTraceId("trace-task-1");
+        operation.setActionId("act_task_001");
+        operation.setActionType("process.task.approve");
+        operation.setActionSource("GUI");
+        operation.setActionActorType("USER");
+        operation.setActionActorId("approver-1");
+        operation.setActionActorName("Approver");
+        operation.setActionCorrelationId("corr-001");
         when(taskOperationMapper.selectOne(any())).thenReturn(operation);
 
         ProcessOutcome outcome = service.createOutcome("PI001", "APPROVED", null);
@@ -77,12 +85,18 @@ class ProcessOutcomeServiceTest {
         assertEquals("TENANT_A", outcome.getTenantId());
         assertEquals("approver-1", outcome.getLastOperatorId());
         assertEquals("trace-closure-1", outcome.getTraceId());
+        assertEquals("act_task_001", outcome.getActionId());
+        assertEquals("process.task.approve", outcome.getActionType());
+        assertEquals("GUI", outcome.getActionSource());
+        assertEquals("approver-1", outcome.getActionActorId());
+        assertEquals("corr-001", outcome.getActionCorrelationId());
 
         ArgumentCaptor<ProcessClosure> closureCaptor =
                 ArgumentCaptor.forClass(ProcessClosure.class);
         verify(processClosureMapper).insert(closureCaptor.capture());
         assertEquals("PENDING", closureCaptor.getValue().getClosureStatus());
         assertEquals("ER100", closureCaptor.getValue().getBusinessId());
+        assertEquals("act_task_001", closureCaptor.getValue().getActionId());
 
         ArgumentCaptor<ClosureEffect> effectCaptor =
                 ArgumentCaptor.forClass(ClosureEffect.class);
@@ -93,6 +107,7 @@ class ProcessOutcomeServiceTest {
         assertEquals("expense_report.updateStatus", effect.getExecutorKey());
         assertEquals("HARD", effect.getMode());
         assertEquals("PI001:APPROVED:approved.updateStatus", effect.getIdempotencyKey());
+        assertEquals("act_task_001", effect.getActionId());
         verify(closureEffectExecutionService).executeEffect(effect.getId());
         verify(closureOutboxMapper, never()).insert(any(ClosureOutbox.class));
 

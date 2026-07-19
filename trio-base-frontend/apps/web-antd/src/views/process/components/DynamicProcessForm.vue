@@ -92,6 +92,7 @@ defineExpose({ applyServerErrors, validate });
     >
       <Textarea
         v-if="field.widget === 'textarea'"
+        :disabled="field.disabled || field.readOnly"
         :placeholder="field.placeholder"
         :rows="4"
         :value="String(modelValue[field.key] ?? '')"
@@ -100,6 +101,7 @@ defineExpose({ applyServerErrors, validate });
       <InputNumber
         v-else-if="field.widget === 'money'"
         class="w-full"
+        :disabled="field.disabled || field.readOnly"
         :max="field.schema.maximum"
         :min="field.schema.minimum"
         :precision="2"
@@ -110,6 +112,7 @@ defineExpose({ applyServerErrors, validate });
       <InputNumber
         v-else-if="field.widget === 'number' || field.widget === 'integer'"
         class="w-full"
+        :disabled="field.disabled || field.readOnly"
         :max="field.schema.maximum"
         :min="field.schema.minimum"
         :precision="field.widget === 'integer' ? 0 : undefined"
@@ -119,11 +122,13 @@ defineExpose({ applyServerErrors, validate });
       <Switch
         v-else-if="field.widget === 'boolean'"
         :checked="Boolean(modelValue[field.key])"
+        :disabled="field.disabled || field.readOnly"
         @update:checked="updateField(field.key, $event)"
       />
       <Select
         v-else-if="field.widget === 'select'"
         allow-clear
+        :disabled="field.disabled || field.readOnly"
         :options="field.schema.enum?.map((value, index) => ({
           label: field.schema.enumNames?.[index] ?? String(value),
           value,
@@ -135,6 +140,7 @@ defineExpose({ applyServerErrors, validate });
       <DatePicker
         v-else-if="field.widget === 'date'"
         class="w-full"
+        :disabled="field.disabled || field.readOnly"
         :placeholder="field.placeholder"
         :value="dateValue(field.key)"
         value-format="YYYY-MM-DD"
@@ -142,6 +148,7 @@ defineExpose({ applyServerErrors, validate });
       />
       <Input
         v-else
+        :disabled="field.disabled || field.readOnly"
         :maxlength="field.schema.maxLength"
         :placeholder="field.placeholder"
         :value="String(modelValue[field.key] ?? '')"

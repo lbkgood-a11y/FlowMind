@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableProps } from 'ant-design-vue';
+import type { ActionApi } from '#/api/action-client';
 
 import { computed, h, onMounted, reactive, ref } from 'vue';
 
@@ -18,6 +19,13 @@ import {
 
 import { getMyCompletedTasks, getMyPendingTasks } from '#/api/process';
 import type { ProcessApi } from '#/api/process';
+import {
+  BusinessActionButton,
+  BusinessPageScaffold,
+  CompactTableFrame,
+  CompactToolbar,
+  refreshByScopes,
+} from '#/shared';
 
 import TaskActionDialog, {
   type TaskActionType,
@@ -124,7 +132,11 @@ function openAction(task: ProcessApi.TaskItem, action: TaskActionType) {
   actionOpen.value = true;
 }
 
-async function handleActionSuccess(action: TaskActionType) {
+async function handleActionSuccess(
+  action: TaskActionType,
+  _task: ProcessApi.TaskItem,
+  result: ActionApi.GlobalActionResult,
+) {
   const labels: Record<TaskActionType, string> = {
     ADD_SIGN: '加签任务已创建',
     APPROVE: '任务已通过',
@@ -132,8 +144,18 @@ async function handleActionSuccess(action: TaskActionType) {
     TRANSFER: '任务已转办',
   };
   message.success(labels[action]);
-  await loadPending();
-  if (canQueryCompleted.value) await loadCompleted();
+  await refreshByScopes(result, {
+    actions: loadPending,
+    document: loadPending,
+    list: loadPending,
+    timeline: async () => {
+      if (canQueryCompleted.value) await loadCompleted();
+    },
+    workflow: async () => {
+      await loadPending();
+      if (canQueryCompleted.value) await loadCompleted();
+    },
+  });
 }
 
 function onPendingPageChange(page: number, pageSize: number) {
@@ -151,10 +173,11 @@ onMounted(() => loadPending(1));
 
 <template>
   <Page auto-content-height>
-    <div class="erp-compact-page">
-      <section class="list-panel">
-        <div class="list-header">
-          <div class="flex items-center gap-4">
+    <BusinessPageScaffold pattern="single-table">
+      <template #toolbar>
+        <CompactToolbar>
+          <template #title>
+            <div class="flex items-center gap-4">
             <h2>任务中心</h2>
             <div class="flex gap-1">
               <Button :type="activeTab === 'pending' ? 'primary' : 'default'" size="small" @click="switchTab('pending')">
@@ -166,14 +189,16 @@ onMounted(() => loadPending(1));
               </Button>
             </div>
           </div>
+          </template>
           <Tooltip title="刷新">
             <Button shape="circle" @click="activeTab === 'pending' ? loadPending() : loadCompleted()">
               <span class="text-lg">↻</span>
             </Button>
           </Tooltip>
-        </div>
+        </CompactToolbar>
+      </template>
 
-        <div class="table-frame">
+      <CompactTableFrame>
           <Table
             :key="activeTab"
             :columns="columns"
@@ -188,18 +213,35 @@ onMounted(() => loadPending(1));
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'action' && activeTab === 'pending'">
                 <Space v-if="record.status === 'PENDING'">
-                  <Button v-if="canApprove" size="small" type="primary" @click="openAction(record as ProcessApi.TaskItem, 'APPROVE')">通过</Button>
-                  <Button v-if="canReject" size="small" danger @click="openAction(record as ProcessApi.TaskItem, 'REJECT')">驳回</Button>
-                  <Button v-if="canTransfer" size="small" @click="openAction(record as ProcessApi.TaskItem, 'TRANSFER')">转办</Button>
-                  <Button v-if="canAddSign" size="small" @click="openAction(record as ProcessApi.TaskItem, 'ADD_SIGN')">加签</Button>
+                  <BusinessActionButton
+                    v-if="canApprove"
+                    label="通过"
+                    primary
+                    @execute="openAction(record as ProcessApi.TaskItem, 'APPROVE')"
+                  />
+                  <BusinessActionButton
+                    v-if="canReject"
+                    danger
+                    label="驳回"
+                    @execute="openAction(record as ProcessApi.TaskItem, 'REJECT')"
+                  />
+                  <BusinessActionButton
+                    v-if="canTransfer"
+                    label="转办"
+                    @execute="openAction(record as ProcessApi.TaskItem, 'TRANSFER')"
+                  />
+                  <BusinessActionButton
+                    v-if="canAddSign"
+                    label="加签"
+                    @execute="openAction(record as ProcessApi.TaskItem, 'ADD_SIGN')"
+                  />
                 </Space>
                 <span v-else class="text-muted-foreground text-sm">-</span>
               </template>
             </template>
           </Table>
-        </div>
 
-        <div class="table-footer">
+        <template #footer>
           <div class="table-total">共 {{ activeTab === 'pending' ? pendingPagination.total : completedPagination.total }} 条记录</div>
           <Pagination
             :current="activeTab === 'pending' ? pendingPagination.current : completedPagination.current"
@@ -212,9 +254,9 @@ onMounted(() => loadPending(1));
             @change="activeTab === 'pending' ? onPendingPageChange($event, pendingPagination.pageSize) : onCompletedPageChange($event, completedPagination.pageSize)"
             @show-size-change="activeTab === 'pending' ? onPendingPageChange(pendingPagination.current, $event) : onCompletedPageChange(completedPagination.current, $event)"
           />
-        </div>
-      </section>
-    </div>
+        </template>
+      </CompactTableFrame>
+    </BusinessPageScaffold>
 
     <TaskActionDialog
       v-model:open="actionOpen"

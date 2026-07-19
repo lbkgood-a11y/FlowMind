@@ -5,8 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { formatApiErrorMessage } from '#/api/error-messages';
 
 import {
+  getAuthorizedRuntimeFormSchemas,
   getPrimaryCreateAction,
   getRetryWorkflowAction,
+  getRuntimeActions,
   getRuntimeDetailSections,
   getRuntimeListColumns,
   toRuntimeTableRecord,
@@ -94,6 +96,69 @@ describe('lowcode runtime metadata', () => {
   it('selects only enabled runtime actions and prefers workflow launch', () => {
     expect(getPrimaryCreateAction(descriptor)?.actionCode).toBe('submitAndLaunch');
     expect(getRetryWorkflowAction(descriptor)?.actionCode).toBe('submitAndLaunch');
+  });
+
+  it('consumes authorization descriptors for actions and fields', () => {
+    const restrictedDescriptor: LowcodeApi.RuntimeApplicationDescriptor = {
+      ...descriptor,
+      actions: [
+        ...descriptor.actions,
+        {
+          actionCode: 'deniedCreate',
+          actionType: 'CREATE',
+          allowed: false,
+          id: 'ACT3',
+          label: '被拒绝的新建',
+          sortOrder: 0,
+          status: 'ENABLED',
+        },
+      ],
+      fieldRules: [
+        {
+          fieldKey: 'amount',
+          maskStrategy: 'MONEY',
+          readMode: 'MASKED',
+          writeMode: 'READONLY',
+        },
+        {
+          fieldKey: 'reason',
+          readMode: 'HIDDEN',
+          writeMode: 'DENIED',
+        },
+      ],
+    };
+
+    expect(getRuntimeActions(restrictedDescriptor).map((action) => action.actionCode)).not.toContain(
+      'deniedCreate',
+    );
+    expect(getRuntimeListColumns(restrictedDescriptor)).toMatchObject([
+      {
+        editable: false,
+        fieldKey: 'amount',
+        maskStrategy: 'MONEY',
+        readMode: 'MASKED',
+      },
+    ]);
+    expect(getRuntimeDetailSections(restrictedDescriptor)[0]?.fields).toMatchObject([
+      { editable: false, fieldKey: 'amount' },
+    ]);
+
+    const formSchemas = getAuthorizedRuntimeFormSchemas(restrictedDescriptor);
+    const schema = JSON.parse(formSchemas.schemaJson || '{}') as {
+      properties: Record<string, unknown>;
+      required?: string[];
+    };
+    const uiSchema = JSON.parse(formSchemas.uiSchemaJson || '{}') as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(Object.keys(schema.properties)).toEqual(['amount']);
+    expect(schema.required).toEqual([]);
+    expect(uiSchema.amount).toMatchObject({
+      'ui:disabled': true,
+      'ui:readonly': true,
+      'ui:widget': 'money',
+    });
   });
 
   it('parses instance data and exposes pending workflow state', () => {

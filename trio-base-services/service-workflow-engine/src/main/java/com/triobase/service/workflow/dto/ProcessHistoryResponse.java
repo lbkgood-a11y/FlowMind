@@ -39,6 +39,13 @@ public class ProcessHistoryResponse {
         private String status;
         private String traceId;
         private String resultJson;
+        private String actionId;
+        private String actionType;
+        private String actionSource;
+        private String actionActorType;
+        private String actionActorId;
+        private String actionActorName;
+        private String actionCorrelationId;
         private LocalDateTime createdAt;
     }
 }

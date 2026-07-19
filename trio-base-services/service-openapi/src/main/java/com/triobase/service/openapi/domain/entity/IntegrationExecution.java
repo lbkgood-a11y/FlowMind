@@ -25,6 +25,14 @@ public class IntegrationExecution {
     private String idempotencyKey;
     private String traceId;
     private String callerId;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionTraceId;
+    private String actionCorrelationId;
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
     private Long durationMillis;

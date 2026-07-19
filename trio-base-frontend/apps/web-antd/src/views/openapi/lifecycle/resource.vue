@@ -9,6 +9,7 @@ import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 
 import {
+  Card,
   Button,
   FormItem,
   Input,
@@ -23,6 +24,13 @@ import {
 } from 'ant-design-vue';
 
 import { getLifecycleAssets, getOpenApiLifecycleData, invokeOpenApiLifecycleAction } from '#/api';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+  SplitLayout,
+} from '#/shared';
 
 import AssetReferenceSelect from './AssetReferenceSelect.vue';
 import DynamicPayloadForm from './DynamicPayloadForm.vue';
@@ -387,46 +395,68 @@ onMounted(load);
 
 <template>
   <Page :description="config.description" :title="config.title">
-    <Space class="toolbar" wrap>
-      <Input v-model:value="query.keyword" allow-clear placeholder="名称或标识" />
-      <Input v-model:value="query.state" allow-clear placeholder="生命周期状态" />
-      <Button type="primary" @click="load">查询</Button>
-      <Button v-if="canWrite" @click="openCreateDialog">新建</Button>
-      <Button v-if="canWrite && config.actions.length" @click="openActionDialog">
-        生命周期动作
-      </Button>
-    </Space>
-    <Table
-      row-key="id"
-      size="small"
-      :columns="columns"
-      :data-source="rows"
-      :loading="loading"
-      :pagination="pagination"
-      @change="tableChange"
-    >
-      <template #bodyCell="{ column, record }">
-        <Tag v-if="column.key === 'state'" color="blue">
-          {{ record.lifecycleState || '-' }}
-        </Tag>
-        <Space v-if="column.key === 'actions'">
-          <Button type="link" @click="inspect(asAsset(record))">详情</Button>
-          <Button
-            v-if="canWrite && config.edit && canEditRecord(asAsset(record))"
-            type="link"
-            @click="openEditDialog(asAsset(record))"
-          >
-            编辑
-          </Button>
-          <Tooltip
-            v-else-if="canWrite && config.edit"
-            title="只有 DRAFT 草稿可编辑；已发布版本请新建草稿后修改"
-          >
-            <Button disabled type="link">编辑</Button>
-          </Tooltip>
-        </Space>
+    <BusinessPageScaffold pattern="document">
+      <template #query>
+        <CompactQueryBar :columns="3">
+          <Input v-model:value="query.keyword" allow-clear placeholder="名称或标识" />
+          <Input v-model:value="query.state" allow-clear placeholder="生命周期状态" />
+          <template #actions>
+            <Button type="primary" @click="load">查询</Button>
+            <Button v-if="canWrite" @click="openCreateDialog">新建</Button>
+            <Button v-if="canWrite && config.actions.length" @click="openActionDialog">
+              生命周期动作
+            </Button>
+          </template>
+        </CompactQueryBar>
       </template>
-    </Table>
+      <template #toolbar>
+        <CompactToolbar :title="config.title" :subtitle="config.description" />
+      </template>
+      <SplitLayout left-width="260px">
+        <template #left>
+          <Card size="small" title="资源上下文">
+            <Space direction="vertical" size="small">
+              <Tag color="blue">{{ config.assetType }}</Tag>
+              <span>动作 {{ config.actions.length }}</span>
+              <span>记录 {{ pagination.total }}</span>
+            </Space>
+          </Card>
+        </template>
+        <CompactTableFrame>
+          <Table
+            row-key="id"
+            size="small"
+            :columns="columns"
+            :data-source="rows"
+            :loading="loading"
+            :pagination="pagination"
+            @change="tableChange"
+          >
+            <template #bodyCell="{ column, record }">
+              <Tag v-if="column.key === 'state'" color="blue">
+                {{ record.lifecycleState || '-' }}
+              </Tag>
+              <Space v-if="column.key === 'actions'">
+                <Button type="link" @click="inspect(asAsset(record))">详情</Button>
+                <Button
+                  v-if="canWrite && config.edit && canEditRecord(asAsset(record))"
+                  type="link"
+                  @click="openEditDialog(asAsset(record))"
+                >
+                  编辑
+                </Button>
+                <Tooltip
+                  v-else-if="canWrite && config.edit"
+                  title="只有 DRAFT 草稿可编辑；已发布版本请新建草稿后修改"
+                >
+                  <Button disabled type="link">编辑</Button>
+                </Tooltip>
+              </Space>
+            </template>
+          </Table>
+        </CompactTableFrame>
+      </SplitLayout>
+    </BusinessPageScaffold>
     <Modal v-model:open="detailOpen" title="资产详情" :footer="null" width="920px">
       <LifecycleAssetDetail :asset="detail" :config="config" />
     </Modal>

@@ -26,6 +26,13 @@ public class ProcessClosureDetailResponse {
         private String initiatorId;
         private String lastOperatorId;
         private String traceId;
+        private String actionId;
+        private String actionType;
+        private String actionSource;
+        private String actionActorType;
+        private String actionActorId;
+        private String actionActorName;
+        private String actionCorrelationId;
         private LocalDateTime createdAt;
     }
 
@@ -36,6 +43,13 @@ public class ProcessClosureDetailResponse {
         private String businessType;
         private String businessId;
         private String traceId;
+        private String actionId;
+        private String actionType;
+        private String actionSource;
+        private String actionActorType;
+        private String actionActorId;
+        private String actionActorName;
+        private String actionCorrelationId;
         private LocalDateTime startedAt;
         private LocalDateTime completedAt;
     }
@@ -59,6 +73,13 @@ public class ProcessClosureDetailResponse {
         private Integer attemptCount;
         private LocalDateTime nextRetryAt;
         private String traceId;
+        private String actionId;
+        private String actionType;
+        private String actionSource;
+        private String actionActorType;
+        private String actionActorId;
+        private String actionActorName;
+        private String actionCorrelationId;
         private boolean retryAvailable;
         private boolean manualHandlingAvailable;
     }

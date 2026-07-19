@@ -19,4 +19,6 @@ public class LcFormFieldDefinition extends BaseEntity {
     private String placeholder;
     private String optionsJson;
     private Integer sortOrder;
+    private String sensitivityClassification;
+    private String defaultMaskStrategy;
 }

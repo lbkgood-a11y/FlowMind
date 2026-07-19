@@ -1,6 +1,16 @@
 package com.triobase.service.lowcode.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.triobase.common.action.enums.ActionErrorCategory;
+import com.triobase.common.action.enums.ActionStatus;
+import com.triobase.common.action.model.ActionError;
+import com.triobase.common.action.model.GlobalActionRequest;
+import com.triobase.common.action.model.GlobalActionResult;
+import com.triobase.common.dto.authz.AuthzDecisionReason;
+import com.triobase.common.dto.authz.AuthzFieldRule;
+import com.triobase.common.dto.authz.AuthorizationBatchDecisionResponse;
+import com.triobase.common.dto.authz.AuthorizationDecisionRequest;
+import com.triobase.common.dto.authz.AuthorizationDecisionResponse;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,14 +22,15 @@ import com.triobase.service.lowcode.dto.ApplicationActionResponse;
 import com.triobase.service.lowcode.dto.ApplicationPageResponse;
 import com.triobase.service.lowcode.dto.BindFormProcessRequest;
 import com.triobase.service.lowcode.dto.FormInstanceResponse;
-import com.triobase.service.lowcode.dto.RuntimeActionRequest;
-import com.triobase.service.lowcode.dto.RuntimeActionResponse;
 import com.triobase.service.lowcode.dto.RuntimeApplicationDescriptorResponse;
 import com.triobase.service.lowcode.dto.RuntimeApplicationSummaryResponse;
+import com.triobase.service.lowcode.dto.RuntimeFieldAuthorizationResponse;
 import com.triobase.service.lowcode.dto.RuntimeRetryWorkflowRequest;
 import com.triobase.service.lowcode.dto.RuntimeWorkflowResponse;
 import com.triobase.service.lowcode.dto.SubmitFormInstanceRequest;
 import com.triobase.service.lowcode.dto.UpdateWorkflowStatusRequest;
+import com.triobase.common.dto.authz.AuthzGuardRequirement;
+import com.triobase.service.lowcode.dto.GuardRequirementResponse;
 import com.triobase.service.lowcode.entity.LcApplication;
 import com.triobase.service.lowcode.entity.LcApplicationAction;
 import com.triobase.service.lowcode.entity.LcApplicationPage;
@@ -61,6 +72,7 @@ public class ApplicationRuntimeService {
     private final FormDefinitionService formDefinitionService;
     private final FormInstanceService formInstanceService;
     private final WorkflowLaunchClient workflowLaunchClient;
+    private final LowcodeAuthorizationService authorizationService;
     private final ObjectMapper objectMapper;
 
     public PageResult<RuntimeApplicationSummaryResponse> listAvailable(int page, int size) {
@@ -88,13 +100,17 @@ public class ApplicationRuntimeService {
         LcApplicationVersion applicationVersion = requireRuntimeVersion(appKey, version);
         PublishedFormSnapshotResponse form = formDefinitionService.getPublishedSnapshot(
                 applicationVersion.getPrimaryFormDefinitionId());
+        List<LcApplicationPage> pages = listPages(applicationVersion.getId());
+        List<LcApplicationAction> actions = enabledActions(applicationVersion.getId());
+        RuntimeDescriptorAuthorization authorization = descriptorAuthorization(applicationVersion, form, pages, actions);
         RuntimeApplicationDescriptorResponse response = new RuntimeApplicationDescriptorResponse();
         copySummary(response, applicationVersion);
         response.setPrimaryFormDefinitionId(applicationVersion.getPrimaryFormDefinitionId());
         response.setSchemaJson(form.getSchemaJson());
         response.setUiSchemaJson(form.getUiSchemaJson());
-        response.setPages(listPages(applicationVersion.getId()).stream().map(this::toPageResponse).toList());
-        response.setActions(visibleActions(applicationVersion.getId()).stream().map(this::toActionResponse).toList());
+        response.setPages(authorization.pages());
+        response.setActions(authorization.actions());
+        response.setFieldRules(authorization.fieldRules());
         return response;
     }
 
@@ -113,52 +129,54 @@ public class ApplicationRuntimeService {
         return response;
     }
 
-    public RuntimeActionResponse runAction(String appKey,
-                                           Integer version,
-                                           String actionCode,
-                                           RuntimeActionRequest request) {
+    public GlobalActionResult executeLocalAction(String appKey,
+                                                 Integer version,
+                                                 String actionCode,
+                                                 GlobalActionRequest request) {
         LcApplicationVersion applicationVersion = requireRuntimeVersion(appKey, version);
-        LcApplicationAction action = requireAction(applicationVersion.getId(), actionCode);
+        LcApplicationAction action = requireAction(applicationVersion, actionCode);
         String actionType = normalize(action.getActionType());
         if (CREATE_SAVE_ACTIONS.contains(actionType)) {
-            FormInstanceResponse instance = submitForm(applicationVersion, request);
-            return savedResponse(action.getActionCode(), instance);
+            FormInstanceResponse instance = submitForm(applicationVersion, request,
+                    LowcodeAuthorizationActionCatalog.formActionForApplicationActionType(actionType));
+            return savedResult(request, action.getActionCode(), instance);
         }
         if ("SUBMIT_AND_LAUNCH_WORKFLOW".equals(actionType)) {
-            FormInstanceResponse instance = submitForm(applicationVersion, request);
+            FormInstanceResponse instance = submitForm(applicationVersion, request, "SUBMIT");
             return launchWorkflow(applicationVersion, action, request, instance, false);
         }
         throw new BizException(40055, "APPLICATION_RUNTIME_ACTION_UNSUPPORTED");
     }
 
-    public RuntimeActionResponse retryWorkflow(String appKey,
-                                               Integer version,
-                                               String instanceId,
-                                               RuntimeRetryWorkflowRequest request) {
+    public GlobalActionResult executeLocalWorkflowRetry(String appKey,
+                                                        Integer version,
+                                                        String instanceId,
+                                                        RuntimeRetryWorkflowRequest request) {
         LcApplicationVersion applicationVersion = requireRuntimeVersion(appKey, version);
         FormInstanceResponse instance = getInstance(appKey, version, instanceId);
         if (!STATUS_PENDING_WORKFLOW.equals(instance.getWorkflowStatus())) {
             throw new BizException(40955, "APPLICATION_RUNTIME_WORKFLOW_NOT_PENDING");
         }
-        LcApplicationAction action = resolveRetryAction(applicationVersion.getId(), request);
-        RuntimeActionRequest actionRequest = new RuntimeActionRequest();
+        LcApplicationAction action = resolveRetryAction(applicationVersion, request);
+        GlobalActionRequest actionRequest = new GlobalActionRequest();
         actionRequest.setIdempotencyKey(request != null ? request.getIdempotencyKey() : null);
-        actionRequest.setData(readData(instance.getDataJson()));
+        actionRequest.setPayload(Map.of("data", readData(instance.getDataJson())));
         return launchWorkflow(applicationVersion, action, actionRequest, instance, true);
     }
 
     private FormInstanceResponse submitForm(LcApplicationVersion applicationVersion,
-                                            RuntimeActionRequest request) {
+                                            GlobalActionRequest request,
+                                            String actionCode) {
         SubmitFormInstanceRequest submitRequest = new SubmitFormInstanceRequest();
-        submitRequest.setData(request != null ? request.getData() : Map.of());
-        return formInstanceService.submit(applicationVersion.getFormKey(), submitRequest);
+        submitRequest.setData(actionData(request));
+        return formInstanceService.submit(applicationVersion.getFormKey(), submitRequest, actionCode);
     }
 
-    private RuntimeActionResponse launchWorkflow(LcApplicationVersion applicationVersion,
-                                                 LcApplicationAction action,
-                                                 RuntimeActionRequest request,
-                                                 FormInstanceResponse instance,
-                                                 boolean retry) {
+    private GlobalActionResult launchWorkflow(LcApplicationVersion applicationVersion,
+                                              LcApplicationAction action,
+                                              GlobalActionRequest request,
+                                              FormInstanceResponse instance,
+                                              boolean retry) {
         try {
             RuntimeWorkflowResponse workflow = workflowLaunchClient.start(startCommand(
                     applicationVersion, action, request, instance));
@@ -168,31 +186,22 @@ public class ApplicationRuntimeService {
             bind.setWorkflowStatus(workflow.getStatus());
             FormInstanceResponse bound = formInstanceService.bindProcess(
                     applicationVersion.getFormKey(), instance.getId(), bind);
-            RuntimeActionResponse response = new RuntimeActionResponse();
-            response.setActionCode(action.getActionCode());
-            response.setStatus("WORKFLOW_STARTED");
-            response.setFormInstance(bound);
-            response.setWorkflow(workflow);
-            return response;
+            return result(request, ActionStatus.SUCCEEDED, action.getActionCode(), "WORKFLOW_STARTED",
+                    bound, workflow, false, null, null);
         } catch (WorkflowLaunchException exception) {
             markPending(applicationVersion, instance);
             if (retry && exception.isVersionConflict()) {
                 throw new BizException(40955, "APPLICATION_WORKFLOW_VERSION_CONFLICT");
             }
-            RuntimeActionResponse response = new RuntimeActionResponse();
-            response.setActionCode(action.getActionCode());
-            response.setStatus("WORKFLOW_PENDING");
-            response.setFormInstance(formInstanceService.getById(instance.getId()));
-            response.setRetryable(!exception.isVersionConflict());
-            response.setErrorCode(exception.getErrorCode());
-            response.setMessage(exception.getMessage());
-            return response;
+            return result(request, ActionStatus.FAILED, action.getActionCode(), "WORKFLOW_PENDING",
+                    formInstanceService.getById(instance.getId()), null, !exception.isVersionConflict(),
+                    exception.getErrorCode(), exception.getMessage());
         }
     }
 
     private WorkflowLaunchClient.StartCommand startCommand(LcApplicationVersion version,
                                                            LcApplicationAction action,
-                                                           RuntimeActionRequest request,
+                                                           GlobalActionRequest request,
                                                            FormInstanceResponse instance) {
         JsonNode metadata = actionMetadata(action);
         Integer processVersion = metadata.path("processVersion").isInt()
@@ -205,20 +214,57 @@ public class ApplicationRuntimeService {
                 processPackageId,
                 processVersion,
                 action.getProcessKey(),
-                request != null ? request.getTitle() : null,
-                request != null ? request.getData() : readData(instance.getDataJson()),
+                textPayload(request, "title"),
+                request != null ? actionData(request) : readData(instance.getDataJson()),
                 launchMode,
                 businessType,
                 businessId,
                 idempotencyKey(version, action, request, instance));
     }
 
-    private RuntimeActionResponse savedResponse(String actionCode, FormInstanceResponse instance) {
-        RuntimeActionResponse response = new RuntimeActionResponse();
-        response.setActionCode(actionCode);
-        response.setStatus("FORM_SAVED");
-        response.setFormInstance(instance);
-        return response;
+    private GlobalActionResult savedResult(GlobalActionRequest request,
+                                           String actionCode,
+                                           FormInstanceResponse instance) {
+        return result(request, ActionStatus.SUCCEEDED, actionCode, "FORM_SAVED",
+                instance, null, false, null, null);
+    }
+
+    private GlobalActionResult result(GlobalActionRequest request,
+                                      ActionStatus status,
+                                      String actionCode,
+                                      String runtimeStatus,
+                                      FormInstanceResponse formInstance,
+                                      RuntimeWorkflowResponse workflow,
+                                      boolean retryable,
+                                      String errorCode,
+                                      String message) {
+        GlobalActionResult result = new GlobalActionResult();
+        if (request != null) {
+            result.setActionId(request.getActionId());
+            result.setActionType(request.getActionType());
+        }
+        result.setStatus(status);
+        result.setOwnerService("service-lowcode");
+        result.setRetryable(retryable);
+        result.setMessage(message);
+        if (workflow != null) {
+            result.setOwnerExecutionRef(workflow.getProcessInstanceId());
+        } else if (formInstance != null) {
+            result.setOwnerExecutionRef(formInstance.getId());
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("actionCode", actionCode);
+        data.put("runtimeStatus", runtimeStatus);
+        data.put("formInstance", formInstance);
+        data.put("workflow", workflow);
+        result.setData(data);
+        if (StringUtils.hasText(errorCode) || StringUtils.hasText(message)) {
+            result.setErrors(List.of(ActionError.of(
+                    StringUtils.hasText(errorCode) ? errorCode : "LOWCODE_ACTION_FAILED",
+                    ActionErrorCategory.EXECUTION,
+                    StringUtils.hasText(message) ? message : runtimeStatus)));
+        }
+        return result;
     }
 
     private void markPending(LcApplicationVersion applicationVersion, FormInstanceResponse instance) {
@@ -227,8 +273,8 @@ public class ApplicationRuntimeService {
         formInstanceService.updateWorkflowStatus(applicationVersion.getFormKey(), instance.getId(), update);
     }
 
-    private LcApplicationAction resolveRetryAction(String versionId, RuntimeRetryWorkflowRequest request) {
-        List<LcApplicationAction> actions = visibleActions(versionId).stream()
+    private LcApplicationAction resolveRetryAction(LcApplicationVersion version, RuntimeRetryWorkflowRequest request) {
+        List<LcApplicationAction> actions = visibleActions(version).stream()
                 .filter(action -> WORKFLOW_ACTIONS.contains(normalize(action.getActionType())))
                 .toList();
         if (request != null && StringUtils.hasText(request.getActionCode())) {
@@ -243,20 +289,25 @@ public class ApplicationRuntimeService {
         return actions.getFirst();
     }
 
-    private LcApplicationAction requireAction(String versionId, String actionCode) {
+    private LcApplicationAction requireAction(LcApplicationVersion version, String actionCode) {
         if (!StringUtils.hasText(actionCode)) {
             throw new BizException(40055, "APPLICATION_RUNTIME_ACTION_REQUIRED");
         }
-        return visibleActions(versionId).stream()
+        return visibleActions(version).stream()
                 .filter(action -> action.getActionCode().equals(actionCode.trim()))
                 .findFirst()
                 .orElseThrow(() -> new BizException(40455, "APPLICATION_RUNTIME_ACTION_NOT_FOUND"));
     }
 
-    private List<LcApplicationAction> visibleActions(String versionId) {
+    private List<LcApplicationAction> visibleActions(LcApplicationVersion version) {
+        return enabledActions(version.getId()).stream()
+                .filter(action -> actionAllowed(version, action))
+                .toList();
+    }
+
+    private List<LcApplicationAction> enabledActions(String versionId) {
         return listActions(versionId).stream()
                 .filter(action -> STATUS_ENABLED.equalsIgnoreCase(action.getStatus()))
-                .filter(action -> !StringUtils.hasText(action.getPermissionCode()) || hasPermission(action.getPermissionCode()))
                 .toList();
     }
 
@@ -295,8 +346,22 @@ public class ApplicationRuntimeService {
     }
 
     private boolean canView(LcApplicationVersion version) {
-        return StringUtils.hasText(version.getViewPermissionCode())
-                && hasPermission(version.getViewPermissionCode());
+        AuthorizationDecisionResponse decision = authorizationService.decideResource(
+                authorizationService.appResourceCode(version.getAppKey()), "VIEW", version.getId(), List.of());
+        return decisionAllowedWithLegacyFallback(decision, version.getViewPermissionCode());
+    }
+
+    private boolean actionAllowed(LcApplicationVersion version, LcApplicationAction action) {
+        String authorizationActionCode;
+        try {
+            authorizationActionCode = LowcodeAuthorizationActionCatalog.formActionForApplicationActionType(
+                    action.getActionType());
+        } catch (BizException exception) {
+            return false;
+        }
+        AuthorizationDecisionResponse decision = authorizationService.decideForm(
+                version.getFormKey(), authorizationActionCode, action.getFormDefinitionId(), List.of());
+        return decisionAllowedWithLegacyFallback(decision, action.getPermissionCode());
     }
 
     private boolean hasPermission(String required) {
@@ -377,6 +442,141 @@ public class ApplicationRuntimeService {
         return response;
     }
 
+    private RuntimeDescriptorAuthorization descriptorAuthorization(LcApplicationVersion version,
+                                                                  PublishedFormSnapshotResponse form,
+                                                                  List<LcApplicationPage> pages,
+                                                                  List<LcApplicationAction> actions) {
+        List<String> fieldKeys = schemaFieldKeys(form.getSchemaJson());
+        String appResourceCode = authorizationService.appResourceCode(version.getAppKey());
+        String formResourceCode = authorizationService.formResourceCode(version.getFormKey());
+        List<AuthorizationDecisionRequest> requests = new ArrayList<>();
+        int fieldDecisionIndex = requests.size();
+        requests.add(authorizationService.decisionRequest(
+                formResourceCode, "VIEW", version.getPrimaryFormDefinitionId(), fieldKeys));
+        int pageDecisionStart = requests.size();
+        for (LcApplicationPage page : pages) {
+            requests.add(authorizationService.decisionRequest(appResourceCode, "VIEW", page.getId(), List.of()));
+        }
+        int actionDecisionStart = requests.size();
+        for (LcApplicationAction action : actions) {
+            requests.add(authorizationService.decisionRequest(
+                    formResourceCode,
+                    LowcodeAuthorizationActionCatalog.formActionForApplicationActionType(action.getActionType()),
+                    action.getFormDefinitionId(),
+                    List.of()));
+        }
+
+        AuthorizationBatchDecisionResponse batch = authorizationService.batchDecide(requests);
+        List<AuthorizationDecisionResponse> decisions = batch != null && batch.getDecisions() != null
+                ? batch.getDecisions() : List.of();
+        AuthorizationDecisionResponse fieldDecision = decisionAt(decisions, fieldDecisionIndex);
+        List<ApplicationPageResponse> allowedPages = new ArrayList<>();
+        for (int i = 0; i < pages.size(); i++) {
+            AuthorizationDecisionResponse decision = decisionAt(decisions, pageDecisionStart + i);
+            if (decisionAllowedWithLegacyFallback(decision, version.getViewPermissionCode())) {
+                ApplicationPageResponse pageResponse = toPageResponse(pages.get(i));
+                pageResponse.setAllowed(true);
+                pageResponse.setAuthorizationActionCode("VIEW");
+                allowedPages.add(pageResponse);
+            }
+        }
+        List<ApplicationActionResponse> allowedActions = new ArrayList<>();
+        for (int i = 0; i < actions.size(); i++) {
+            LcApplicationAction action = actions.get(i);
+            AuthorizationDecisionResponse decision = decisionAt(decisions, actionDecisionStart + i);
+            if (decisionAllowedWithLegacyFallback(decision, action.getPermissionCode())) {
+                ApplicationActionResponse actionResponse = toActionResponse(action);
+                actionResponse.setAllowed(true);
+                actionResponse.setAuthorizationActionCode(
+                        LowcodeAuthorizationActionCatalog.formActionForApplicationActionType(action.getActionType()));
+                actionResponse.setGuardRequirements(guardRequirements(decision));
+                allowedActions.add(actionResponse);
+            }
+        }
+        return new RuntimeDescriptorAuthorization(
+                allowedPages,
+                allowedActions,
+                fieldRules(fieldDecision)
+        );
+    }
+
+    private AuthorizationDecisionResponse decisionAt(List<AuthorizationDecisionResponse> decisions, int index) {
+        return index >= 0 && index < decisions.size() ? decisions.get(index) : null;
+    }
+
+    private boolean decisionAllowedWithLegacyFallback(AuthorizationDecisionResponse decision, String legacyPermissionCode) {
+        if (decision != null && decision.isAllowed()) {
+            return true;
+        }
+        if (hasExplicitDeny(decision)) {
+            return false;
+        }
+        return StringUtils.hasText(legacyPermissionCode) && hasPermission(legacyPermissionCode);
+    }
+
+    private boolean hasExplicitDeny(AuthorizationDecisionResponse decision) {
+        if (decision == null || decision.getReasons() == null) {
+            return false;
+        }
+        return decision.getReasons().stream()
+                .map(AuthzDecisionReason::getCode)
+                .anyMatch("AUTHZ_DENY_GRANT_MATCHED"::equals);
+    }
+
+    private List<RuntimeFieldAuthorizationResponse> fieldRules(AuthorizationDecisionResponse decision) {
+        if (decision == null || decision.getFieldRules() == null) {
+            return List.of();
+        }
+        return decision.getFieldRules().stream()
+                .map(this::toFieldRuleResponse)
+                .toList();
+    }
+
+    private RuntimeFieldAuthorizationResponse toFieldRuleResponse(AuthzFieldRule rule) {
+        RuntimeFieldAuthorizationResponse response = new RuntimeFieldAuthorizationResponse();
+        response.setFieldKey(rule.getFieldKey());
+        response.setReadMode(rule.getReadMode());
+        response.setWriteMode(rule.getWriteMode());
+        response.setMaskStrategy(rule.getMaskStrategy());
+        response.setReasonCode(rule.getReasonCode());
+        response.setReasonMessage(rule.getReasonMessage());
+        return response;
+    }
+
+    private List<GuardRequirementResponse> guardRequirements(AuthorizationDecisionResponse decision) {
+        if (decision == null || decision.getGuardRequirements() == null) {
+            return List.of();
+        }
+        return decision.getGuardRequirements().stream()
+                .map(this::toGuardRequirementResponse)
+                .toList();
+    }
+
+    private GuardRequirementResponse toGuardRequirementResponse(AuthzGuardRequirement requirement) {
+        GuardRequirementResponse response = new GuardRequirementResponse();
+        response.setGuardCode(requirement.getGuardCode());
+        response.setOwnerService(requirement.getOwnerService());
+        response.setDescription(requirement.getDescription());
+        return response;
+    }
+
+    private List<String> schemaFieldKeys(String schemaJson) {
+        if (!StringUtils.hasText(schemaJson)) {
+            return List.of();
+        }
+        try {
+            JsonNode properties = objectMapper.readTree(schemaJson).path("properties");
+            if (!properties.isObject()) {
+                return List.of();
+            }
+            List<String> fields = new ArrayList<>();
+            properties.fieldNames().forEachRemaining(fields::add);
+            return fields;
+        } catch (Exception exception) {
+            throw new BizException(40055, "APPLICATION_RUNTIME_SCHEMA_INVALID");
+        }
+    }
+
     private List<LcApplicationPage> listPages(String versionId) {
         return applicationPageMapper.selectList(new LambdaQueryWrapper<LcApplicationPage>()
                 .eq(LcApplicationPage::getApplicationVersionId, versionId)
@@ -412,9 +612,34 @@ public class ApplicationRuntimeService {
         }
     }
 
+    private Map<String, Object> actionData(GlobalActionRequest request) {
+        if (request == null || request.getPayload() == null) {
+            return Map.of();
+        }
+        Object data = request.getPayload().get("data");
+        if (data instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            map.forEach((key, value) -> result.put(String.valueOf(key), value));
+            return result;
+        }
+        return Map.of();
+    }
+
+    private String textPayload(GlobalActionRequest request, String key) {
+        if (request == null || request.getPayload() == null) {
+            return null;
+        }
+        Object value = request.getPayload().get(key);
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value);
+        return StringUtils.hasText(text) ? text.trim() : null;
+    }
+
     private String idempotencyKey(LcApplicationVersion version,
                                   LcApplicationAction action,
-                                  RuntimeActionRequest request,
+                                  GlobalActionRequest request,
                                   FormInstanceResponse instance) {
         if (request != null && StringUtils.hasText(request.getIdempotencyKey())) {
             return request.getIdempotencyKey().trim();
@@ -443,5 +668,12 @@ public class ApplicationRuntimeService {
 
     private String normalize(String value) {
         return StringUtils.hasText(value) ? value.trim().toUpperCase(Locale.ROOT) : "";
+    }
+
+    private record RuntimeDescriptorAuthorization(
+            List<ApplicationPageResponse> pages,
+            List<ApplicationActionResponse> actions,
+            List<RuntimeFieldAuthorizationResponse> fieldRules
+    ) {
     }
 }

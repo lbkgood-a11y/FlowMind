@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.service.workflow.action.WorkflowActionExecutionContext;
 import com.triobase.service.workflow.entity.ClosureEffect;
 import com.triobase.service.workflow.entity.ClosureOutbox;
 import com.triobase.service.workflow.entity.ProcessClosure;
@@ -67,6 +68,7 @@ public class ClosureEffectExecutionService {
 
         effect.setStatus("RUNNING");
         effect.setStartedAt(LocalDateTime.now());
+        applyCurrentActionMetadata(effect);
         closureEffectMapper.updateById(effect);
 
         ExecutionResult result = invokeExecutor(effect, closure, outcome);
@@ -118,6 +120,7 @@ public class ClosureEffectExecutionService {
         if (StringUtils.hasText(traceId)) {
             effect.setTraceId(traceId);
         }
+        applyCurrentActionMetadata(effect);
         effect.setCompletedAt(LocalDateTime.now());
         closureEffectMapper.updateById(effect);
 
@@ -293,7 +296,36 @@ public class ClosureEffectExecutionService {
         } else {
             closure.setClosureStatus("RUNNING");
         }
+        applyCurrentActionMetadata(closure);
         processClosureMapper.updateById(closure);
+    }
+
+    private void applyCurrentActionMetadata(ClosureEffect effect) {
+        WorkflowActionExecutionContext.Snapshot snapshot = WorkflowActionExecutionContext.current();
+        if (snapshot == null) {
+            return;
+        }
+        effect.setActionId(snapshot.actionId());
+        effect.setActionType(snapshot.actionType());
+        effect.setActionSource(snapshot.source());
+        effect.setActionActorType(snapshot.actorType());
+        effect.setActionActorId(snapshot.actorId());
+        effect.setActionActorName(snapshot.actorName());
+        effect.setActionCorrelationId(snapshot.correlationId());
+    }
+
+    private void applyCurrentActionMetadata(ProcessClosure closure) {
+        WorkflowActionExecutionContext.Snapshot snapshot = WorkflowActionExecutionContext.current();
+        if (snapshot == null) {
+            return;
+        }
+        closure.setActionId(snapshot.actionId());
+        closure.setActionType(snapshot.actionType());
+        closure.setActionSource(snapshot.source());
+        closure.setActionActorType(snapshot.actorType());
+        closure.setActionActorId(snapshot.actorId());
+        closure.setActionActorName(snapshot.actorName());
+        closure.setActionCorrelationId(snapshot.correlationId());
     }
 
     private Map<String, Object> params(ClosureEffect effect) {

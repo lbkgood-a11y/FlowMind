@@ -52,28 +52,69 @@ The frontend SHALL render list and detail pages from published application metad
 - **THEN** the detail view renders fields from the published form snapshot and only exposes actions allowed by metadata and permissions
 
 ### Requirement: Generic runtime supports workflow launch binding
-The runtime SHALL support configured workflow-launch actions by submitting validated form data, passing process version assumptions, and using stable idempotency keys.
+The runtime SHALL support configured workflow-launch actions by dispatching a Global Action that submits validated form data, passes process version assumptions, uses stable idempotency keys, and binds resulting form and process records through the normalized action lifecycle.
 
 #### Scenario: Submit and launch workflow
 - **WHEN** a user submits a create action configured to start workflow `expense_report`
-- **THEN** the runtime creates the form instance, starts the workflow through `service-workflow-engine`, and binds the form instance to the process instance idempotently
+- **THEN** the runtime dispatches a Global Action that creates the form instance, starts the workflow through `service-workflow-engine`, and binds the form instance to the process instance idempotently
 
 #### Scenario: Workflow start fails after instance save
 - **WHEN** form instance creation succeeds but workflow start fails
-- **THEN** the runtime leaves the instance visible with a retryable pending-workflow state rather than losing the submitted data
+- **THEN** the Global Action result records the failed owner execution and the runtime leaves the instance visible with retryable pending-workflow detail rather than losing the submitted data
 
 #### Scenario: Stale process version
 - **WHEN** the configured process package version has been superseded before launch
-- **THEN** the runtime surfaces the workflow version conflict and requires the user to reload current metadata before retrying
+- **THEN** the Global Action is rejected or failed with workflow version conflict details and requires the user to reload current metadata before retrying
 
 ### Requirement: Expense sample migrates to generic runtime
-The existing expense-report sample SHALL be represented as a published rapid-development application using the generic runtime while preserving current acceptance behavior.
+The existing expense-report sample SHALL be represented as a published rapid-development application using the generic runtime and Global Action dispatch while preserving current acceptance behavior.
 
 #### Scenario: Open migrated expense app
 - **WHEN** a user with expense permissions opens the migrated expense app
-- **THEN** they can submit an expense report, start approval, view pending workflow state, and retry workflow launch using the generic runtime path
+- **THEN** they can submit an expense report, start approval, view pending workflow state, and retry workflow launch using the generic runtime and Global Action path
 
-#### Scenario: Compatibility route
-- **WHEN** an existing menu entry points to the old expense route during migration
-- **THEN** the route either redirects to the generic application runtime or remains available as a temporary compatibility path until removal is explicitly scheduled
+#### Scenario: Compatibility route removed after action migration
+- **WHEN** all expense runtime operations have migrated to Global Action dispatch
+- **THEN** the old expense route is removed or redirects without retaining a separate business mutation implementation
+
+### Requirement: Runtime application visibility uses authorization decisions
+The runtime SHALL expose only tenant-visible published applications that the current user is authorized to view according to the enterprise authorization decision API.
+
+#### Scenario: Authorized application is visible
+- **WHEN** a user opens the lowcode application center with `VIEW` authorization for a published application
+- **THEN** the runtime lists the application with its allowed pages and safe display metadata
+
+#### Scenario: Unauthorized application is hidden
+- **WHEN** a user lacks `VIEW` authorization for a published application
+- **THEN** the runtime omits the application from navigation and application-center responses
+
+#### Scenario: Cross-tenant application remains hidden
+- **WHEN** a user requests application metadata belonging to another tenant
+- **THEN** the runtime denies or hides the application regardless of action metadata
+
+### Requirement: Runtime actions are filtered by function and guard decisions
+The runtime SHALL expose page and document actions only when the central authorization decision, action-level policy evaluation, and required local guard checks pass, and each exposed action SHALL include the Global Action type and confirmation metadata needed by the frontend Action Client.
+
+#### Scenario: Show allowed action
+- **WHEN** a user opens a form instance detail and has `SUBMIT` or `APPROVE` authorization with passing guard checks
+- **THEN** the runtime descriptor includes the corresponding allowed action with action type, target binding, guard requirements, confirmation metadata, and display metadata
+
+#### Scenario: Hide denied action with reason
+- **WHEN** the central decision denies an action or a local guard fails
+- **THEN** the runtime excludes the action from normal UI metadata and can expose a diagnostic reason to authorized administrators
+
+#### Scenario: Batch decision for runtime descriptor
+- **WHEN** the runtime builds an application descriptor containing multiple pages, actions, and fields
+- **THEN** it requests authorization decisions in batch and returns a descriptor filtered consistently by the batch result and Global Action definitions
+
+### Requirement: Runtime descriptors include field authorization outcomes
+The runtime SHALL include field read and write authorization outcomes in descriptors used to render lowcode form list, detail, create, edit, and approval views.
+
+#### Scenario: Detail descriptor masks field
+- **WHEN** a field decision marks a field as `MASKED`
+- **THEN** the runtime descriptor marks the field masked and response data contains only the masked representation
+
+#### Scenario: Edit descriptor makes field read-only
+- **WHEN** a field decision marks a field write mode as `READONLY`
+- **THEN** the runtime descriptor renders the field as non-editable and service-side submission rejects unauthorized changes
 

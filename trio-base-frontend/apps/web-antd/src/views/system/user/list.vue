@@ -52,6 +52,12 @@ import {
 } from '#/api';
 import { PagedSelect } from '#/components/business';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import {
+  BusinessPageScaffold,
+  CompactQueryBar,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared';
 
 const RangePicker = DatePicker.RangePicker;
 
@@ -671,12 +677,14 @@ onMounted(async () => {
 
 <template>
   <Page auto-content-height>
-    <div
-      class="erp-compact-page user-page"
+    <BusinessPageScaffold
+      class="user-page"
+      pattern="single-table"
+      :fullscreen="blockFullscreen"
       :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }"
     >
-      <section v-show="!queryHidden" class="query-panel">
-        <div class="query-grid" :class="{ collapsed }">
+      <template #query>
+        <CompactQueryBar v-show="!queryHidden" :collapsed="collapsed" :columns="4">
           <FormItem label="用户名">
             <Input
               v-model:value="queryForm.username"
@@ -712,7 +720,7 @@ onMounted(async () => {
               :placeholder="['开始日期', '结束日期']"
             />
           </FormItem>
-          <div class="query-actions">
+          <template #actions>
             <Button v-if="canQuery" @click="resetQuery">重置</Button>
             <Button v-if="canQuery" type="primary" @click="loadUsers(1)">搜索</Button>
             <Button type="link" @click="collapsed = !collapsed">
@@ -722,18 +730,20 @@ onMounted(async () => {
                 class="ml-1 size-4"
               />
             </Button>
-          </div>
-        </div>
-      </section>
+          </template>
+        </CompactQueryBar>
+      </template>
 
-      <section class="list-panel">
-        <div class="list-header">
-          <div class="list-title">
+      <template #toolbar>
+        <CompactToolbar>
+          <template #title>
+            <div class="list-title">
             <h2>用户列表</h2>
             <Button v-if="queryHidden" type="link" @click="queryHidden = false">
               展开搜索
             </Button>
           </div>
+          </template>
           <Space :size="8">
             <Button v-if="canCreate" type="primary" @click="openCreate">
               <Plus class="size-4" />
@@ -810,9 +820,10 @@ onMounted(async () => {
               </Tooltip>
             </Popover>
           </Space>
-        </div>
+        </CompactToolbar>
+      </template>
 
-        <div class="table-frame">
+      <CompactTableFrame>
           <Table
             :key="tableKey"
             :columns="columns"
@@ -906,9 +917,8 @@ onMounted(async () => {
               </template>
             </template>
           </Table>
-        </div>
 
-        <div class="table-footer">
+        <template #footer>
           <div class="table-total">共 {{ pagination.total }} 条记录</div>
           <Pagination
             v-model:current="pagination.current"
@@ -921,9 +931,9 @@ onMounted(async () => {
             @change="onPageChange"
             @show-size-change="onPageSizeChange"
           />
-        </div>
-      </section>
-    </div>
+        </template>
+      </CompactTableFrame>
+    </BusinessPageScaffold>
 
     <Drawer
       v-model:open="formOpen"

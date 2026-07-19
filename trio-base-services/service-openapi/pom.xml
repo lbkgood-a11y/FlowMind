@@ -28,6 +28,10 @@
             <artifactId>common-temporal</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.triobase</groupId>
+            <artifactId>common-action</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>

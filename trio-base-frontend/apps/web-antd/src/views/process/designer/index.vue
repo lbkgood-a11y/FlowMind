@@ -32,6 +32,10 @@ import {
   getProcessPackageById,
   updateProcessPackage,
 } from '#/api/process';
+import {
+  BusinessPageScaffold,
+  CompactToolbar,
+} from '#/shared';
 
 import FlowDesigner from '../components/FlowDesigner.vue';
 import {
@@ -506,9 +510,11 @@ onMounted(initializeDesigner);
 
 <template>
   <Page auto-content-height>
-    <div class="business-designer">
-      <div class="designer-header">
-        <div>
+    <BusinessPageScaffold class="business-designer" pattern="document">
+      <template #toolbar>
+        <CompactToolbar>
+          <template #title>
+            <div>
           <h2>流程设计器</h2>
           <div class="designer-subtitle">
             {{ catalog?.object.displayName || '业务对象' }}
@@ -520,6 +526,7 @@ onMounted(initializeDesigner);
             </template>
           </div>
         </div>
+          </template>
         <Space>
           <Button @click="configPanelOpen = !configPanelOpen">
             {{ configPanelOpen ? '隐藏业务配置' : '显示业务配置' }}
@@ -541,7 +548,8 @@ onMounted(initializeDesigner);
             {{ existingPackage ? '保存草稿' : '保存流程包' }}
           </Button>
         </Space>
-      </div>
+        </CompactToolbar>
+      </template>
 
       <Empty v-if="loadError" :description="loadError">
         <Button type="primary" @click="backToPackages">返回流程包管理</Button>
@@ -782,7 +790,7 @@ onMounted(initializeDesigner);
         </section>
       </div>
       </Spin>
-    </div>
+    </BusinessPageScaffold>
 
     <Modal v-model:open="technicalPreviewOpen" title="流程 JSON" width="840">
       <Input.TextArea

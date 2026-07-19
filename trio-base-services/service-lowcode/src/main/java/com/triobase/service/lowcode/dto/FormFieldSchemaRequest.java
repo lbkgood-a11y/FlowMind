@@ -12,4 +12,6 @@ public class FormFieldSchemaRequest {
     private String placeholder;
     private String optionsJson;
     private Integer sortOrder;
+    private String sensitivityClassification;
+    private String defaultMaskStrategy;
 }

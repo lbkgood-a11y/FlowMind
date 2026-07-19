@@ -18,6 +18,7 @@ import com.triobase.service.openapi.domain.enums.ExecutionState;
 import com.triobase.service.openapi.dto.CompiledRouteRelease;
 import com.triobase.service.openapi.dto.RuntimeAdmissionContext;
 import com.triobase.service.openapi.dto.SyncInvocationResponse;
+import com.triobase.service.openapi.action.OpenApiActionMetadata;
 import com.triobase.service.openapi.infrastructure.mapper.ConnectorVersionMapper;
 import com.triobase.service.openapi.infrastructure.mapper.ExecutionStepAttemptMapper;
 import com.triobase.service.openapi.infrastructure.mapper.IntegrationExecutionMapper;
@@ -153,6 +154,7 @@ public class SynchronousInvocationService {
         execution.setExecutionState(ExecutionState.RUNNING);
         execution.setTraceId(TraceUtil.getTraceId());
         execution.setCallerId(clientId);
+        OpenApiActionMetadata.apply(execution);
         execution.setStartedAt(now);
         execution.setDiagnosticEnabled(false);
         execution.setRetentionUntil(now.plusDays(180));
@@ -180,6 +182,7 @@ public class SynchronousInvocationService {
         attempt.setDurationMillis(response.durationMillis());
         attempt.setExternalStatus(response.status());
         attempt.setEvidence(JsonNodeFactory.instance.objectNode().put("responseBytes", response.body().length));
+        OpenApiActionMetadata.apply(attempt);
         attempt.setCreatedAt(now);
         attemptMapper.insert(attempt);
     }

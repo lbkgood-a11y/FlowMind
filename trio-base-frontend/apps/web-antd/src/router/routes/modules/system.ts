@@ -93,6 +93,15 @@ const routes: RouteRecordRaw[] = [
         },
         component: () => import('#/views/system/config/list.vue'),
       },
+      {
+        path: 'authz',
+        name: 'SystemAuthz',
+        meta: {
+          icon: 'mdi:shield-account',
+          title: '授权管理',
+        },
+        component: () => import('#/views/system/authz/index.vue'),
+      },
     ],
   },
 ];

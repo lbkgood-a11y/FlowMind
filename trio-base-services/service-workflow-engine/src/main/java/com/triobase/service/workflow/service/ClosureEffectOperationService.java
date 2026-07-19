@@ -55,6 +55,13 @@ public class ClosureEffectOperationService {
         item.setAttemptCount(effect.getAttemptCount());
         item.setNextRetryAt(effect.getNextRetryAt());
         item.setTraceId(effect.getTraceId());
+        item.setActionId(effect.getActionId());
+        item.setActionType(effect.getActionType());
+        item.setActionSource(effect.getActionSource());
+        item.setActionActorType(effect.getActionActorType());
+        item.setActionActorId(effect.getActionActorId());
+        item.setActionActorName(effect.getActionActorName());
+        item.setActionCorrelationId(effect.getActionCorrelationId());
         item.setRetryAvailable("FAILED".equals(effect.getStatus()) || "RETRYING".equals(effect.getStatus()));
         item.setManualHandlingAvailable(false);
         return item;

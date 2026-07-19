@@ -1,0 +1,17 @@
+package com.triobase.common.action.enums;
+
+public enum ActionEventType {
+    CREATED,
+    VALIDATION_STARTED,
+    VALIDATION_FAILED,
+    AUTHORIZATION_GRANTED,
+    AUTHORIZATION_DENIED,
+    ACCEPTED,
+    DISPATCHED,
+    RUNNING,
+    SUCCEEDED,
+    FAILED,
+    CANCELLED,
+    COMPENSATION_STARTED,
+    COMPENSATED
+}

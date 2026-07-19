@@ -24,4 +24,11 @@ public class ProcessOutcome extends BaseEntity {
     private String lastOperatorId;
     private String traceId;
     private String payloadJson;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionCorrelationId;
 }

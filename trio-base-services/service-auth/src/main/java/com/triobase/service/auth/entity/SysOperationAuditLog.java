@@ -26,6 +26,15 @@ public class SysOperationAuditLog extends BaseEntity {
     private String requestSummary;
     private String responseSummary;
     private String resultStatus;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionStatus;
+    private String actionTargetType;
+    private String actionTargetId;
+    private String actionCorrelationId;
+    private String actionIdempotencyKey;
+    private String actionSummary;
     private Integer statusCode;
     private String errorMessage;
     private Long latencyMs;

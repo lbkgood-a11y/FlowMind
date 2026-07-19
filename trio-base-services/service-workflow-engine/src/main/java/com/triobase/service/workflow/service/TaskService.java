@@ -8,12 +8,15 @@ import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.core.trace.TraceUtil;
+import com.triobase.common.dto.authz.AuthzGuardResult;
 import com.triobase.common.dto.internal.ResolvedUserDto;
 import com.triobase.service.workflow.dto.AddSignRequest;
 import com.triobase.service.workflow.dto.AddSignTaskCommand;
 import com.triobase.service.workflow.dto.ApproveTaskRequest;
+import com.triobase.service.workflow.action.WorkflowActionExecutionContext;
 import com.triobase.service.workflow.dto.ProcessPackageDefinition;
 import com.triobase.service.workflow.dto.RejectTaskCommand;
+import com.triobase.service.workflow.entity.ProcessInstance;
 import com.triobase.service.workflow.dto.RejectTaskRequest;
 import com.triobase.service.workflow.dto.ResolvedParticipants;
 import com.triobase.service.workflow.dto.TaskActionCommand;
@@ -24,6 +27,7 @@ import com.triobase.service.workflow.entity.NodeRecord;
 import com.triobase.service.workflow.entity.Task;
 import com.triobase.service.workflow.entity.TaskOperation;
 import com.triobase.service.workflow.mapper.NodeRecordMapper;
+import com.triobase.service.workflow.mapper.ProcessInstanceMapper;
 import com.triobase.service.workflow.mapper.TaskMapper;
 import com.triobase.service.workflow.mapper.TaskOperationMapper;
 import com.triobase.service.workflow.workflow.ProcessWorkflow;
@@ -46,6 +50,8 @@ public class TaskService {
     private final TaskMapper taskMapper;
     private final TaskOperationMapper taskOperationMapper;
     private final NodeRecordMapper nodeRecordMapper;
+    private final ProcessInstanceMapper processInstanceMapper;
+    private final GuardResultComposer guardResultComposer;
     private final WorkflowClient workflowClient;
     private final ParticipantResolver participantResolver;
 
@@ -87,6 +93,8 @@ public class TaskService {
         }
 
         Task task = claim.task();
+        enforceNoSelfApproval(task);
+
         TaskOperation operation = newOperation(
                 operationId, task, "APPROVE", request.getComment());
         if (!insertOperation(operation)) {
@@ -220,6 +228,7 @@ public class TaskService {
         }
 
         Task task = claim.task();
+        enforceNoSelfApproval(task);
         if (normalizedTarget != null) {
             validateRejectTarget(task, normalizedTarget);
         }
@@ -267,13 +276,15 @@ public class TaskService {
                 validateExistingOperation(existing, taskId, action);
                 return new ClaimResult(task, true);
             }
-            if (!"PENDING".equals(task.getStatus())) {
-                throw new BizException(40000, "TASK_ALREADY_PROCESSED");
+            AuthzGuardResult pendingGuard = guardResultComposer.checkPendingTask(task);
+            if (pendingGuard != null && !pendingGuard.isAllowed()) {
+                throw guardDenied(40000, pendingGuard);
             }
-            if (task.getAssigneeId() != null && !userId.equals(task.getAssigneeId())) {
-                throw new BizException(40300, "TASK_CLAIMED_BY_ANOTHER_USER");
+            AuthzGuardResult claimedGuard = guardResultComposer.checkClaimedByAnotherUser(task, userId);
+            if (claimedGuard != null && !claimedGuard.isAllowed()) {
+                throw guardDenied(40300, claimedGuard);
             }
-            throw new BizException(40300, "TASK_NOT_CANDIDATE");
+            throw guardDenied(40300, guardResultComposer.notCandidate(task, userId));
         }
 
         existing = findOperation(operationId);
@@ -298,6 +309,7 @@ public class TaskService {
         operation.setComment(comment);
         operation.setStatus("ACCEPTED");
         operation.setTraceId(TraceUtil.getTraceId());
+        applyActionMetadata(operation);
         return operation;
     }
 
@@ -459,5 +471,35 @@ public class TaskService {
     }
 
     private record ClaimResult(Task task, boolean duplicate) {
+    }
+
+    private void enforceNoSelfApproval(Task task) {
+        String userId = requireUserId();
+        ProcessInstance processInstance = processInstanceMapper.selectById(task.getProcessInstanceId());
+        if (processInstance == null) {
+            return;
+        }
+        AuthzGuardResult guard = guardResultComposer.checkNoSelfApproval(task, processInstance, userId);
+        if (guard != null && !guard.isAllowed()) {
+            throw guardDenied(40301, guard);
+        }
+    }
+
+    private TaskGuardDeniedException guardDenied(int code, AuthzGuardResult guard) {
+        return new TaskGuardDeniedException(code, guard.getReasonCode(), guardResultComposer.compose(guard));
+    }
+
+    private void applyActionMetadata(TaskOperation operation) {
+        WorkflowActionExecutionContext.Snapshot snapshot = WorkflowActionExecutionContext.current();
+        if (snapshot == null) {
+            return;
+        }
+        operation.setActionId(snapshot.actionId());
+        operation.setActionType(snapshot.actionType());
+        operation.setActionSource(snapshot.source());
+        operation.setActionActorType(snapshot.actorType());
+        operation.setActionActorId(snapshot.actorId());
+        operation.setActionActorName(snapshot.actorName());
+        operation.setActionCorrelationId(snapshot.correlationId());
     }
 }

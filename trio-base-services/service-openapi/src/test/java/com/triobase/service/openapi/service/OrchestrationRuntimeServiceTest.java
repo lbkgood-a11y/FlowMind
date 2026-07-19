@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -91,6 +92,22 @@ class OrchestrationRuntimeServiceTest {
                 "POST", "idem-1", mapper.readTree("{\"amount\":2}")))
                 .isInstanceOf(BizException.class)
                 .hasMessage("OPENAPI_IDEMPOTENCY_KEY_PAYLOAD_MISMATCH");
+    }
+
+    @Test
+    void capacityExhaustionRejectsBeforeTemporalWorkflowStart() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        when(idempotencyMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+        doThrow(new BizException(42960, "OPENAPI_ASYNC_CAPACITY_EXHAUSTED"))
+                .when(budgets).reserveWorkflow("tenant-a", "client-a", "route-1", 10L);
+
+        assertThatThrownBy(() -> service.start("orders.submit", Environment.PROD, admission(),
+                "POST", "idem-capacity", mapper.readTree("{\"amount\":3}")))
+                .isInstanceOf(BizException.class)
+                .hasMessage("OPENAPI_ASYNC_CAPACITY_EXHAUSTED");
+
+        verify(workflowClient, never()).newWorkflowStub(any(Class.class), any(io.temporal.client.WorkflowOptions.class));
+        verify(executionMapper, never()).insert(any(IntegrationExecution.class));
     }
 
     private CompiledRouteRelease release() {

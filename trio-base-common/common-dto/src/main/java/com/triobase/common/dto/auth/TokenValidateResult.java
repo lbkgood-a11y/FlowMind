@@ -15,6 +15,9 @@ public class TokenValidateResult {
     private Long authVersion;
     private Long roleVersion;
     private Long dataPolicyVersion;
+    private Long authorizationVersion;
+    private Long fieldPolicyVersion;
+    private Long guardTemplateVersion;
     private String error;
 
     public static TokenValidateResult success(String userId, String username, List<String> permissions) {
@@ -29,6 +32,21 @@ public class TokenValidateResult {
                                               Long authVersion,
                                               Long roleVersion,
                                               Long dataPolicyVersion) {
+        return success(userId, username, tenantId, roles, permissions,
+                authVersion, roleVersion, dataPolicyVersion, null, null, null);
+    }
+
+    public static TokenValidateResult success(String userId,
+                                              String username,
+                                              String tenantId,
+                                              List<String> roles,
+                                              List<String> permissions,
+                                              Long authVersion,
+                                              Long roleVersion,
+                                              Long dataPolicyVersion,
+                                              Long authorizationVersion,
+                                              Long fieldPolicyVersion,
+                                              Long guardTemplateVersion) {
         TokenValidateResult r = new TokenValidateResult();
         r.valid = true;
         r.userId = userId;
@@ -39,6 +57,9 @@ public class TokenValidateResult {
         r.authVersion = authVersion;
         r.roleVersion = roleVersion;
         r.dataPolicyVersion = dataPolicyVersion;
+        r.authorizationVersion = authorizationVersion;
+        r.fieldPolicyVersion = fieldPolicyVersion;
+        r.guardTemplateVersion = guardTemplateVersion;
         return r;
     }
 

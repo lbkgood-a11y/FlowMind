@@ -28,6 +28,14 @@ public class OperationAuditService {
                                                  String userId,
                                                  String requestPath,
                                                  String resultStatus,
+                                                 String actionId,
+                                                 String actionType,
+                                                 String actionSource,
+                                                 String actionStatus,
+                                                 String actionTargetType,
+                                                 String actionTargetId,
+                                                 String actionCorrelationId,
+                                                 String actionIdempotencyKey,
                                                  LocalDateTime operatedStart,
                                                  LocalDateTime operatedEnd) {
         LambdaQueryWrapper<SysOperationAuditLog> wrapper = new LambdaQueryWrapper<SysOperationAuditLog>()
@@ -36,6 +44,15 @@ public class OperationAuditService {
                 .eq(StringUtils.hasText(userId), SysOperationAuditLog::getUserId, userId)
                 .like(StringUtils.hasText(requestPath), SysOperationAuditLog::getRequestPath, requestPath)
                 .eq(StringUtils.hasText(resultStatus), SysOperationAuditLog::getResultStatus, resultStatus)
+                .eq(StringUtils.hasText(actionId), SysOperationAuditLog::getActionId, actionId)
+                .eq(StringUtils.hasText(actionType), SysOperationAuditLog::getActionType, actionType)
+                .eq(StringUtils.hasText(actionSource), SysOperationAuditLog::getActionSource, actionSource)
+                .eq(StringUtils.hasText(actionStatus), SysOperationAuditLog::getActionStatus, actionStatus)
+                .eq(StringUtils.hasText(actionTargetType), SysOperationAuditLog::getActionTargetType, actionTargetType)
+                .eq(StringUtils.hasText(actionTargetId), SysOperationAuditLog::getActionTargetId, actionTargetId)
+                .eq(StringUtils.hasText(actionCorrelationId), SysOperationAuditLog::getActionCorrelationId, actionCorrelationId)
+                .eq(StringUtils.hasText(actionIdempotencyKey), SysOperationAuditLog::getActionIdempotencyKey,
+                        actionIdempotencyKey)
                 .ge(operatedStart != null, SysOperationAuditLog::getOperatedAt, operatedStart)
                 .le(operatedEnd != null, SysOperationAuditLog::getOperatedAt, operatedEnd)
                 .orderByDesc(SysOperationAuditLog::getOperatedAt);

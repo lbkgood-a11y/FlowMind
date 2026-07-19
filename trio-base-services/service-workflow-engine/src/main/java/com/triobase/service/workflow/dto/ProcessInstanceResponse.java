@@ -22,6 +22,14 @@ public class ProcessInstanceResponse {
     private String initiatorId;
     private String initiatorName;
     private String currentNodeId;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionTraceId;
+    private String actionCorrelationId;
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
     private LocalDateTime createdAt;
