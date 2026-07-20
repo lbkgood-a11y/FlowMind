@@ -13,6 +13,15 @@ const routes: RouteRecordRaw[] = [
     path: '/system',
     children: [
       {
+        path: 'tenant',
+        name: 'SystemTenant',
+        meta: {
+          icon: 'mdi:domain',
+          title: $t('system.tenant.title'),
+        },
+        component: () => import('#/views/system/tenant/list.vue'),
+      },
+      {
         path: 'user',
         name: 'SystemUser',
         meta: {

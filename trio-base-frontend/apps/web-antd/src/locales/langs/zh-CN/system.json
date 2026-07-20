@@ -1,5 +1,8 @@
 {
   "title": "系统管理",
+  "tenant": {
+    "title": "租户管理"
+  },
   "user": {
     "title": "用户管理",
     "list": "用户列表",

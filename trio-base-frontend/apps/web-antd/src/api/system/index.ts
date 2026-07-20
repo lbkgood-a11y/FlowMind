@@ -5,4 +5,5 @@ export * from './governance';
 export * from './menu';
 export * from './org';
 export * from './role';
+export * from './tenant';
 export * from './user';
