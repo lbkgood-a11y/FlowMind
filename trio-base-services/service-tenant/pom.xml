@@ -12,12 +12,20 @@
     <name>TrioBase Service Tenant</name>
     <description>多租户管理服务</description>
     <dependencies>
+        <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><scope>provided</scope></dependency>
         <dependency><groupId>com.triobase</groupId><artifactId>common-core</artifactId></dependency>
         <dependency><groupId>com.triobase</groupId><artifactId>common-dto</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
         <dependency><groupId>com.alibaba.cloud</groupId><artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId></dependency>
+        <dependency><groupId>com.alibaba.cloud</groupId><artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId></dependency>
         <dependency><groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId></dependency>
+        <dependency><groupId>com.baomidou</groupId><artifactId>mybatis-plus-jsqlparser</artifactId></dependency>
+        <dependency><groupId>com.alibaba</groupId><artifactId>druid-spring-boot-3-starter</artifactId></dependency>
+        <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>
+        <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
+        <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
         <dependency><groupId>com.triobase</groupId><artifactId>common-archunit</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.mockito</groupId><artifactId>mockito-junit-jupiter</artifactId><scope>test</scope></dependency>
     </dependencies>
 </project>

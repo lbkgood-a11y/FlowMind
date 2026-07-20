@@ -6,6 +6,7 @@ import java.util.List;
 
 @Data
 public class CreateUserRequest {
+    private String tenantId;
     private String username;
     private String password;
     private String email;

@@ -8,6 +8,7 @@ import java.util.List;
 @Data
 public class UserInfoPayload {
     private String id;
+    private String tenantId;
     private String username;
     private String realName;
     private String email;

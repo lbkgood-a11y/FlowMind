@@ -11,6 +11,7 @@ import reactor.core.publisher.Mono;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,7 +48,11 @@ class JwtAuthFilterTest {
         });
         server.start();
         JwtAuthFilter filter = new JwtAuthFilter(WebClient.builder(),
-                "http://127.0.0.1:" + server.getAddress().getPort(), "/api/v1/auth/**");
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                "/api/v1/auth/**",
+                false,
+                "test-token");
         var exchange = MockServerWebExchange.from(MockServerHttpRequest
                 .get("/api/v1/forms")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
@@ -91,7 +96,11 @@ class JwtAuthFilterTest {
         });
         server.start();
         JwtAuthFilter filter = new JwtAuthFilter(WebClient.builder(),
-                "http://127.0.0.1:" + server.getAddress().getPort(), "/api/v1/auth/**");
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                "/api/v1/auth/**",
+                false,
+                "test-token");
         var exchange = MockServerWebExchange.from(MockServerHttpRequest
                 .get("/api/v1/authz/resources/tree")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
@@ -106,5 +115,57 @@ class JwtAuthFilterTest {
         assertThat(query.get()).contains("token=access-token");
         assertThat(forwarded.get().getFirst("X-User-Id")).isEqualTo("U001");
         assertThat(forwarded.get().getFirst("X-User-Permissions")).isEqualTo("/api/v1/authz/**:GET");
+    }
+
+    @Test
+    void rejectsInactiveTenantAfterTokenValidation() throws Exception {
+        AtomicReference<String> tenantServiceName = new AtomicReference<>();
+        AtomicReference<String> tenantServiceToken = new AtomicReference<>();
+        AtomicBoolean forwarded = new AtomicBoolean(false);
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/auth/validate", exchange -> {
+            byte[] body = """
+                    {"code":0,"message":"success","data":{"valid":true,
+                    "userId":"U001","username":"alice","tenantId":"tenant-a",
+                    "roles":["USER"],"permissions":["/api/v1/forms:GET"]}}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.createContext("/internal/v1/tenants/tenant-a/validation", exchange -> {
+            tenantServiceName.set(exchange.getRequestHeaders().getFirst("X-Internal-Service"));
+            tenantServiceToken.set(exchange.getRequestHeaders().getFirst("X-Internal-Token"));
+            byte[] body = """
+                    {"code":0,"message":"success","data":{"tenantId":"tenant-a",
+                    "status":"SUSPENDED","active":false,"inactiveReason":"TENANT_SUSPENDED"}}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        JwtAuthFilter filter = new JwtAuthFilter(WebClient.builder(),
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                "/api/v1/auth/**",
+                true,
+                "test-token");
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest
+                .get("/api/v1/forms")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer access-token")
+                .build());
+
+        filter.filter(exchange, e -> {
+            forwarded.set(true);
+            return Mono.empty();
+        }).block();
+
+        assertThat(exchange.getResponse().getStatusCode().value()).isEqualTo(403);
+        assertThat(forwarded).isFalse();
+        assertThat(tenantServiceName).hasValue("platform-gateway");
+        assertThat(tenantServiceToken).hasValue("test-token");
     }
 }

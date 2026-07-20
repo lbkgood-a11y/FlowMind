@@ -3,11 +3,13 @@ package com.triobase.service.auth.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.common.core.auth.DataScope;
 import com.triobase.common.core.context.DataScopeContextHolder;
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.dto.auth.UserInfoPayload;
 import com.triobase.service.auth.dto.ChangePasswordRequest;
+import com.triobase.service.auth.dto.CreateUserRequest;
 import com.triobase.service.auth.dto.UpdateProfileRequest;
 import com.triobase.service.auth.dto.UserProfileResponse;
 import com.triobase.service.auth.entity.SysUser;
@@ -17,6 +19,7 @@ import com.triobase.service.auth.mapper.UserRoleMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -56,6 +59,7 @@ class UserServiceTest {
     @AfterEach
     void tearDown() {
         DataScopeContextHolder.clear();
+        SecurityContextHolder.clear();
     }
 
     @Test
@@ -126,6 +130,46 @@ class UserServiceTest {
         assertEquals("Builder", response.getDesc());
         assertEquals(List.of("USER"), response.getRoles());
         assertEquals("/dashboard/analytics", response.getHomePath());
+    }
+
+    @Test
+    void create_shouldUseCurrentTenantWhenRequestDoesNotSpecifyTenant() {
+        setContext("tenant-a", List.of("TENANT_ADMIN"));
+        CreateUserRequest request = createUserRequest();
+        when(userMapper.selectCount(any())).thenReturn(0L);
+        when(passwordEncoder.encode("Strong123")).thenReturn("encoded");
+        when(userMapper.selectRoleCodesByUserId(anyString())).thenReturn(List.of("USER"));
+
+        UserInfoPayload response = userService.create(request);
+
+        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
+        verify(userMapper).insert(captor.capture());
+        assertEquals("tenant-a", captor.getValue().getTenantId());
+        assertEquals("tenant-a", response.getTenantId());
+    }
+
+    @Test
+    void create_shouldRejectCrossTenantRequestForTenantAdmin() {
+        setContext("tenant-a", List.of("TENANT_ADMIN"));
+        CreateUserRequest request = createUserRequest();
+        request.setTenantId("tenant-b");
+
+        BizException ex = assertThrows(BizException.class, () -> userService.create(request));
+
+        assertEquals(40361, ex.getCode());
+        verify(userMapper, never()).insert(any(SysUser.class));
+    }
+
+    @Test
+    void findById_shouldRejectCrossTenantUserForTenantAdmin() {
+        setContext("tenant-a", List.of("TENANT_ADMIN"));
+        SysUser user = activeUser();
+        user.setTenantId("tenant-b");
+        when(userMapper.selectById("U001")).thenReturn(user);
+
+        BizException ex = assertThrows(BizException.class, () -> userService.findById("U001"));
+
+        assertEquals(40361, ex.getCode());
     }
 
     @Test
@@ -242,6 +286,7 @@ class UserServiceTest {
     private SysUser activeUser() {
         SysUser user = new SysUser();
         user.setId("U001");
+        user.setTenantId("default");
         user.setUsername("admin");
         user.setRealName("Admin");
         user.setEmail("admin@triobase.local");
@@ -255,5 +300,29 @@ class UserServiceTest {
         request.setNewPassword(newPassword);
         request.setConfirmPassword(confirmPassword);
         return request;
+    }
+
+    private CreateUserRequest createUserRequest() {
+        CreateUserRequest request = new CreateUserRequest();
+        request.setUsername("ada");
+        request.setPassword("Strong123");
+        request.setEmail("ada@example.com");
+        return request;
+    }
+
+    private void setContext(String tenantId, List<String> roles) {
+        SecurityContextHolder.set(new SecurityContextHolder.SecurityContext(
+                "U001",
+                "admin",
+                tenantId,
+                roles,
+                List.of("*"),
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null));
     }
 }

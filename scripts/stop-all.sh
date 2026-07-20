@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 echo "🛑 停止后端 Java 服务..."
 pkill -f "service-auth" 2>/dev/null && echo "   Auth 已停止" || true
 pkill -f "service-org" 2>/dev/null && echo "   Org 已停止" || true
+pkill -f "service-tenant" 2>/dev/null && echo "   Tenant 已停止" || true
 pkill -f "service-lowcode" 2>/dev/null && echo "   Lowcode 已停止" || true
 pkill -f "platform-gateway" 2>/dev/null && echo "   Gateway 已停止" || true
 sleep 2

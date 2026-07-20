@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.triobase.common.core.auth.DataScope;
 import com.triobase.common.core.context.DataScopeContextHolder;
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
@@ -29,6 +30,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,6 +43,8 @@ public class UserService {
     private static final int MAX_AVATAR_LENGTH = 512;
     private static final int MAX_INTRODUCTION_LENGTH = 512;
     private static final String DEFAULT_HOME_PATH = "/dashboard/analytics";
+    private static final String DEFAULT_TENANT = "default";
+    private static final String ADMIN_ROLE_CODE = "ADMIN";
 
     private final UserMapper userMapper;
     private final UserRoleMapper userRoleMapper;
@@ -52,6 +56,7 @@ public class UserService {
         if (user == null) {
             throw new BizException(AuthErrorCode.USER_NOT_FOUND);
         }
+        ensureReadable(user);
         return toPayload(user);
     }
 
@@ -68,6 +73,7 @@ public class UserService {
                                             LocalDateTime createdStart,
                                             LocalDateTime createdEnd) {
         LambdaQueryWrapper<SysUser> queryWrapper = new LambdaQueryWrapper<SysUser>()
+                .eq(!isPlatformAdmin(), SysUser::getTenantId, currentTenantId())
                 .orderByDesc(SysUser::getCreatedAt);
         if (StringUtils.hasText(keyword)) {
             queryWrapper.and(wrapper -> wrapper
@@ -128,6 +134,7 @@ public class UserService {
         if (!StringUtils.hasText(request.getPassword())) {
             throw new BizException(400, "Password is required");
         }
+        String targetTenantId = resolveTargetTenant(request.getTenantId());
         if (userMapper.selectCount(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, request.getUsername())) > 0) {
             throw new BizException(AuthErrorCode.USER_ALREADY_EXISTS);
@@ -136,7 +143,7 @@ public class UserService {
 
         SysUser user = new SysUser();
         user.setId(UlidGenerator.nextUlid());
-        user.setTenantId("default");
+        user.setTenantId(targetTenantId);
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setRealName(normalizeOptional(request.getUsername(), MAX_REAL_NAME_LENGTH, "realName"));
@@ -155,6 +162,7 @@ public class UserService {
         if (user == null) {
             throw new BizException(AuthErrorCode.USER_NOT_FOUND);
         }
+        ensureWritable(user);
         if (StringUtils.hasText(request.getPassword())) {
             validatePassword(request.getPassword());
             user.setPassword(passwordEncoder.encode(request.getPassword()));
@@ -229,18 +237,22 @@ public class UserService {
 
     @Transactional
     public void delete(String id) {
-        if (userMapper.selectById(id) == null) {
+        SysUser user = userMapper.selectById(id);
+        if (user == null) {
             throw new BizException(AuthErrorCode.USER_NOT_FOUND);
         }
+        ensureWritable(user);
         userRoleMapper.delete(new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getUserId, id));
         userMapper.deleteById(id);
     }
 
     @Transactional
     public void assignRoles(String userId, List<String> roleIds) {
-        if (userMapper.selectById(userId) == null) {
+        SysUser user = userMapper.selectById(userId);
+        if (user == null) {
             throw new BizException(AuthErrorCode.USER_NOT_FOUND);
         }
+        ensureWritable(user);
         replaceRoles(userId, roleIds);
     }
 
@@ -250,6 +262,7 @@ public class UserService {
         if (user == null) {
             throw new BizException(AuthErrorCode.USER_NOT_FOUND);
         }
+        ensureWritable(user);
         user.setStatus(status);
         userMapper.updateById(user);
     }
@@ -320,6 +333,54 @@ public class UserService {
         return value;
     }
 
+    private String resolveTargetTenant(String requestedTenantId) {
+        String currentTenantId = currentTenantId();
+        String normalizedRequested = normalizeOptionalTenantId(requestedTenantId);
+        if (!StringUtils.hasText(normalizedRequested)) {
+            return currentTenantId;
+        }
+        if (!isPlatformAdmin() && !currentTenantId.equals(normalizedRequested)) {
+            throw new BizException(40361, "USER_TENANT_ACCESS_DENIED");
+        }
+        return normalizedRequested;
+    }
+
+    private void ensureReadable(SysUser user) {
+        if (!isPlatformAdmin() && !currentTenantId().equals(tenantId(user))) {
+            throw new BizException(40361, "USER_TENANT_ACCESS_DENIED");
+        }
+    }
+
+    private void ensureWritable(SysUser user) {
+        ensureReadable(user);
+    }
+
+    private String currentTenantId() {
+        return normalizeTenantId(SecurityContextHolder.getTenantId());
+    }
+
+    private String tenantId(SysUser user) {
+        return StringUtils.hasText(user.getTenantId())
+                ? normalizeTenantId(user.getTenantId())
+                : DEFAULT_TENANT;
+    }
+
+    private boolean isPlatformAdmin() {
+        return SecurityContextHolder.getRoles().stream().anyMatch(ADMIN_ROLE_CODE::equals);
+    }
+
+    private String normalizeTenantId(String tenantId) {
+        return StringUtils.hasText(tenantId)
+                ? tenantId.trim().toLowerCase(Locale.ROOT)
+                : DEFAULT_TENANT;
+    }
+
+    private String normalizeOptionalTenantId(String tenantId) {
+        return StringUtils.hasText(tenantId)
+                ? tenantId.trim().toLowerCase(Locale.ROOT)
+                : null;
+    }
+
     private String normalizeOptional(String value, int maxLength, String fieldName) {
         if (value == null) {
             return null;
@@ -338,6 +399,7 @@ public class UserService {
         List<String> roles = userMapper.selectRoleCodesByUserId(user.getId());
         UserInfoPayload payload = new UserInfoPayload();
         payload.setId(user.getId());
+        payload.setTenantId(tenantId(user));
         payload.setUsername(user.getUsername());
         payload.setRealName(displayRealName(user));
         payload.setEmail(user.getEmail());
