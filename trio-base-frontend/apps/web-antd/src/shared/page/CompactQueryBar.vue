@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { PageQueryActions } from '../page-actions';
+
 withDefaults(
   defineProps<{
     collapsed?: boolean;
@@ -19,9 +21,9 @@ withDefaults(
       :style="{ '--tb-query-columns': columns }"
     >
       <slot />
-      <div class="query-actions tb-query-bar__actions">
+      <PageQueryActions class="query-actions tb-query-bar__actions">
         <slot name="actions" />
-      </div>
+      </PageQueryActions>
     </div>
   </section>
 </template>

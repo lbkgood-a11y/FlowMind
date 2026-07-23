@@ -416,8 +416,8 @@ onMounted(async () => {
             placeholder="类型状态"
           />
           <template #actions>
-            <Button v-if="canQuery" type="primary" @click="loadTypes">查询</Button>
             <Button v-if="canQuery" @click="resetTypeQuery">重置</Button>
+            <Button v-if="canQuery" type="primary" @click="loadTypes">查询</Button>
             <Tooltip v-if="canQuery" title="刷新">
               <Button shape="circle" @click="loadTypes">
                 <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
@@ -500,8 +500,8 @@ onMounted(async () => {
                 ]"
                 placeholder="字典项状态"
               />
-              <Button v-if="canQuery" @click="loadItems">查询</Button>
               <Button v-if="canQuery" @click="resetItemQuery">重置</Button>
+              <Button v-if="canQuery" type="primary" @click="loadItems">查询</Button>
               <Button v-if="canCreate" type="primary" :disabled="!selectedType" @click="openCreateItem">
                 <Plus class="size-4" />
                 新增字典项

@@ -524,10 +524,10 @@ onMounted(loadTenants);
             placeholder="状态"
           />
           <template #actions>
+            <Button v-if="canQuery" @click="resetQuery">重置</Button>
             <Button v-if="canQuery" type="primary" @click="loadTenants(1)">
               查询
             </Button>
-            <Button v-if="canQuery" @click="resetQuery">重置</Button>
             <Tooltip v-if="canQuery" title="刷新">
               <Button shape="circle" @click="loadTenants()">
                 <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />

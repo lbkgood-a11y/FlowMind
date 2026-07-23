@@ -249,8 +249,8 @@ onMounted(load);
             placeholder="优先级"
           />
           <template #actions>
-          <Button v-if="canQuery" type="primary" @click="load">查询</Button>
           <Button v-if="canQuery" @click="resetQuery">重置</Button>
+          <Button v-if="canQuery" type="primary" @click="load">查询</Button>
           <Tooltip v-if="canQuery" title="刷新">
             <Button shape="circle" @click="load">
               <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />

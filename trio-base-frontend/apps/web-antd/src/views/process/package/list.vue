@@ -300,8 +300,8 @@ onMounted(loadFormDefinitions);
             />
           </FormItem>
           <template #actions>
-            <Button v-if="canQuery" type="primary" @click="loadRecords(1)">查询</Button>
             <Button v-if="canQuery" @click="resetQuery">重置</Button>
+            <Button v-if="canQuery" type="primary" @click="loadRecords(1)">查询</Button>
           </template>
         </CompactQueryBar>
       </template>
