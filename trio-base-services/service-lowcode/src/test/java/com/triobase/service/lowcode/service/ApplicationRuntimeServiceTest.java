@@ -28,6 +28,8 @@ import com.triobase.service.lowcode.mapper.ApplicationActionMapper;
 import com.triobase.service.lowcode.mapper.ApplicationMapper;
 import com.triobase.service.lowcode.mapper.ApplicationPageMapper;
 import com.triobase.service.lowcode.mapper.ApplicationVersionMapper;
+import com.triobase.service.lowcode.mapper.FormDefinitionMapper;
+import com.triobase.service.lowcode.mapper.FormRelationMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,9 +66,15 @@ class ApplicationRuntimeServiceTest {
     @Mock
     private ApplicationActionMapper applicationActionMapper;
     @Mock
+    private FormRelationMapper formRelationMapper;
+    @Mock
+    private FormDefinitionMapper formDefinitionMapper;
+    @Mock
     private FormDefinitionService formDefinitionService;
     @Mock
     private FormInstanceService formInstanceService;
+    @Mock
+    private ApplicationInstanceGraphService instanceGraphService;
     @Mock
     private WorkflowLaunchClient workflowLaunchClient;
     @Mock

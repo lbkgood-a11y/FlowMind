@@ -15,12 +15,14 @@ import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
 public class ActionPolicyChecker {
 
+    private static final String AUTHORIZATION_RESOURCE_CODE = "authorizationResourceCode";
     private static final String GLOBAL_TENANT = "GLOBAL";
 
     private final ActionAuthorizationClient authorizationClient;
@@ -49,10 +51,7 @@ public class ActionPolicyChecker {
                 actor != null ? actor.getTenantId() : null,
                 GLOBAL_TENANT));
         decisionRequest.setUserId(actor != null ? actor.getId() : null);
-        decisionRequest.setResourceCode(firstNonBlank(
-                target != null ? target.getType() : null,
-                definition.getTargetType(),
-                definition.getActionType()));
+        decisionRequest.setResourceCode(authorizationResourceCode(definition, target));
         decisionRequest.setActionCode(definition.getRequiredPermission());
         decisionRequest.setOwnerService(definition.getOwnerService());
         decisionRequest.setBusinessObjectId(target != null ? target.getId() : null);
@@ -81,11 +80,36 @@ public class ActionPolicyChecker {
         attributes.put("targetType", target != null ? target.getType() : null);
         attributes.put("targetId", target != null ? target.getId() : null);
         attributes.put("targetOwnerService", target != null ? target.getOwnerService() : null);
+        attributes.put(AUTHORIZATION_RESOURCE_CODE, authorizationResourceCode(definition, target));
         attributes.put("traceId", context != null ? context.getTraceId() : null);
         attributes.put("correlationId", context != null ? context.getCorrelationId() : null);
         attributes.put("payloadKeys", request.getPayload() != null ? List.copyOf(request.getPayload().keySet()) : List.of());
         attributes.put("guardRequirements", definition.getRequiredGuards());
         return attributes;
+    }
+
+    private String authorizationResourceCode(ActionDefinition definition, ActionTarget target) {
+        String targetType = firstNonBlank(
+                target != null ? target.getType() : null,
+                definition.getTargetType(),
+                definition.getActionType());
+        if (target == null || target.getAttributes() == null) {
+            return targetType;
+        }
+        Object scopedCodeValue = target.getAttributes().get(AUTHORIZATION_RESOURCE_CODE);
+        if (!(scopedCodeValue instanceof String scopedCode) || scopedCode.isBlank()) {
+            return targetType;
+        }
+        String normalizedCode = scopedCode.trim().toUpperCase(Locale.ROOT);
+        String normalizedTargetType = targetType != null
+                ? targetType.trim().toUpperCase(Locale.ROOT)
+                : null;
+        if (normalizedTargetType == null
+                || (!normalizedCode.equals(normalizedTargetType)
+                && !normalizedCode.startsWith(normalizedTargetType + ":"))) {
+            return targetType;
+        }
+        return normalizedCode;
     }
 
     private List<ActionError> denialErrors(AuthorizationDecisionResponse response) {

@@ -152,11 +152,39 @@ class RestActionOwnerDispatcherContractTest {
         server.verify();
     }
 
+    @Test
+    void fallsBackToActionIdWhenTraceIsMissing() {
+        expectOwner("act_1", """
+                {
+                  "code": 0,
+                  "message": "success",
+                  "data": {
+                    "actionId": "act_1",
+                    "status": "SUCCEEDED",
+                    "ownerService": "service-lowcode"
+                  }
+                }
+                """);
+        GlobalActionRequest request = request();
+        request.getContext().setTraceId(null);
+        ActionExecution execution = execution();
+        execution.setTraceId(null);
+
+        GlobalActionResult result = dispatcher.dispatch(definition(), request, execution);
+
+        assertThat(result.getStatus()).isEqualTo(ActionStatus.SUCCEEDED);
+        server.verify();
+    }
+
     private void expectOwner(String responseJson) {
+        expectOwner("trace-1", responseJson);
+    }
+
+    private void expectOwner(String expectedTraceId, String responseJson) {
         server.expect(once(), requestTo("http://owner-service/internal/v1/actions/execute"))
                 .andExpect(header(InternalServiceTokenFilter.HEADER_SERVICE_NAME, "service-action"))
                 .andExpect(header(InternalServiceTokenFilter.HEADER_SERVICE_TOKEN, "internal-token"))
-                .andExpect(header(TraceUtil.TRACE_ID_KEY, "trace-1"))
+                .andExpect(header(TraceUtil.TRACE_ID_KEY, expectedTraceId))
                 .andExpect(content().string(containsString("\"idempotencyKey\":\"idem-1\"")))
                 .andExpect(content().string(containsString("\"actionId\":\"act_1\"")))
                 .andRespond(withSuccess(responseJson, MediaType.APPLICATION_JSON));

@@ -69,6 +69,24 @@ class ApplicationMetadataValidatorTest {
         assertEquals("APPLICATION_ACTION_PROCESS_KEY_UNSUPPORTED", exception.getMessage());
     }
 
+    @Test
+    void validatesListDesignerBoundsAndOperators() {
+        ApplicationPageRequest page = listPage();
+        page.setMetadataJson("""
+                {"columns":[{"fieldKey":"amount","format":"money","width":140}],
+                 "filters":[{"fieldKey":"reason","operator":"contains"}],
+                 "defaultSort":{"fieldKey":"amount","direction":"DESC"},"pageSize":20}
+                """);
+        assertDoesNotThrow(() -> validator.validateDraft(List.of(page), List.of(submitAction())));
+
+        page.setMetadataJson("""
+                {"columns":[{"fieldKey":"amount","format":"html","width":140}]}
+                """);
+        BizException exception = assertThrows(BizException.class,
+                () -> validator.validateDraft(List.of(page), List.of(submitAction())));
+        assertEquals("APPLICATION_LIST_FORMAT_INVALID", exception.getMessage());
+    }
+
     private ApplicationPageRequest listPage() {
         ApplicationPageRequest request = new ApplicationPageRequest();
         request.setPageType("LIST");

@@ -22,6 +22,9 @@ import com.triobase.service.lowcode.dto.ApplicationActionResponse;
 import com.triobase.service.lowcode.dto.ApplicationPageResponse;
 import com.triobase.service.lowcode.dto.BindFormProcessRequest;
 import com.triobase.service.lowcode.dto.FormInstanceResponse;
+import com.triobase.service.lowcode.dto.FormRelationResponse;
+import com.triobase.service.lowcode.dto.FormInstanceGraphResponse;
+import com.triobase.service.lowcode.dto.NestedFormInstanceRequest;
 import com.triobase.service.lowcode.dto.RuntimeApplicationDescriptorResponse;
 import com.triobase.service.lowcode.dto.RuntimeApplicationSummaryResponse;
 import com.triobase.service.lowcode.dto.RuntimeFieldAuthorizationResponse;
@@ -35,10 +38,14 @@ import com.triobase.service.lowcode.entity.LcApplication;
 import com.triobase.service.lowcode.entity.LcApplicationAction;
 import com.triobase.service.lowcode.entity.LcApplicationPage;
 import com.triobase.service.lowcode.entity.LcApplicationVersion;
+import com.triobase.service.lowcode.entity.LcFormRelation;
+import com.triobase.service.lowcode.entity.LcFormDefinition;
 import com.triobase.service.lowcode.mapper.ApplicationActionMapper;
 import com.triobase.service.lowcode.mapper.ApplicationMapper;
 import com.triobase.service.lowcode.mapper.ApplicationPageMapper;
 import com.triobase.service.lowcode.mapper.ApplicationVersionMapper;
+import com.triobase.service.lowcode.mapper.FormRelationMapper;
+import com.triobase.service.lowcode.mapper.FormDefinitionMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -69,8 +76,11 @@ public class ApplicationRuntimeService {
     private final ApplicationVersionMapper applicationVersionMapper;
     private final ApplicationPageMapper applicationPageMapper;
     private final ApplicationActionMapper applicationActionMapper;
+    private final FormRelationMapper formRelationMapper;
+    private final FormDefinitionMapper formDefinitionMapper;
     private final FormDefinitionService formDefinitionService;
     private final FormInstanceService formInstanceService;
+    private final ApplicationInstanceGraphService instanceGraphService;
     private final WorkflowLaunchClient workflowLaunchClient;
     private final LowcodeAuthorizationService authorizationService;
     private final ObjectMapper objectMapper;
@@ -111,6 +121,10 @@ public class ApplicationRuntimeService {
         response.setPages(authorization.pages());
         response.setActions(authorization.actions());
         response.setFieldRules(authorization.fieldRules());
+        response.setRelations(listRelations(applicationVersion.getId()).stream()
+                .map(this::toRuntimeRelationResponse)
+                .filter(java.util.Objects::nonNull)
+                .toList());
         return response;
     }
 
@@ -118,6 +132,49 @@ public class ApplicationRuntimeService {
         LcApplicationVersion applicationVersion = requireRuntimeVersion(appKey, version);
         requirePage(applicationVersion.getId(), "LIST");
         return formInstanceService.list(applicationVersion.getFormKey(), page, size);
+    }
+
+    public PageResult<FormInstanceResponse> listInstances(String appKey, Integer version, int page, int size,
+                                                          String filtersJson,
+                                                          String sortField,
+                                                          String sortDirection) {
+        LcApplicationVersion applicationVersion = requireRuntimeVersion(appKey, version);
+        LcApplicationPage listPage = requirePage(applicationVersion.getId(), "LIST");
+        JsonNode metadata = readPageMetadata(listPage);
+        Set<String> allowedFilters = new LinkedHashSet<>();
+        metadata.path("filters").forEach(filter -> allowedFilters.add(filter.path("fieldKey").asText()));
+        Map<String, String> filters = new LinkedHashMap<>();
+        if (StringUtils.hasText(filtersJson)) {
+            try {
+                JsonNode requested = objectMapper.readTree(filtersJson);
+                requested.fields().forEachRemaining(entry -> {
+                    if (allowedFilters.contains(entry.getKey()) && entry.getValue().isValueNode()) {
+                        filters.put(entry.getKey(), entry.getValue().asText());
+                    }
+                });
+            } catch (Exception exception) {
+                throw new BizException(40055, "APPLICATION_RUNTIME_FILTER_INVALID");
+            }
+        }
+        String effectiveSortField = StringUtils.hasText(sortField)
+                ? sortField : metadata.path("defaultSort").path("fieldKey").asText(null);
+        Set<String> columns = new LinkedHashSet<>();
+        metadata.path("columns").forEach(column -> columns.add(column.path("fieldKey").asText()));
+        if (StringUtils.hasText(effectiveSortField) && !columns.contains(effectiveSortField)) {
+            throw new BizException(40055, "APPLICATION_RUNTIME_SORT_INVALID");
+        }
+        String effectiveDirection = StringUtils.hasText(sortDirection)
+                ? sortDirection : metadata.path("defaultSort").path("direction").asText("DESC");
+        return formInstanceService.list(applicationVersion.getFormKey(), page, size,
+                filters, effectiveSortField, effectiveDirection);
+    }
+
+    private JsonNode readPageMetadata(LcApplicationPage page) {
+        try {
+            return objectMapper.readTree(page.getMetadataJson());
+        } catch (Exception exception) {
+            throw new BizException(40055, "APPLICATION_RUNTIME_PAGE_METADATA_INVALID");
+        }
     }
 
     public FormInstanceResponse getInstance(String appKey, Integer version, String instanceId) {
@@ -137,6 +194,12 @@ public class ApplicationRuntimeService {
         LcApplicationAction action = requireAction(applicationVersion, actionCode);
         String actionType = normalize(action.getActionType());
         if (CREATE_SAVE_ACTIONS.contains(actionType)) {
+            if (request != null && request.getPayload() != null && request.getPayload().get("graph") != null) {
+                NestedFormInstanceRequest graphRequest = objectMapper.convertValue(
+                        request.getPayload().get("graph"), NestedFormInstanceRequest.class);
+                FormInstanceGraphResponse graph = instanceGraphService.submit(applicationVersion.getId(), graphRequest);
+                return savedResult(request, action.getActionCode(), graph.getInstance());
+            }
             FormInstanceResponse instance = submitForm(applicationVersion, request,
                     LowcodeAuthorizationActionCatalog.formActionForApplicationActionType(actionType));
             return savedResult(request, action.getActionCode(), instance);
@@ -385,12 +448,16 @@ public class ApplicationRuntimeService {
         return Pattern.compile(regex).matcher(required).matches();
     }
 
-    private void requirePage(String versionId, String pageType) {
+    private LcApplicationPage requirePage(String versionId, String pageType) {
         boolean exists = listPages(versionId).stream()
                 .anyMatch(page -> pageType.equalsIgnoreCase(page.getPageType()));
         if (!exists) {
             throw new BizException(40455, "APPLICATION_RUNTIME_PAGE_NOT_FOUND");
         }
+        return listPages(versionId).stream()
+                .filter(page -> pageType.equals(normalize(page.getPageType())))
+                .findFirst()
+                .orElseThrow(() -> new BizException(40455, "APPLICATION_RUNTIME_PAGE_NOT_FOUND"));
     }
 
     private RuntimeApplicationSummaryResponse toSummary(LcApplicationVersion version) {
@@ -439,6 +506,43 @@ public class ApplicationRuntimeService {
         response.setMetadataJson(action.getMetadataJson());
         response.setStatus(action.getStatus());
         response.setSortOrder(action.getSortOrder());
+        return response;
+    }
+
+    public String publishedVersionId(String appKey, Integer version) {
+        return requireRuntimeVersion(appKey, version).getId();
+    }
+
+    private FormRelationResponse toRelationResponse(LcFormRelation relation) {
+        FormRelationResponse response = new FormRelationResponse();
+        response.setId(relation.getId());
+        response.setRelationCode(relation.getRelationCode());
+        response.setParentFormDefinitionId(relation.getParentFormDefinitionId());
+        response.setChildFormDefinitionId(relation.getChildFormDefinitionId());
+        response.setCardinality(relation.getCardinality());
+        response.setParentKeyField(relation.getParentKeyField());
+        response.setChildForeignKeyField(relation.getChildForeignKeyField());
+        response.setCascadeSave(relation.getCascadeSave() != null && relation.getCascadeSave() == 1);
+        response.setCascadeDelete(relation.getCascadeDelete() != null && relation.getCascadeDelete() == 1);
+        response.setSortOrder(relation.getSortOrder());
+        return response;
+    }
+
+    private FormRelationResponse toRuntimeRelationResponse(LcFormRelation relation) {
+        LcFormDefinition child = formDefinitionMapper.selectById(relation.getChildFormDefinitionId());
+        if (child == null) {
+            return null;
+        }
+        AuthorizationDecisionResponse decision = authorizationService.decideForm(
+                child.getFormKey(), "VIEW", child.getId(), List.of());
+        if (decision == null || !decision.isAllowed()) {
+            return null;
+        }
+        FormRelationResponse response = toRelationResponse(relation);
+        response.setChildFormKey(child.getFormKey());
+        response.setChildFormName(child.getName());
+        response.setChildSchemaJson(child.getSchemaJson());
+        response.setChildUiSchemaJson(child.getUiSchemaJson());
         return response;
     }
 
@@ -587,6 +691,12 @@ public class ApplicationRuntimeService {
         return applicationActionMapper.selectList(new LambdaQueryWrapper<LcApplicationAction>()
                 .eq(LcApplicationAction::getApplicationVersionId, versionId)
                 .orderByAsc(LcApplicationAction::getSortOrder));
+    }
+
+    private List<LcFormRelation> listRelations(String versionId) {
+        return formRelationMapper.selectList(new LambdaQueryWrapper<LcFormRelation>()
+                .eq(LcFormRelation::getApplicationVersionId, versionId)
+                .orderByAsc(LcFormRelation::getSortOrder));
     }
 
     private JsonNode actionMetadata(LcApplicationAction action) {

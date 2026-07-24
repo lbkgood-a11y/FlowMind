@@ -177,12 +177,35 @@ function parseCondition(condition: string) {
   };
 }
 
-const SUPPORTED_NODE_TYPES = new Set([
+export const PUBLISHABLE_PROCESS_NODE_TYPES = [
+  'START',
   'APPROVAL',
   'COUNTERSIGN',
   'END',
-  'START',
-]);
+] as const;
+
+const SUPPORTED_NODE_TYPES = new Set<string>(PUBLISHABLE_PROCESS_NODE_TYPES);
+
+export interface ProcessEdgeTerminals {
+  sourceCellId?: null | string;
+  sourcePortId?: null | string;
+  targetCellId?: null | string;
+  targetPortId?: null | string;
+}
+
+export function isCompleteProcessEdge({
+  sourceCellId,
+  sourcePortId,
+  targetCellId,
+  targetPortId,
+}: ProcessEdgeTerminals) {
+  return Boolean(
+    sourceCellId &&
+      targetCellId &&
+      sourcePortId === 'out' &&
+      targetPortId === 'in',
+  );
+}
 
 export function buildParticipantAssignment(
   type: ParticipantType,

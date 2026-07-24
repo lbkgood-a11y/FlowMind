@@ -42,7 +42,7 @@ auth:
 triobase:
   internal:
     token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
-    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-lowcode}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-lowcode,service-action}
 
 # Temporal Worker — 铁律 5：与微服务生命周期共生死
 temporal:

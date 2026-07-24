@@ -24,10 +24,13 @@ import { Button, message, Space, Tooltip } from 'ant-design-vue';
 
 import {
   buildParticipantAssignment,
+  isCompleteProcessEdge,
   type ParticipantAssignment,
   participantAssignmentValue,
   type ParticipantType,
+  PUBLISHABLE_PROCESS_NODE_TYPES,
 } from './process-designer';
+import { createProcessDesignerEdge } from './process-designer-edge';
 
 import '@antv/x6-plugin-dnd/es/index.css';
 import '@antv/x6-plugin-minimap/es/index.css';
@@ -69,6 +72,10 @@ const NODE_TYPES: NodeTypeDef[] = [
 ];
 
 const NODE_TYPE_MAP = new Map(NODE_TYPES.map((n) => [n.type, n]));
+const PUBLISHABLE_NODE_TYPE_SET = new Set<string>(PUBLISHABLE_PROCESS_NODE_TYPES);
+const PALETTE_NODE_TYPES = NODE_TYPES.filter((node) =>
+  PUBLISHABLE_NODE_TYPE_SET.has(node.type),
+);
 
 interface NodeData {
   nodeType: string;
@@ -87,6 +94,7 @@ const selectedNode = ref<NodeData | null>(null);
 const selectedEdge = ref<null | { condition: string }>(null);
 const graph = ref<Graph | null>(null);
 let dnd: Dnd | null = null;
+let canvasMouseUpHandler: (() => void) | null = null;
 let loadingFromModel = false;
 let lastLoadedModel = '';
 
@@ -112,6 +120,27 @@ function conditionLabel(condition: string) {
 
 function edgeCondition(edge: Edge) {
   return ((edge.getData() || {}) as EdgeData).condition || 'true';
+}
+
+function isCompleteEdge(edge: Edge) {
+  return isCompleteProcessEdge({
+    sourceCellId: edge.getSourceCellId(),
+    sourcePortId: edge.getSourcePortId(),
+    targetCellId: edge.getTargetCellId(),
+    targetPortId: edge.getTargetPortId(),
+  });
+}
+
+function cleanupIncompleteEdges(targetGraph: Graph) {
+  targetGraph.getEdges().forEach((edge) => {
+    if (isCompleteEdge(edge)) return;
+    edge.setLabels([]);
+    targetGraph.removeEdge(edge);
+  });
+}
+
+function scheduleIncompleteEdgeCleanup(targetGraph: Graph) {
+  queueMicrotask(() => cleanupIncompleteEdges(targetGraph));
 }
 
 function setEdgeCondition(edge: Edge, condition: string) {
@@ -256,13 +285,11 @@ function createGraph() {
       validateConnection({ sourcePort, targetPort }) {
         return !props.readonly && sourcePort === 'out' && targetPort === 'in';
       },
+      validateEdge({ edge }) {
+        return !props.readonly && isCompleteEdge(edge);
+      },
       createEdge() {
-        return new Edge({
-          attrs: { line: { stroke: '#8c8c8c', strokeWidth: 2, targetMarker: { name: 'classic' } } },
-          data: { condition: 'true' } as EdgeData,
-          labels: [],
-          zIndex: 0,
-        });
+        return createProcessDesignerEdge();
       },
     },
   });
@@ -346,21 +373,31 @@ function createGraph() {
   });
 
   // ── 节点变更 → 通知父组件 ──
-  g.on('cell:added', () => emitChange());
+  g.on('cell:added', ({ cell }: { cell: Cell }) => {
+    if (cell.isEdge() && !isCompleteEdge(cell as Edge)) return;
+    emitChange();
+  });
   g.on('cell:removed', () => emitChange());
   g.on('cell:change:position', () => emitChange());
   g.on('edge:label:change', () => emitChange());
   g.on('edge:connected', ({ edge }: { edge: Edge }) => {
+    if (!isCompleteEdge(edge)) {
+      edge.setLabels([]);
+      g.removeEdge(edge);
+      return;
+    }
     setEdgeCondition(edge, edgeCondition(edge));
     emitChange();
   });
-  g.on('edge:change:source', () => emitChange());
-  g.on('edge:change:target', () => emitChange());
-  g.on('edge:mouseup', ({ edge }: { edge: Edge }) => {
-    if (!edge.getSourceCellId() || !edge.getTargetCellId()) {
-      g.removeEdge(edge);
-    }
+  g.on('edge:change:source', ({ edge }: { edge: Edge }) => {
+    if (isCompleteEdge(edge)) emitChange();
   });
+  g.on('edge:change:target', ({ edge }: { edge: Edge }) => {
+    if (isCompleteEdge(edge)) emitChange();
+  });
+
+  canvasMouseUpHandler = () => scheduleIncompleteEdgeCleanup(g);
+  containerRef.value.addEventListener('mouseup', canvasMouseUpHandler);
 
   // ── 加载初始数据 ──
   if (props.modelValue) {
@@ -622,6 +659,10 @@ watch(
 );
 
 onUnmounted(() => {
+  if (containerRef.value && canvasMouseUpHandler) {
+    containerRef.value.removeEventListener('mouseup', canvasMouseUpHandler);
+  }
+  canvasMouseUpHandler = null;
   graph.value?.dispose();
 });
 </script>
@@ -667,10 +708,10 @@ onUnmounted(() => {
     <div class="designer-body">
       <!-- 左侧节点面板 -->
       <div v-if="!readonly && paletteOpen" class="node-palette">
-        <div class="palette-title">节点类型（拖拽或双击添加）</div>
+        <div class="palette-title">节点类型（条件配置在连线上）</div>
         <div class="palette-list">
           <div
-            v-for="nt in NODE_TYPES"
+            v-for="nt in PALETTE_NODE_TYPES"
             :key="nt.type"
             class="palette-item"
             :style="{ borderColor: nt.color, background: nt.bg, color: nt.color }"

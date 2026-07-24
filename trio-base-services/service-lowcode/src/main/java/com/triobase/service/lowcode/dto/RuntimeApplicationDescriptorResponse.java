@@ -14,4 +14,5 @@ public class RuntimeApplicationDescriptorResponse extends RuntimeApplicationSumm
     private List<ApplicationPageResponse> pages;
     private List<ApplicationActionResponse> actions;
     private List<RuntimeFieldAuthorizationResponse> fieldRules;
+    private List<FormRelationResponse> relations;
 }

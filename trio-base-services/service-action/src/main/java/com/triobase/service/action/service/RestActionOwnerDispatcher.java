@@ -58,9 +58,10 @@ public class RestActionOwnerDispatcher implements ActionOwnerDispatcher {
                     .uri(baseUrl + OWNER_EXECUTE_PATH)
                     .header(InternalServiceTokenFilter.HEADER_SERVICE_NAME, SERVICE_NAME)
                     .header(InternalServiceTokenFilter.HEADER_SERVICE_TOKEN, securityProperties.getToken())
-                    .header(TraceUtil.TRACE_ID_KEY, firstNonBlank(
+                    .header(TraceUtil.TRACE_ID_KEY, headerValue(firstNonBlank(
                             request.getContext() != null ? request.getContext().getTraceId() : null,
-                            execution.getTraceId()))
+                            execution.getTraceId(),
+                            execution.getId())))
                     .header("X-Action-Id", execution.getId())
                     .header("X-Action-Type", definition.getActionType())
                     .header("X-Action-Source", request.getSource() != null ? request.getSource().name() : "")
@@ -114,8 +115,16 @@ public class RestActionOwnerDispatcher implements ActionOwnerDispatcher {
                 cause);
     }
 
-    private String firstNonBlank(String first, String fallback) {
-        return first != null && !first.isBlank() ? first : fallback;
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 
     private String headerValue(String value) {

@@ -13,6 +13,15 @@ const routes: RouteRecordRaw[] = [
     path: '/lowcode',
     children: [
       {
+        path: 'application',
+        name: 'LowcodeApplication',
+        meta: {
+          icon: 'mdi:application-edit-outline',
+          title: '应用管理',
+        },
+        component: () => import('#/views/lowcode/application/list.vue'),
+      },
+      {
         path: 'apps',
         name: 'LowcodeAppCenter',
         meta: {

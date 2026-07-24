@@ -36,6 +36,7 @@ class ActionPolicyCheckerTest {
                 ArgumentCaptor.forClass(AuthorizationDecisionRequest.class);
         verify(authorizationClient).decide(captor.capture());
         AuthorizationDecisionRequest authz = captor.getValue();
+        assertThat(authz.getResourceCode()).isEqualTo("PROCESS_TASK:TASK001");
         assertThat(authz.getActionId()).isEqualTo("act_001");
         assertThat(authz.getActionType()).isEqualTo("process.task.approve");
         assertThat(authz.getActionSource()).isEqualTo("GUI");
@@ -44,6 +45,23 @@ class ActionPolicyCheckerTest {
         assertThat(authz.getActionCorrelationId()).isEqualTo("corr_001");
         assertThat(authz.getActionPayloadMetadata()).containsKey("payloadKeys");
         assertThat(authz.getActionPayloadMetadata().toString()).doesNotContain("plain-secret");
+    }
+
+    @Test
+    void ignoresScopedAuthorizationResourceOutsideTargetNamespace() {
+        AuthorizationDecisionResponse decision = new AuthorizationDecisionResponse();
+        decision.setAllowed(true);
+        when(authorizationClient.decide(org.mockito.Mockito.any())).thenReturn(decision);
+        GlobalActionRequest request = request();
+        request.getTarget().getAttributes().put(
+                "authorizationResourceCode", "LOWCODE_FORM:LEAVE");
+
+        checker.check(definition(), request);
+
+        ArgumentCaptor<AuthorizationDecisionRequest> captor =
+                ArgumentCaptor.forClass(AuthorizationDecisionRequest.class);
+        verify(authorizationClient).decide(captor.capture());
+        assertThat(captor.getValue().getResourceCode()).isEqualTo("PROCESS_TASK");
     }
 
     private ActionDefinition definition() {
@@ -73,6 +91,7 @@ class ActionPolicyCheckerTest {
         target.setId("TASK001");
         target.setOwnerService("service-workflow-engine");
         target.setTenantId("tenant-a");
+        target.getAttributes().put("authorizationResourceCode", "process_task:task001");
         request.setTarget(target);
         ActionContext context = new ActionContext();
         context.setTenantId("tenant-a");

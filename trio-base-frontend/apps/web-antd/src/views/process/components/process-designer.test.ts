@@ -1,4 +1,29 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('@antv/x6', () => {
+  class MockStandardEdge {
+    readonly shape = 'edge';
+
+    constructor(
+      private readonly metadata: {
+        attrs?: { line?: { stroke?: string } };
+        labels?: unknown[];
+      },
+    ) {}
+
+    attr(path: string) {
+      if (path === 'line/connection') return true;
+      if (path === 'line/stroke') return this.metadata.attrs?.line?.stroke;
+      return undefined;
+    }
+
+    getLabels() {
+      return this.metadata.labels ?? [];
+    }
+  }
+
+  return { Shape: { Edge: MockStandardEdge } };
+});
 
 import {
   buildBusinessClosureProcessDefinition,
@@ -8,9 +33,12 @@ import {
   businessClosureValidationIssues,
   catalogFormFields,
   existingProcessDesignerMode,
+  isCompleteProcessEdge,
+  PUBLISHABLE_PROCESS_NODE_TYPES,
   restoreBusinessClosureDefinition,
   validateProcessDefinition,
 } from './process-designer';
+import { createProcessDesignerEdge } from './process-designer-edge';
 
 describe('existing process definition restore', () => {
   it('allows draft editing and keeps published packages read-only', () => {
@@ -49,6 +77,47 @@ describe('existing process definition restore', () => {
 });
 
 describe('process designer validation', () => {
+  it('creates interactive edges with the standard visible line markup', () => {
+    const edge = createProcessDesignerEdge();
+
+    expect(edge.shape).toBe('edge');
+    expect(edge.attr('line/connection')).toBe(true);
+    expect(edge.attr('line/stroke')).toBe('#8c8c8c');
+    expect(edge.getLabels()).toEqual([]);
+  });
+
+  it('only exposes node types supported by the current workflow runtime', () => {
+    expect(PUBLISHABLE_PROCESS_NODE_TYPES).toEqual([
+      'START',
+      'APPROVAL',
+      'COUNTERSIGN',
+      'END',
+    ]);
+    expect(PUBLISHABLE_PROCESS_NODE_TYPES).not.toContain('CONDITION');
+    expect(PUBLISHABLE_PROCESS_NODE_TYPES).not.toContain('NOTIFY');
+    expect(PUBLISHABLE_PROCESS_NODE_TYPES).not.toContain('SERVICE_TASK');
+  });
+
+  it('accepts only complete output-to-input process edges', () => {
+    expect(isCompleteProcessEdge({
+      sourceCellId: 'approval',
+      sourcePortId: 'out',
+      targetCellId: 'end',
+      targetPortId: 'in',
+    })).toBe(true);
+    expect(isCompleteProcessEdge({
+      sourceCellId: 'approval',
+      sourcePortId: 'out',
+      targetPortId: 'in',
+    })).toBe(false);
+    expect(isCompleteProcessEdge({
+      sourceCellId: 'approval',
+      sourcePortId: 'in',
+      targetCellId: 'end',
+      targetPortId: 'out',
+    })).toBe(false);
+  });
+
   it('builds ROLE, USER, and DEPT participant payloads', () => {
     expect(buildParticipantAssignment('ROLE', 'DEPT_HEAD')).toEqual({
       roleCode: 'DEPT_HEAD',

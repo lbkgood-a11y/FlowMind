@@ -42,7 +42,7 @@ triobase:
       base-url: ${WORKFLOW_SERVICE_URL:http://localhost:8086}
   internal:
     token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
-    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-action}
 
 logging:
   level:

@@ -11,17 +11,21 @@ import com.triobase.service.lowcode.dto.ApplicationPageRequest;
 import com.triobase.service.lowcode.dto.ApplicationPageResponse;
 import com.triobase.service.lowcode.dto.ApplicationResponse;
 import com.triobase.service.lowcode.dto.CreateApplicationRequest;
+import com.triobase.service.lowcode.dto.FormRelationRequest;
+import com.triobase.service.lowcode.dto.FormRelationResponse;
 import com.triobase.service.lowcode.dto.UpdateApplicationRequest;
 import com.triobase.service.lowcode.entity.LcApplication;
 import com.triobase.service.lowcode.entity.LcApplicationAction;
 import com.triobase.service.lowcode.entity.LcApplicationPage;
 import com.triobase.service.lowcode.entity.LcApplicationVersion;
 import com.triobase.service.lowcode.entity.LcFormDefinition;
+import com.triobase.service.lowcode.entity.LcFormRelation;
 import com.triobase.service.lowcode.mapper.ApplicationActionMapper;
 import com.triobase.service.lowcode.mapper.ApplicationMapper;
 import com.triobase.service.lowcode.mapper.ApplicationPageMapper;
 import com.triobase.service.lowcode.mapper.ApplicationVersionMapper;
 import com.triobase.service.lowcode.mapper.FormDefinitionMapper;
+import com.triobase.service.lowcode.mapper.FormRelationMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,7 +56,9 @@ public class ApplicationService {
     private final ApplicationPageMapper applicationPageMapper;
     private final ApplicationActionMapper applicationActionMapper;
     private final FormDefinitionMapper formDefinitionMapper;
+    private final FormRelationMapper formRelationMapper;
     private final ApplicationMetadataValidator metadataValidator;
+    private final FormRelationGraphValidator relationGraphValidator;
     private final ApplicationReferenceValidator referenceValidator;
     private final AuthorizationResourceSyncClient authorizationResourceSyncClient;
 
@@ -71,6 +77,7 @@ public class ApplicationService {
         }
         metadataValidator.validateDraft(request.getPages(), request.getActions());
         LcFormDefinition form = findVisibleForm(request.getPrimaryFormDefinitionId());
+        relationGraphValidator.validate(tenantId, form.getId(), request.getRelations());
         LocalDateTime now = LocalDateTime.now();
         String user = operator(operator);
 
@@ -93,6 +100,7 @@ public class ApplicationService {
         applicationVersionMapper.insert(version);
         replacePages(version.getId(), tenantId, request.getPages(), user, now);
         replaceActions(version.getId(), tenantId, request.getActions(), user, now);
+        replaceRelations(version.getId(), tenantId, request.getRelations(), user, now);
         return getVersion(version.getId());
     }
 
@@ -117,7 +125,7 @@ public class ApplicationService {
             throw new BizException(40450, "APPLICATION_VERSION_NOT_FOUND");
         }
         LcApplication application = applicationMapper.selectById(version.getApplicationId());
-        return toResponse(application, version, listPages(version.getId()), listActions(version.getId()));
+        return toResponse(application, version, listPages(version.getId()), listActions(version.getId()), listRelations(version.getId()));
     }
 
     @Transactional
@@ -133,10 +141,13 @@ public class ApplicationService {
                 ? request.getPages() : listPages(version.getId()).stream().map(this::toPageRequest).toList();
         List<ApplicationActionRequest> nextActions = request.getActions() != null
                 ? request.getActions() : listActions(version.getId()).stream().map(this::toActionRequest).toList();
+        List<FormRelationRequest> nextRelations = request.getRelations() != null
+                ? request.getRelations() : listRelations(version.getId()).stream().map(this::toRelationRequest).toList();
         metadataValidator.validateDraft(nextPages, nextActions);
         LcFormDefinition form = StringUtils.hasText(request.getPrimaryFormDefinitionId())
                 ? findVisibleForm(request.getPrimaryFormDefinitionId())
                 : findVisibleForm(version.getPrimaryFormDefinitionId());
+        relationGraphValidator.validate(version.getTenantId(), form.getId(), nextRelations);
         LocalDateTime now = LocalDateTime.now();
         String user = operator(operator);
         String nextName = StringUtils.hasText(request.getName()) ? request.getName().trim() : version.getName();
@@ -167,6 +178,9 @@ public class ApplicationService {
         }
         if (request.getActions() != null) {
             replaceActions(version.getId(), version.getTenantId(), request.getActions(), user, now);
+        }
+        if (request.getRelations() != null) {
+            replaceRelations(version.getId(), version.getTenantId(), request.getRelations(), user, now);
         }
         return getVersion(versionId);
     }
@@ -209,6 +223,7 @@ public class ApplicationService {
         applicationVersionMapper.insert(draft);
         replacePages(draft.getId(), tenantId, listPages(source.getId()).stream().map(this::toPageRequest).toList(), user, now);
         replaceActions(draft.getId(), tenantId, listActions(source.getId()).stream().map(this::toActionRequest).toList(), user, now);
+        replaceRelations(draft.getId(), tenantId, listRelations(source.getId()).stream().map(this::toRelationRequest).toList(), user, now);
 
         application.setStatus(STATUS_DRAFT);
         application.setLatestVersion(nextVersion);
@@ -230,12 +245,14 @@ public class ApplicationService {
         }
         List<ApplicationPageRequest> pages = listPages(version.getId()).stream().map(this::toPageRequest).toList();
         List<ApplicationActionRequest> actions = listActions(version.getId()).stream().map(this::toActionRequest).toList();
+        List<FormRelationRequest> relations = listRelations(version.getId()).stream().map(this::toRelationRequest).toList();
         metadataValidator.validateDraft(pages, actions);
         metadataValidator.validateFieldReferences(form.getSchemaJson(), pages);
+        relationGraphValidator.validate(version.getTenantId(), form.getId(), relations);
         referenceValidator.validatePublication(version, actions);
         authorizationResourceSyncClient.syncPublishedApplication(version, pages, actions);
         LocalDateTime now = LocalDateTime.now();
-        String metadataHash = metadataHash(version, pages, actions);
+        String metadataHash = metadataHash(version, pages, actions, relations);
 
         version.setStatus(STATUS_PUBLISHED);
         version.setFormVersion(form.getVersion());
@@ -299,7 +316,8 @@ public class ApplicationService {
                 .orElse(null);
         return toResponse(application, version,
                 version != null ? listPages(version.getId()) : List.of(),
-                version != null ? listActions(version.getId()) : List.of());
+                version != null ? listActions(version.getId()) : List.of(),
+                version != null ? listRelations(version.getId()) : List.of());
     }
 
     private LcApplicationVersion buildVersion(LcApplication application,
@@ -430,6 +448,46 @@ public class ApplicationService {
                 .orderByAsc(LcApplicationAction::getSortOrder));
     }
 
+    private List<LcFormRelation> listRelations(String versionId) {
+        return formRelationMapper.selectList(new LambdaQueryWrapper<LcFormRelation>()
+                .eq(LcFormRelation::getApplicationVersionId, versionId)
+                .orderByAsc(LcFormRelation::getSortOrder));
+    }
+
+    private void replaceRelations(String versionId,
+                                  String tenantId,
+                                  List<FormRelationRequest> relations,
+                                  String user,
+                                  LocalDateTime now) {
+        formRelationMapper.delete(new LambdaQueryWrapper<LcFormRelation>()
+                .eq(LcFormRelation::getApplicationVersionId, versionId));
+        if (relations == null) {
+            return;
+        }
+        for (FormRelationRequest request : relations) {
+            LcFormRelation relation = new LcFormRelation();
+            relation.setId(UlidGenerator.nextUlid());
+            relation.setTenantId(tenantId);
+            relation.setApplicationVersionId(versionId);
+            relation.setRelationCode(request.getRelationCode().trim().toUpperCase());
+            relation.setParentFormDefinitionId(request.getParentFormDefinitionId());
+            relation.setChildFormDefinitionId(request.getChildFormDefinitionId());
+            relation.setCardinality(StringUtils.hasText(request.getCardinality())
+                    ? request.getCardinality().trim().toUpperCase() : "MANY");
+            relation.setParentKeyField(StringUtils.hasText(request.getParentKeyField())
+                    ? request.getParentKeyField().trim() : "id");
+            relation.setChildForeignKeyField(request.getChildForeignKeyField().trim());
+            relation.setCascadeSave(Boolean.FALSE.equals(request.getCascadeSave()) ? (short) 0 : (short) 1);
+            relation.setCascadeDelete(Boolean.TRUE.equals(request.getCascadeDelete()) ? (short) 1 : (short) 0);
+            relation.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0);
+            relation.setCreatedBy(user);
+            relation.setCreatedAt(now);
+            relation.setUpdatedBy(user);
+            relation.setUpdatedAt(now);
+            formRelationMapper.insert(relation);
+        }
+    }
+
     private void ensureNoDraft(String tenantId, String appKey) {
         if (applicationVersionMapper.selectCount(new LambdaQueryWrapper<LcApplicationVersion>()
                 .eq(LcApplicationVersion::getTenantId, tenantId)
@@ -463,7 +521,8 @@ public class ApplicationService {
     private ApplicationResponse toResponse(LcApplication application,
                                            LcApplicationVersion version,
                                            List<LcApplicationPage> pages,
-                                           List<LcApplicationAction> actions) {
+                                           List<LcApplicationAction> actions,
+                                           List<LcFormRelation> relations) {
         ApplicationResponse response = new ApplicationResponse();
         response.setId(application.getId());
         response.setTenantId(application.getTenantId());
@@ -488,7 +547,37 @@ public class ApplicationService {
         }
         response.setPages(pages.stream().map(this::toPageResponse).toList());
         response.setActions(actions.stream().map(this::toActionResponse).toList());
+        response.setRelations(relations.stream().map(this::toRelationResponse).toList());
         return response;
+    }
+
+    private FormRelationResponse toRelationResponse(LcFormRelation relation) {
+        FormRelationResponse response = new FormRelationResponse();
+        response.setId(relation.getId());
+        response.setRelationCode(relation.getRelationCode());
+        response.setParentFormDefinitionId(relation.getParentFormDefinitionId());
+        response.setChildFormDefinitionId(relation.getChildFormDefinitionId());
+        response.setCardinality(relation.getCardinality());
+        response.setParentKeyField(relation.getParentKeyField());
+        response.setChildForeignKeyField(relation.getChildForeignKeyField());
+        response.setCascadeSave(relation.getCascadeSave() != null && relation.getCascadeSave() == 1);
+        response.setCascadeDelete(relation.getCascadeDelete() != null && relation.getCascadeDelete() == 1);
+        response.setSortOrder(relation.getSortOrder());
+        return response;
+    }
+
+    private FormRelationRequest toRelationRequest(LcFormRelation relation) {
+        FormRelationRequest request = new FormRelationRequest();
+        request.setRelationCode(relation.getRelationCode());
+        request.setParentFormDefinitionId(relation.getParentFormDefinitionId());
+        request.setChildFormDefinitionId(relation.getChildFormDefinitionId());
+        request.setCardinality(relation.getCardinality());
+        request.setParentKeyField(relation.getParentKeyField());
+        request.setChildForeignKeyField(relation.getChildForeignKeyField());
+        request.setCascadeSave(relation.getCascadeSave() != null && relation.getCascadeSave() == 1);
+        request.setCascadeDelete(relation.getCascadeDelete() != null && relation.getCascadeDelete() == 1);
+        request.setSortOrder(relation.getSortOrder());
+        return request;
     }
 
     private ApplicationPageResponse toPageResponse(LcApplicationPage page) {
@@ -539,12 +628,14 @@ public class ApplicationService {
 
     private String metadataHash(LcApplicationVersion version,
                                 List<ApplicationPageRequest> pages,
-                                List<ApplicationActionRequest> actions) {
+                                List<ApplicationActionRequest> actions,
+                                List<FormRelationRequest> relations) {
         String payload = version.getAppKey() + ":" + version.getVersion()
                 + ":" + version.getPrimaryFormDefinitionId()
                 + ":" + version.getSchemaHash()
                 + ":" + pages
-                + ":" + actions;
+                + ":" + actions
+                + ":" + relations;
         return DigestUtils.md5DigestAsHex(payload.getBytes(StandardCharsets.UTF_8));
     }
 

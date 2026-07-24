@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { SystemGovernanceApi } from '#/api';
 import type { TableProps } from 'ant-design-vue';
+
+import type { SystemGovernanceApi } from '#/api';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -45,6 +46,10 @@ const page = ref(1);
 const size = ref(20);
 const total = ref(0);
 
+function paginationTotal(totalCount: number, range: [number, number]) {
+  return `共 ${totalCount} 条记录，本页 ${range[0]}-${range[1]} 条`;
+}
+
 const query = reactive({
   actionId: '',
   actionSource: undefined as string | undefined,
@@ -59,18 +64,18 @@ const query = reactive({
 
 const columns = computed<TableProps['columns']>(() => [
   { dataIndex: 'operatedAt', fixed: 'left', key: 'operatedAt', title: '操作时间', width: 190 },
-  { dataIndex: 'username', key: 'username', title: '用户', width: 140 },
-  { dataIndex: 'httpMethod', key: 'httpMethod', title: '方法', width: 90 },
-  { dataIndex: 'requestPath', key: 'requestPath', title: '路径', width: 260 },
-  { dataIndex: 'actionType', key: 'actionType', title: 'Action 类型', width: 230 },
-  { dataIndex: 'actionStatus', key: 'actionStatus', title: 'Action 状态', width: 120 },
-  { dataIndex: 'actionTargetId', key: 'actionTargetId', title: 'Action 目标', width: 180 },
-  { dataIndex: 'resultStatus', key: 'resultStatus', title: '结果', width: 100 },
-  { dataIndex: 'statusCode', key: 'statusCode', title: '状态码', width: 90 },
-  { dataIndex: 'latencyMs', key: 'latencyMs', title: '耗时(ms)', width: 110 },
-  { dataIndex: 'clientIp', key: 'clientIp', title: 'IP', width: 140 },
-  { dataIndex: 'traceId', key: 'traceId', title: 'TraceId', width: 220 },
-  { fixed: 'right', key: 'action', title: '操作', width: 90 },
+  { dataIndex: 'username', key: 'username', title: '用户', width: 100 },
+  { dataIndex: 'httpMethod', key: 'httpMethod', title: '方法', width: 70 },
+  { dataIndex: 'requestPath', ellipsis: true, key: 'requestPath', title: '路径', width: 220 },
+  { dataIndex: 'actionType', ellipsis: true, key: 'actionType', title: 'Action 类型', width: 150 },
+  { dataIndex: 'actionStatus', key: 'actionStatus', title: 'Action 状态', width: 100 },
+  { dataIndex: 'actionTargetId', ellipsis: true, key: 'actionTargetId', title: 'Action 目标', width: 130 },
+  { dataIndex: 'resultStatus', key: 'resultStatus', title: '结果', width: 80 },
+  { dataIndex: 'statusCode', key: 'statusCode', title: '状态码', width: 75 },
+  { dataIndex: 'latencyMs', key: 'latencyMs', title: '耗时(ms)', width: 85 },
+  { dataIndex: 'clientIp', key: 'clientIp', title: 'IP', width: 115 },
+  { dataIndex: 'traceId', ellipsis: true, key: 'traceId', title: 'TraceId', width: 190 },
+  { fixed: 'right', key: 'action', title: '操作', width: 70 },
 ]);
 
 async function loadLogs() {
@@ -185,7 +190,7 @@ onMounted(loadLogs);
           :data-source="logs"
           :loading="loading"
           :pagination="false"
-          :scroll="{ x: 2040 }"
+          :scroll="{ x: 1575 }"
           size="small"
           :sticky="{ offsetScroll: 0 }"
         >
@@ -211,7 +216,9 @@ onMounted(loadLogs);
           v-model:current="page"
           v-model:page-size="size"
           size="small"
+          show-quick-jumper
           show-size-changer
+          :show-total="paginationTotal"
           :total="total"
           @change="loadLogs"
         />

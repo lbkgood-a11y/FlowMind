@@ -40,7 +40,7 @@ class LowcodeMigrationIntegrationTest {
 
         MigrateResult result = flyway.migrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(6);
+        assertThat(result.migrationsExecuted).isEqualTo(9);
         try (Connection connection = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              Statement statement = connection.createStatement()) {
@@ -58,6 +58,8 @@ class LowcodeMigrationIntegrationTest {
             assertIndexExists(statement, "lc_application_version", "uk_lc_application_version_tenant_key_draft");
             assertIndexExists(statement, "lc_application_page", "uk_lc_application_page_version_type");
             assertIndexExists(statement, "lc_application_action", "uk_lc_application_action_version_code");
+            assertIndexExists(statement, "lc_form_relation", "uk_lc_form_relation_version_code");
+            assertIndexExists(statement, "lc_form_instance_relation", "idx_lc_form_instance_relation_parent");
             assertIndexExists(statement, "lc_form_instance_workflow_audit", "idx_lc_form_instance_workflow_audit_instance");
             assertIndexExists(statement, "lc_form_instance_workflow_audit", "idx_lc_form_instance_workflow_audit_process");
             assertRowCount(statement, "lc_form_definition",

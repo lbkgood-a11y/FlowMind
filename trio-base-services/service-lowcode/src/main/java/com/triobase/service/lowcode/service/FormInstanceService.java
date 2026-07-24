@@ -91,6 +91,13 @@ public class FormInstanceService {
     }
 
     public PageResult<FormInstanceResponse> list(String formKey, int page, int size) {
+        return list(formKey, page, size, Map.of(), null, null);
+    }
+
+    public PageResult<FormInstanceResponse> list(String formKey, int page, int size,
+                                                 Map<String, String> filters,
+                                                 String sortField,
+                                                 String sortDirection) {
         String userId = requireCurrentUser();
         AuthorizationDecisionResponse decision = authorizationService.requireFormDecision(
                 formKey, "VIEW", null, List.of());
@@ -102,10 +109,22 @@ public class FormInstanceService {
 
         LambdaQueryWrapper<LcFormInstance> query = new LambdaQueryWrapper<LcFormInstance>()
                 .in(LcFormInstance::getTenantId, visibleTenantIds())
-                .eq(LcFormInstance::getFormKey, formKey)
-                .orderByDesc(LcFormInstance::getSubmittedAt);
+                .eq(LcFormInstance::getFormKey, formKey);
         if (accessMode == LowcodeAuthorizationService.DataAccessMode.SELF) {
             query.eq(LcFormInstance::getSubmittedBy, userId);
+        }
+        if (filters != null) {
+            filters.forEach((field, value) -> {
+                if (safeField(field) && StringUtils.hasText(value)) {
+                    query.apply("(data_json::jsonb ->> {0}) ILIKE {1}", field, "%" + value.trim() + "%");
+                }
+            });
+        }
+        if (safeField(sortField)) {
+            query.last("ORDER BY data_json::jsonb ->> '" + sortField + "' "
+                    + ("ASC".equalsIgnoreCase(sortDirection) ? "ASC" : "DESC"));
+        } else {
+            query.orderByDesc(LcFormInstance::getSubmittedAt);
         }
         IPage<LcFormInstance> result = formInstanceMapper.selectPage(new Page<>(page, size), query);
         List<FormInstanceResponse> records = result.getRecords().stream()
@@ -113,6 +132,10 @@ public class FormInstanceService {
                 .map(response -> authorizationService.applyReadRules(response, decision))
                 .toList();
         return PageResult.of(records, result.getTotal(), page, size);
+    }
+
+    private boolean safeField(String field) {
+        return StringUtils.hasText(field) && field.matches("[A-Za-z][A-Za-z0-9_]{0,127}");
     }
 
     public FormInstanceResponse getById(String id) {

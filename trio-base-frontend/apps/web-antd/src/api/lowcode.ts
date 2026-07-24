@@ -21,6 +21,10 @@ export namespace LowcodeApi {
     placeholder?: string;
     required?: boolean;
     sortOrder?: number;
+    childFormKey?: string;
+    childFormName?: string;
+    childSchemaJson?: string;
+    childUiSchemaJson?: string;
   }
 
   export interface FormDefinition {
@@ -133,8 +137,69 @@ export namespace LowcodeApi {
     fieldRules?: RuntimeFieldAuthorization[];
     pages: ApplicationPage[];
     primaryFormDefinitionId: string;
+    relations?: FormRelation[];
     schemaJson: string;
     uiSchemaJson?: string;
+  }
+
+  export interface NestedFormInstanceRequest {
+    formDefinitionId: string;
+    data: Record<string, unknown>;
+    children?: Record<string, NestedFormInstanceRequest[]>;
+  }
+
+  export interface FormInstanceGraph {
+    instance: FormInstance;
+    children: Record<string, FormInstanceGraph[]>;
+  }
+
+  export interface FormRelation {
+    id?: string;
+    relationCode: string;
+    parentFormDefinitionId: string;
+    childFormDefinitionId: string;
+    cardinality: 'MANY' | 'ONE';
+    parentKeyField: string;
+    childForeignKeyField: string;
+    cascadeSave?: boolean;
+    cascadeDelete?: boolean;
+    sortOrder?: number;
+    childFormKey?: string;
+    childFormName?: string;
+    childSchemaJson?: string;
+    childUiSchemaJson?: string;
+  }
+
+  export interface ApplicationDraft {
+    id: string;
+    tenantId?: string;
+    appKey: string;
+    name: string;
+    description?: string;
+    status: 'DRAFT' | 'OFFLINE' | 'PUBLISHED' | string;
+    latestVersion: number;
+    latestPublishedVersionId?: string;
+    versionId: string;
+    version: number;
+    primaryFormDefinitionId: string;
+    formKey: string;
+    formVersion: number;
+    viewPermissionCode?: string;
+    publishedAt?: string;
+    pages: ApplicationPage[];
+    actions: ApplicationAction[];
+    relations: FormRelation[];
+  }
+
+  export interface SaveApplication {
+    appKey?: string;
+    name: string;
+    description?: string;
+    primaryFormDefinitionId: string;
+    viewPermissionCode?: string;
+    pages: Array<Pick<ApplicationPage, 'metadataJson' | 'pageType' | 'sortOrder'>>;
+    actions: Array<Omit<ApplicationAction, 'allowed' | 'authorizationActionCode' | 'guardRequirements' | 'id'>>;
+    relations: FormRelation[];
   }
 
 }
@@ -215,6 +280,55 @@ async function getRuntimeApplicationList(params: Recordable<any>) {
   return { items: page.records, total: page.total };
 }
 
+async function getApplicationList(params: Recordable<any>) {
+  const page = await requestClient.get<{
+    records: LowcodeApi.ApplicationDraft[];
+    total: number;
+  }>('/lowcode-applications', { params });
+  return { items: page.records, total: page.total };
+}
+
+async function getApplicationVersion(versionId: string) {
+  return requestClient.get<LowcodeApi.ApplicationDraft>(
+    `/lowcode-applications/versions/${versionId}`,
+  );
+}
+
+async function createApplication(data: LowcodeApi.SaveApplication) {
+  return requestClient.post<LowcodeApi.ApplicationDraft>(
+    '/lowcode-applications',
+    data,
+  );
+}
+
+async function updateApplication(
+  versionId: string,
+  data: LowcodeApi.SaveApplication,
+) {
+  return requestClient.put<LowcodeApi.ApplicationDraft>(
+    `/lowcode-applications/versions/${versionId}`,
+    data,
+  );
+}
+
+async function deriveApplicationVersion(versionId: string) {
+  return requestClient.post<LowcodeApi.ApplicationDraft>(
+    `/lowcode-applications/versions/${versionId}/derive`,
+  );
+}
+
+async function publishApplication(versionId: string) {
+  return requestClient.put<LowcodeApi.ApplicationDraft>(
+    `/lowcode-applications/versions/${versionId}/publish`,
+  );
+}
+
+async function offlineApplication(versionId: string) {
+  return requestClient.put<LowcodeApi.ApplicationDraft>(
+    `/lowcode-applications/versions/${versionId}/offline`,
+  );
+}
+
 async function getRuntimeApplicationDescriptor(
   appKey: string,
   params?: { version?: number },
@@ -247,19 +361,38 @@ async function getRuntimeApplicationInstance(
   );
 }
 
+async function getRuntimeApplicationInstanceGraph(
+  appKey: string,
+  instanceId: string,
+  params?: { version?: number },
+) {
+  return requestClient.get<LowcodeApi.FormInstanceGraph>(
+    `/lowcode-runtime/apps/${appKey}/instances/${instanceId}/graph`,
+    { params },
+  );
+}
+
 export {
+  createApplication,
   createFormDefinition,
+  deriveApplicationVersion,
   deriveFormDefinitionVersion,
   getFormDataResources,
   getFormDefinitionById,
   getFormDefinitionList,
   getFormDefinitionVersions,
   getFormInstanceList,
+  getApplicationList,
+  getApplicationVersion,
   getRuntimeApplicationDescriptor,
   getRuntimeApplicationInstance,
+  getRuntimeApplicationInstanceGraph,
   getRuntimeApplicationInstances,
   getRuntimeApplicationList,
+  offlineApplication,
   offlineFormDefinition,
+  publishApplication,
   publishFormDefinition,
+  updateApplication,
   updateFormDefinition,
 };

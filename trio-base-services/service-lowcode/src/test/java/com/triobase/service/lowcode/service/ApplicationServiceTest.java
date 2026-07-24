@@ -16,6 +16,7 @@ import com.triobase.service.lowcode.mapper.ApplicationMapper;
 import com.triobase.service.lowcode.mapper.ApplicationPageMapper;
 import com.triobase.service.lowcode.mapper.ApplicationVersionMapper;
 import com.triobase.service.lowcode.mapper.FormDefinitionMapper;
+import com.triobase.service.lowcode.mapper.FormRelationMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,7 +52,11 @@ class ApplicationServiceTest {
     @Mock
     private FormDefinitionMapper formDefinitionMapper;
     @Mock
+    private FormRelationMapper formRelationMapper;
+    @Mock
     private ApplicationMetadataValidator metadataValidator;
+    @Mock
+    private FormRelationGraphValidator relationGraphValidator;
     @Mock
     private ApplicationReferenceValidator referenceValidator;
     @Mock

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { SystemAuthorizationApi } from '#/api';
 import type { TableProps } from 'ant-design-vue';
+
+import type { SystemAuthorizationApi } from '#/api';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -20,8 +21,8 @@ import {
   Space,
   Switch,
   Table,
-  Tag,
   Tabs,
+  Tag,
 } from 'ant-design-vue';
 
 import {
@@ -67,6 +68,14 @@ const resourceGroups = computed(() => resourceTree.value?.groups ?? []);
 const resourceList = computed(() =>
   resourceGroups.value.flatMap((group) => group.resources ?? []),
 );
+
+const clientPagination: TableProps['pagination'] = {
+  pageSize: 20,
+  showQuickJumper: true,
+  showSizeChanger: true,
+  showTotal: (total, range) =>
+    `共 ${total} 条记录，本页 ${range[0]}-${range[1]} 条`,
+};
 
 function findResource(resourceCode: string) {
   return resourceList.value.find((r) => r.resourceCode === resourceCode);
@@ -434,7 +443,7 @@ const previewForm = reactive({
   businessObjectId: '',
   tenantId: 'default',
 });
-const previewResult = ref<SystemAuthorizationApi.DecisionPreview | null>(null);
+const previewResult = ref<null | SystemAuthorizationApi.DecisionPreview>(null);
 const previewLoading = ref(false);
 
 function changePreviewResource(value: unknown) {
@@ -516,7 +525,7 @@ function onTabChange(key: number | string) {
             :columns="grantColumns"
             :data-source="grantRows"
             :loading="loading"
-            :pagination="{ pageSize: 20, showSizeChanger: true }"
+            :pagination="clientPagination"
             row-key="id"
             size="small"
             bordered
@@ -553,7 +562,7 @@ function onTabChange(key: number | string) {
             :columns="fieldColumns"
             :data-source="fieldRows"
             :loading="loading"
-            :pagination="{ pageSize: 20, showSizeChanger: true }"
+            :pagination="clientPagination"
             row-key="id"
             size="small"
             bordered
@@ -590,16 +599,14 @@ function onTabChange(key: number | string) {
             :columns="guardColumns"
             :data-source="guardRows"
             :loading="loading"
-            :pagination="{ pageSize: 20, showSizeChanger: true }"
+            :pagination="clientPagination"
             row-key="id"
             size="small"
             bordered
           >
             <template #bodyCell="{ column, record }: any">
               <template v-if="column.key === 'status'">
-                <Tag :color="statusTagColor(record.status)">{{
-                  record.status === 1 ? '启用' : '禁用'
-                }}</Tag>
+                <Tag :color="statusTagColor(record.status)">{{ record.status === 1 ? '启用' : '禁用' }}</Tag>
               </template>
               <template v-else-if="column.key === 'action'">
                 <Space>
@@ -628,9 +635,7 @@ function onTabChange(key: number | string) {
         <!-- Tab 4: 决策预览 -->
         <TabPane key="preview" tab="决策预览">
           <div class="mb-4">
-            <span class="text-muted-foreground text-sm"
-              >模拟授权引擎决策，查看指定用户的资源访问权限</span
-            >
+            <span class="text-muted-foreground text-sm">模拟授权引擎决策，查看指定用户的资源访问权限</span>
           </div>
           <div class="max-w-3xl">
             <Form layout="inline" class="flex flex-wrap gap-3">

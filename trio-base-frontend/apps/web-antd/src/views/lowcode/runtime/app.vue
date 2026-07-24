@@ -12,6 +12,7 @@ import {
   Button,
   Drawer,
   Form,
+  Input,
   message,
   Pagination,
   Space,
@@ -24,9 +25,13 @@ import { ACTION_TARGET_TYPES, ACTION_TYPES } from '#/api';
 import {
   getRuntimeApplicationDescriptor,
   getRuntimeApplicationInstance,
+  getRuntimeApplicationInstanceGraph,
   getRuntimeApplicationInstances,
 } from '#/api/lowcode';
-import { useActionDispatch } from '#/composables/useActionDispatch';
+import {
+  isActionDispatchError,
+  useActionDispatch,
+} from '#/composables/useActionDispatch';
 import {
   BusinessActionButton,
   CompactTableFrame,
@@ -37,6 +42,8 @@ import {
 } from '#/shared';
 
 import DynamicProcessForm from '../../process/components/DynamicProcessForm.vue';
+import NestedGraphViewer from './NestedGraphViewer.vue';
+import NestedRuntimeForms from './NestedRuntimeForms.vue';
 import {
   createRuntimeDraftKey,
   createRuntimeRetryKey,
@@ -45,6 +52,7 @@ import {
   getPrimaryCreateAction,
   getRetryWorkflowAction,
   getRuntimeDetailSections,
+  getRuntimeListDesign,
   getRuntimeListColumns,
   parseInstanceData,
   toRuntimeTableRecord,
@@ -65,6 +73,8 @@ const descriptor = ref<LowcodeApi.RuntimeApplicationDescriptor>();
 const records = ref<LowcodeApi.FormInstance[]>([]);
 const detailRecord = ref<LowcodeApi.FormInstance>();
 const formData = ref<Record<string, unknown>>({});
+const nestedData = ref<Record<string, LowcodeApi.NestedFormInstanceRequest[]>>({});
+const detailGraph = ref<LowcodeApi.FormInstanceGraph>();
 const draftIdempotencyKey = ref('');
 const formRef = ref<InstanceType<typeof DynamicProcessForm>>();
 
@@ -73,6 +83,7 @@ const pagination = reactive({
   pageSize: 20,
   total: 0,
 });
+const runtimeFilters = reactive<Record<string, string>>({});
 
 const appKey = computed(() => String(route.params.appKey || ''));
 const requestedVersion = computed(() => {
@@ -81,7 +92,23 @@ const requestedVersion = computed(() => {
 });
 const createAction = computed(() => getPrimaryCreateAction(descriptor.value));
 const retryAction = computed(() => getRetryWorkflowAction(descriptor.value));
-const tableRecords = computed(() => records.value.map(toRuntimeTableRecord));
+const listDesign = computed(() => getRuntimeListDesign(descriptor.value));
+const tableRecords = computed(() => {
+  const rows = records.value.map(toRuntimeTableRecord).filter((record) =>
+    listDesign.value.filters.every((filter) => {
+      const expected = runtimeFilters[filter.fieldKey]?.trim().toLowerCase();
+      if (!expected) return true;
+      const actual = String(record[filter.fieldKey] ?? '').toLowerCase();
+      return filter.operator?.toUpperCase() === 'EQ' ? actual === expected : actual.includes(expected);
+    }),
+  );
+  const sort = listDesign.value.defaultSort;
+  if (!sort?.fieldKey) return rows;
+  return rows.slice().sort((left, right) => {
+    const comparison = String(left[sort.fieldKey!] ?? '').localeCompare(String(right[sort.fieldKey!] ?? ''), 'zh-CN', { numeric: true });
+    return sort.direction === 'ASC' ? comparison : -comparison;
+  });
+});
 const detailData = computed(() => parseInstanceData(detailRecord.value?.dataJson));
 const detailSections = computed(() => getRuntimeDetailSections(descriptor.value, 'DETAIL'));
 const documentSubtitle = computed(() =>
@@ -133,6 +160,7 @@ async function loadDescriptor() {
     descriptor.value = await getRuntimeApplicationDescriptor(appKey.value, {
       version: requestedVersion.value,
     });
+    pagination.pageSize = getRuntimeListDesign(descriptor.value).pageSize ?? 20;
   } finally {
     descriptorLoading.value = false;
   }
@@ -147,8 +175,11 @@ async function loadRecords(page = pagination.current) {
   loading.value = true;
   try {
     const result = await getRuntimeApplicationInstances(appKey.value, {
+      filters: JSON.stringify(runtimeFilters),
       page,
       size: pagination.pageSize,
+      sortDirection: listDesign.value.defaultSort?.direction,
+      sortField: listDesign.value.defaultSort?.fieldKey,
       version: descriptor.value.version,
     });
     records.value = result.items;
@@ -166,6 +197,7 @@ function openCreate() {
     return;
   }
   formData.value = {};
+  nestedData.value = {};
   draftIdempotencyKey.value = createRuntimeDraftKey(
     descriptor.value.appKey,
     descriptor.value.version,
@@ -184,6 +216,37 @@ async function submit() {
   }
   saving.value = true;
   try {
+    if ((descriptor.value.relations?.length ?? 0) > 0) {
+      const result = await dispatchAction({
+        actionType: lowcodeGlobalActionType(action),
+        executionMode: 'SYNC',
+        idempotencyKey: draftIdempotencyKey.value,
+        payload: {
+          actionCode: action.actionCode,
+          appKey: descriptor.value.appKey,
+          graph: {
+            children: nestedData.value,
+            data: formData.value,
+            formDefinitionId: descriptor.value.primaryFormDefinitionId,
+          },
+          version: descriptor.value.version,
+        },
+        target: {
+          attributes: {
+            authorizationResourceCode: lowcodeFormResourceCode(descriptor.value.formKey),
+          },
+          id: descriptor.value.primaryFormDefinitionId,
+          ownerService: 'service-lowcode',
+          tenantId: descriptor.value.tenantId,
+          type: ACTION_TARGET_TYPES.lowcodeForm,
+          version: String(descriptor.value.version),
+        },
+      });
+      message.success('主子孙表单已级联保存');
+      drawerOpen.value = false;
+      await refreshByScopes(result, { document: () => loadRecords(1), list: () => loadRecords(1) });
+      return;
+    }
     const result = await dispatchAction(
       {
         actionType: lowcodeGlobalActionType(action),
@@ -197,6 +260,9 @@ async function submit() {
           data: formData.value,
         },
         target: {
+          attributes: {
+            authorizationResourceCode: lowcodeFormResourceCode(descriptor.value.formKey),
+          },
           id: action.formDefinitionId ?? descriptor.value.primaryFormDefinitionId,
           ownerService: 'service-lowcode',
           tenantId: descriptor.value.tenantId,
@@ -226,6 +292,18 @@ async function submit() {
       timeline: () => loadRecords(1),
       workflow: () => loadRecords(1),
     });
+  } catch (error) {
+    if (isActionDispatchError(error)) {
+      if (error.result.retryable) {
+        draftIdempotencyKey.value = createRuntimeDraftKey(
+          descriptor.value.appKey,
+          descriptor.value.version,
+          action.actionCode,
+        );
+      }
+      return;
+    }
+    throw error;
   } finally {
     saving.value = false;
   }
@@ -240,6 +318,10 @@ function lowcodeGlobalActionType(action: LowcodeApi.ApplicationAction) {
     return ACTION_TYPES.lowcodeFormSave;
   }
   return ACTION_TYPES.lowcodeFormSubmit;
+}
+
+function lowcodeFormResourceCode(formKey: string) {
+  return `LOWCODE_FORM:${formKey.trim().toUpperCase()}`;
 }
 
 async function retryWorkflow(record: RuntimeTableRecord) {
@@ -267,6 +349,9 @@ async function retryWorkflow(record: RuntimeTableRecord) {
         version: descriptor.value.version,
       },
       target: {
+        attributes: {
+          authorizationResourceCode: lowcodeFormResourceCode(descriptor.value.formKey),
+        },
         id: record.id,
         ownerService: 'service-lowcode',
         tenantId: descriptor.value.tenantId,
@@ -300,6 +385,13 @@ async function openDetail(record: RuntimeTableRecord) {
       record.id,
       { version: descriptor.value.version },
     );
+    detailGraph.value = (descriptor.value.relations?.length ?? 0) > 0
+      ? await getRuntimeApplicationInstanceGraph(
+          descriptor.value.appKey,
+          record.id,
+          { version: descriptor.value.version },
+        )
+      : undefined;
   } finally {
     detailLoading.value = false;
   }
@@ -362,6 +454,17 @@ watch(
       </template>
 
       <CompactTableFrame>
+          <div v-if="listDesign.filters.length" class="runtime-filters">
+            <Input
+              v-for="filter in listDesign.filters"
+              :key="filter.fieldKey"
+              v-model:value="runtimeFilters[filter.fieldKey]"
+              allow-clear
+              :placeholder="filter.label"
+            />
+            <Button @click="Object.keys(runtimeFilters).forEach((key) => runtimeFilters[key] = '')">重置</Button>
+            <Button type="primary" @click="loadRecords(1)">查询</Button>
+          </div>
           <Table
             :columns="columns"
             :data-source="tableRecords"
@@ -425,6 +528,12 @@ watch(
           :schema-json="createFormSchemas.schemaJson"
           :ui-schema-json="createFormSchemas.uiSchemaJson"
         />
+        <NestedRuntimeForms
+          v-if="descriptor?.relations?.length"
+          v-model="nestedData"
+          :current-form-id="descriptor.primaryFormDefinitionId"
+          :relations="descriptor.relations"
+        />
       </Form>
 
       <template #footer>
@@ -452,6 +561,7 @@ watch(
           </div>
         </div>
       </div>
+      <NestedGraphViewer v-if="detailGraph" :graph="detailGraph" title="关联表单数据" />
       <div class="detail-section">
         <h3>流程信息</h3>
         <div class="detail-grid">
@@ -489,6 +599,8 @@ watch(
   flex-direction: column;
   min-height: 0;
 }
+
+.runtime-filters { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 8px; padding: 8px; }
 
 .list-panel {
   min-height: 0;

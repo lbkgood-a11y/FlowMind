@@ -32,7 +32,7 @@ spring:
         - id: service-lowcode
           uri: ${LOWCODE_SERVICE_URL:http://localhost:8085}
           predicates:
-            - Path=/api/v1/forms,/api/v1/forms/**,/api/v1/form-instances,/api/v1/form-instances/**
+            - Path=/api/v1/forms,/api/v1/forms/**,/api/v1/form-instances,/api/v1/form-instances/**,/api/v1/lowcode-applications,/api/v1/lowcode-applications/**,/api/v1/lowcode-runtime,/api/v1/lowcode-runtime/**
         - id: service-workflow-engine
           uri: ${WF_SERVICE_URL:http://localhost:8086}
           predicates:

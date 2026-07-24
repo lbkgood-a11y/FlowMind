@@ -40,14 +40,14 @@ public class ActionSecurityContextPropagator {
             context.setTenantId(firstNonBlank(security != null ? security.tenantId() : null,
                     actor.getTenantId()));
         }
-        if (!notBlank(context.getTraceId())) {
-            context.setTraceId(TraceUtil.getTraceId());
-        }
         if (!notBlank(context.getRequestId())) {
             context.setRequestId(ActionCorrelationIds.newRequestId());
         }
         if (!notBlank(context.getCorrelationId())) {
             context.setCorrelationId(ActionCorrelationIds.newCorrelationId());
+        }
+        if (!notBlank(context.getTraceId())) {
+            context.setTraceId(firstNonBlank(TraceUtil.getTraceId(), context.getRequestId()));
         }
         if (security != null) {
             fillPolicyVersions(context, security);

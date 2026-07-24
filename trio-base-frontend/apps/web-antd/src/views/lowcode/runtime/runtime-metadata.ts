@@ -24,6 +24,13 @@ export interface RuntimeSectionDescriptor {
   title: string;
 }
 
+export interface RuntimeListDesign {
+  defaultSort?: { direction?: 'ASC' | 'DESC'; fieldKey?: string };
+  filters: Array<{ fieldKey: string; label: string; operator?: string }>;
+  pageSize?: number;
+  rowActions: string[];
+}
+
 export type RuntimeTableRecord = LowcodeApi.FormInstance &
   Record<string, unknown> & {
     __data: Record<string, unknown>;
@@ -84,6 +91,19 @@ export function getRuntimeListColumns(
         .filter((item) => item.visible)
     : [];
   return columns.length > 0 ? columns : fallbackFields(fields, fieldRules);
+}
+
+export function getRuntimeListDesign(
+  descriptor: LowcodeApi.RuntimeApplicationDescriptor | undefined,
+): RuntimeListDesign {
+  const listPage = getRuntimePage(descriptor, 'LIST');
+  const metadata = parseMetadata<RuntimeListDesign>(listPage?.metadataJson);
+  return {
+    defaultSort: metadata?.defaultSort,
+    filters: Array.isArray(metadata?.filters) ? metadata.filters.filter((item) => item?.fieldKey) : [],
+    pageSize: typeof metadata?.pageSize === 'number' ? metadata.pageSize : 20,
+    rowActions: Array.isArray(metadata?.rowActions) ? metadata.rowActions : ['OPEN_DETAIL'],
+  };
 }
 
 export function getRuntimeDetailSections(

@@ -12,4 +12,5 @@ public class UpdateApplicationRequest {
     private String viewPermissionCode;
     private List<ApplicationPageRequest> pages;
     private List<ApplicationActionRequest> actions;
+    private List<FormRelationRequest> relations;
 }

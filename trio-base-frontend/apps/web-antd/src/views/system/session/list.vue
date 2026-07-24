@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { SystemGovernanceApi } from '#/api';
 import type { TableProps } from 'ant-design-vue';
+
+import type { SystemGovernanceApi } from '#/api';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -11,6 +12,7 @@ import { IconifyIcon } from '@vben/icons';
 import {
   Button,
   Input,
+  message,
   Pagination,
   Popconfirm,
   Select,
@@ -18,7 +20,6 @@ import {
   Tabs,
   Tag,
   Tooltip,
-  message,
 } from 'ant-design-vue';
 
 import { getLoginLogPage, getSessionPage, revokeSession } from '#/api';
@@ -48,6 +49,11 @@ const loginLogs = ref<SystemGovernanceApi.LoginLog[]>([]);
 const page = ref(1);
 const size = ref(20);
 const total = ref(0);
+const tableBodyScrollY = 'max(240px, calc(100vh - 318px))';
+
+function paginationTotal(totalCount: number, range: [number, number]) {
+  return `共 ${totalCount} 条记录，本页 ${range[0]}-${range[1]} 条`;
+}
 
 const query = reactive({
   loginResult: undefined as string | undefined,
@@ -62,7 +68,7 @@ const sessionColumns = computed<TableProps['columns']>(() => [
   { dataIndex: 'issuedAt', key: 'issuedAt', title: '签发时间', width: 190 },
   { dataIndex: 'expiresAt', key: 'expiresAt', title: '过期时间', width: 190 },
   { dataIndex: 'lastActiveAt', key: 'lastActiveAt', title: '最后活跃', width: 190 },
-  { dataIndex: 'userAgent', key: 'userAgent', title: 'User-Agent', width: 360 },
+  { dataIndex: 'userAgent', ellipsis: true, key: 'userAgent', title: 'User-Agent', width: 360 },
   { fixed: 'right', key: 'action', title: '操作', width: 110 },
 ]);
 
@@ -70,10 +76,10 @@ const loginColumns = computed<TableProps['columns']>(() => [
   { dataIndex: 'loginAt', fixed: 'left', key: 'loginAt', title: '登录时间', width: 190 },
   { dataIndex: 'username', key: 'username', title: '用户', width: 140 },
   { dataIndex: 'loginResult', key: 'loginResult', title: '结果', width: 110 },
-  { dataIndex: 'failureReason', key: 'failureReason', title: '失败原因', width: 180 },
+  { dataIndex: 'failureReason', ellipsis: true, key: 'failureReason', title: '失败原因', width: 180 },
   { dataIndex: 'clientIp', key: 'clientIp', title: 'IP', width: 140 },
-  { dataIndex: 'traceId', key: 'traceId', title: 'TraceId', width: 220 },
-  { dataIndex: 'userAgent', key: 'userAgent', title: 'User-Agent', width: 360 },
+  { dataIndex: 'traceId', ellipsis: true, key: 'traceId', title: 'TraceId', width: 220 },
+  { dataIndex: 'userAgent', ellipsis: true, key: 'userAgent', title: 'User-Agent', width: 360 },
 ]);
 
 async function loadData() {
@@ -190,7 +196,7 @@ onMounted(loadData);
               :data-source="sessions"
               :loading="loading"
               :pagination="false"
-              :scroll="{ x: 1480 }"
+              :scroll="{ x: 1480, y: tableBodyScrollY }"
               size="small"
               :sticky="{ offsetScroll: 0 }"
             >
@@ -211,6 +217,20 @@ onMounted(loadData);
                 </template>
               </template>
             </Table>
+            <template #footer>
+              <div class="pager">
+                <Pagination
+                  v-model:current="page"
+                  v-model:page-size="size"
+                  size="small"
+                  show-quick-jumper
+                  show-size-changer
+                  :show-total="paginationTotal"
+                  :total="total"
+                  @change="loadData"
+                />
+              </div>
+            </template>
           </CompactTableFrame>
         </TabPane>
         <TabPane key="loginLogs" tab="登录日志">
@@ -221,7 +241,7 @@ onMounted(loadData);
               :data-source="loginLogs"
               :loading="loading"
               :pagination="false"
-              :scroll="{ x: 1420 }"
+              :scroll="{ x: 1420, y: tableBodyScrollY }"
               size="small"
               :sticky="{ offsetScroll: 0 }"
             >
@@ -233,20 +253,23 @@ onMounted(loadData);
                 </template>
               </template>
             </Table>
+            <template #footer>
+              <div class="pager">
+                <Pagination
+                  v-model:current="page"
+                  v-model:page-size="size"
+                  size="small"
+                  show-quick-jumper
+                  show-size-changer
+                  :show-total="paginationTotal"
+                  :total="total"
+                  @change="loadData"
+                />
+              </div>
+            </template>
           </CompactTableFrame>
         </TabPane>
       </Tabs>
-
-      <div class="pager">
-        <Pagination
-          v-model:current="page"
-          v-model:page-size="size"
-          size="small"
-          show-size-changer
-          :total="total"
-          @change="loadData"
-        />
-      </div>
     </BusinessPageScaffold>
   </Page>
 </template>
@@ -275,6 +298,25 @@ onMounted(loadData);
 
 .pager {
   display: flex;
+  width: 100%;
   justify-content: flex-end;
+}
+
+.session-page :deep(.ant-tabs) {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.session-page :deep(.ant-tabs-content-holder),
+.session-page :deep(.ant-tabs-content),
+.session-page :deep(.ant-tabs-tabpane-active) {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
 }
 </style>

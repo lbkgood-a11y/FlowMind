@@ -21,6 +21,8 @@ import java.util.Set;
 public class ApplicationMetadataValidator {
 
     private static final Set<String> SUPPORTED_PAGE_TYPES = Set.of("LIST", "DETAIL", "CREATE");
+    private static final Set<String> LIST_FORMATS = Set.of("", "TEXT", "DATE", "DATETIME", "MONEY", "STATUS", "BOOLEAN");
+    private static final Set<String> FILTER_OPERATORS = Set.of("EQ", "CONTAINS", "GTE", "LTE");
     private static final Set<String> FORBIDDEN_KEYS = Set.of(
             "script", "scripts", "javascript", "eval", "function", "handler", "onClick",
             "sql", "querySql", "whereSql", "url", "endpoint", "webhook", "callbackUrl",
@@ -76,6 +78,39 @@ public class ApplicationMetadataValidator {
                     throw new BizException(40050, "APPLICATION_LIST_COLUMNS_REQUIRED");
                 }
                 validateFieldArray(columns, "APPLICATION_LIST_COLUMN_INVALID");
+                for (JsonNode column : columns) {
+                    String format = normalized(column.path("format").asText());
+                    if (!LIST_FORMATS.contains(format)) {
+                        throw new BizException(40050, "APPLICATION_LIST_FORMAT_INVALID");
+                    }
+                    int width = column.path("width").asInt(140);
+                    if (width < 60 || width > 800) {
+                        throw new BizException(40050, "APPLICATION_LIST_WIDTH_INVALID");
+                    }
+                }
+                JsonNode filters = metadata.path("filters");
+                if (!filters.isMissingNode() && !filters.isArray()) {
+                    throw new BizException(40050, "APPLICATION_LIST_FILTER_INVALID");
+                }
+                if (filters.isArray()) {
+                    validateFieldArray(filters, "APPLICATION_LIST_FILTER_INVALID");
+                    for (JsonNode filter : filters) {
+                        if (!FILTER_OPERATORS.contains(normalized(filter.path("operator").asText("EQ")))) {
+                            throw new BizException(40050, "APPLICATION_LIST_FILTER_OPERATOR_INVALID");
+                        }
+                    }
+                }
+                int pageSize = metadata.path("pageSize").asInt(20);
+                if (pageSize < 1 || pageSize > 200) {
+                    throw new BizException(40050, "APPLICATION_LIST_PAGE_SIZE_INVALID");
+                }
+                JsonNode defaultSort = metadata.path("defaultSort");
+                if (!defaultSort.isMissingNode() && !defaultSort.isNull()) {
+                    if (!defaultSort.isObject() || !StringUtils.hasText(defaultSort.path("fieldKey").asText())
+                            || !Set.of("ASC", "DESC").contains(normalized(defaultSort.path("direction").asText()))) {
+                        throw new BizException(40050, "APPLICATION_LIST_SORT_INVALID");
+                    }
+                }
             }
             case "DETAIL", "CREATE" -> {
                 JsonNode sections = metadata.path("sections");

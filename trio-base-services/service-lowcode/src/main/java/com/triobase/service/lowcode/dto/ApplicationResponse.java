@@ -28,4 +28,5 @@ public class ApplicationResponse {
     private LocalDateTime createdAt;
     private List<ApplicationPageResponse> pages;
     private List<ApplicationActionResponse> actions;
+    private List<FormRelationResponse> relations;
 }
