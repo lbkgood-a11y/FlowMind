@@ -1,23 +1,44 @@
 [tool.poetry]
 name = "ai-agent-orchestrator"
 version = "0.1.0"
-description = "多智能体编排微服务 — LangGraph + Temporal Python SDK（铁律 6：跨语言契约标准化）"
+description = "TrioBase 有状态 Agent 编排服务 — LangGraph + Global Action"
 authors = ["TrioBase Team"]
+packages = [{ include = "ai_agent_orchestrator", from = "src" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-fastapi = "^0.115.0"
-uvicorn = {extras = ["standard"], version = "^0.34.0"}
-langgraph = "^0.3.0"
-langchain = "^0.3.0"
-temporalio = "^1.9.0"
-pydantic = "^2.10.0"
-protobuf = "^5.29.0"
+fastapi = "^0.116.0"
+uvicorn = { extras = ["standard"], version = "^0.35.0" }
+langgraph = "^1.0.0"
+langgraph-checkpoint-postgres = "^3.0.0"
+pydantic = "^2.11.0"
+pydantic-settings = "^2.10.0"
+httpx = "^0.28.0"
+psycopg = { extras = ["binary", "pool"], version = "^3.2.0" }
+opentelemetry-api = "^1.36.0"
+opentelemetry-sdk = "^1.36.0"
+opentelemetry-exporter-otlp = "^1.36.0"
+prometheus-client = "^0.22.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
 pytest-asyncio = "^0.25.0"
-ruff = "^0.9.0"
+pytest-cov = "^6.2.0"
+respx = "^0.22.0"
+ruff = "^0.12.0"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
+ignore = ["S101"]
 
 [build-system]
 requires = ["poetry-core"]

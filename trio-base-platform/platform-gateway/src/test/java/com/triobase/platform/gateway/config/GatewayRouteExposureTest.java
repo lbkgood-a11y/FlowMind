@@ -18,6 +18,7 @@ class GatewayRouteExposureTest {
         assertTrue(configuration.contains("/api/v1/process-packages"));
         assertTrue(configuration.contains("/api/v1/tasks/**"));
         assertTrue(configuration.contains("/api/v1/authz/**"));
+        assertTrue(configuration.contains("/api/v1/agent/**"));
         assertFalse(configuration.contains("/api/v1/permissions"));
         assertFalse(configuration.contains("/internal/v1"));
     }

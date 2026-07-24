@@ -18,6 +18,7 @@ import { preferences, usePreferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
 import { openWindow } from '@vben/utils';
 
+import AiAssistantPanel from '#/components/agent/AiAssistantPanel.vue';
 import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
 import LoginForm from '#/views/_core/authentication/login.vue';
@@ -242,6 +243,7 @@ watch(
       />
     </template>
     <template #extra>
+      <AiAssistantPanel />
       <AuthenticationLoginExpiredModal
         v-model:open="accessStore.loginExpired"
         :avatar

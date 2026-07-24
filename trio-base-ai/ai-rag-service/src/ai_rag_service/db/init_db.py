@@ -24,8 +24,14 @@ def init_rag_schema() -> None:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS rag_documents (
                 id          VARCHAR(32) PRIMARY KEY,
+                tenant_id   VARCHAR(64) NOT NULL DEFAULT 'default',
+                knowledge_space VARCHAR(128) NOT NULL DEFAULT 'enterprise-policies',
+                access_scope VARCHAR(32) NOT NULL DEFAULT 'AUTHENTICATED',
+                owner_actor_id VARCHAR(128),
                 title       VARCHAR(512) NOT NULL,
                 source_path VARCHAR(1024),
+                source_uri  VARCHAR(2048),
+                version     VARCHAR(64) NOT NULL DEFAULT '1',
                 chunk_count INTEGER NOT NULL DEFAULT 0,
                 created_at  TIMESTAMP NOT NULL DEFAULT NOW()
             )
@@ -42,9 +48,20 @@ def init_rag_schema() -> None:
             )
         """)
 
+        cur.execute("ALTER TABLE rag_documents ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(64) NOT NULL DEFAULT 'default'")
+        cur.execute("ALTER TABLE rag_documents ADD COLUMN IF NOT EXISTS knowledge_space VARCHAR(128) NOT NULL DEFAULT 'enterprise-policies'")
+        cur.execute("ALTER TABLE rag_documents ADD COLUMN IF NOT EXISTS access_scope VARCHAR(32) NOT NULL DEFAULT 'AUTHENTICATED'")
+        cur.execute("ALTER TABLE rag_documents ADD COLUMN IF NOT EXISTS owner_actor_id VARCHAR(128)")
+        cur.execute("ALTER TABLE rag_documents ADD COLUMN IF NOT EXISTS source_uri VARCHAR(2048)")
+        cur.execute("ALTER TABLE rag_documents ADD COLUMN IF NOT EXISTS version VARCHAR(64) NOT NULL DEFAULT '1'")
+
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_rag_chunks_doc
                 ON rag_document_chunks(document_id)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_rag_documents_namespace
+                ON rag_documents(tenant_id, knowledge_space, created_at DESC)
         """)
 
         conn.commit()

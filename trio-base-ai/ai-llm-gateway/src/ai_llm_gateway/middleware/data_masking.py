@@ -16,10 +16,9 @@ def scan_and_redact(content: str) -> Tuple[str, List[str]]:
     redactions: List[str] = []
     result = content
 
-    if PHONE_PATTERN.search(result):
-        redactions.append("phone_number")
-        result = PHONE_PATTERN.sub("[REDACTED_PHONE]", result)
-
+    # Replace the longest numeric identifiers first. Otherwise the 11-digit
+    # phone expression can consume a substring of an 18-digit ID card and
+    # prevent the stronger identifier rule from seeing it.
     if ID_CARD_PATTERN.search(result):
         redactions.append("id_card")
         result = ID_CARD_PATTERN.sub("[REDACTED_ID_CARD]", result)
@@ -27,6 +26,10 @@ def scan_and_redact(content: str) -> Tuple[str, List[str]]:
     if BANK_CARD_PATTERN.search(result):
         redactions.append("bank_card")
         result = BANK_CARD_PATTERN.sub("[REDACTED_BANK_CARD]", result)
+
+    if PHONE_PATTERN.search(result):
+        redactions.append("phone_number")
+        result = PHONE_PATTERN.sub("[REDACTED_PHONE]", result)
 
     if FINANCE_KEY_PATTERN.search(result):
         redactions.append("financial_key")

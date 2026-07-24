@@ -15,6 +15,7 @@ $services = @(
     @{Name="service-tenant";           Port=8083; Jar="$rootDir\trio-base-services\service-tenant\target\service-tenant-0.1.0-SNAPSHOT.jar"},
     @{Name="service-lowcode";          Port=8085; Jar="$rootDir\trio-base-services\service-lowcode\target\service-lowcode-0.1.0-SNAPSHOT.jar"},
     @{Name="service-workflow-engine";  Port=8086; Jar="$rootDir\trio-base-services\service-workflow-engine\target\service-workflow-engine-0.1.0-SNAPSHOT.jar"},
+    @{Name="service-action";           Port=8089; Jar="$rootDir\trio-base-services\service-action\target\service-action-0.1.0-SNAPSHOT.jar"},
     @{Name="platform-gateway";         Port=8080; Jar="$rootDir\trio-base-platform\platform-gateway\target\platform-gateway-0.1.0-SNAPSHOT.jar"}
 )
 
@@ -23,7 +24,7 @@ $firstJar = "$rootDir\trio-base-services\service-auth\target\service-auth-0.1.0-
 if ($Rebuild -or -not (Test-Path $firstJar)) {
     Write-Host "[BUILD] Maven 并行编译 (-T 1C)..." -ForegroundColor Green
     $serviceList = ($services | ForEach-Object { $_.Name -replace "platform-gateway","platform-gateway" }) -join ","
-    $serviceList = "trio-base-services/service-auth,trio-base-services/service-org,trio-base-services/service-tenant,trio-base-services/service-lowcode,trio-base-services/service-workflow-engine,trio-base-platform/platform-gateway"
+    $serviceList = "trio-base-services/service-auth,trio-base-services/service-org,trio-base-services/service-tenant,trio-base-services/service-lowcode,trio-base-services/service-workflow-engine,trio-base-services/service-action,trio-base-platform/platform-gateway"
     mvn package -DskipTests -T 1C -q -pl $serviceList -am
     if ($LASTEXITCODE -ne 0) { throw "Maven 编译失败" }
     Write-Host "[BUILD] 编译完成" -ForegroundColor Green
@@ -42,10 +43,10 @@ foreach ($svc in $services) {
 Start-Sleep -Seconds 1
 
 # ── Step 3: 并行启动 JAR ────────────────────────────
-Write-Host "[START] 并行启动 6 个服务..." -ForegroundColor Green
+Write-Host "[START] 并行启动 7 个服务..." -ForegroundColor Green
 foreach ($svc in $services) {
     $logFile = "$logDir\$($svc.Name).log"
-    Start-Process -NoNewWindow -FilePath "java" -ArgumentList "-jar", $svc.Jar -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err"
+    Start-Process -WindowStyle Hidden -FilePath "java" -ArgumentList "-jar", $svc.Jar -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err"
     Write-Host "  $($svc.Name) (:$($svc.Port))"
 }
 

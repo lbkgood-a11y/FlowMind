@@ -1,0 +1,61 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Agent Run 成功率",
+      "type": "timeseries",
+      "targets": [{"expr": "sum(rate(triobase_agent_runs_total{status=\"COMPLETED\"}[5m])) / clamp_min(sum(rate(triobase_agent_runs_total[5m])), 1)", "legendFormat": "success"}]
+    },
+    {
+      "id": 2,
+      "title": "Run P95 耗时",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, graph_id) (rate(triobase_agent_run_duration_seconds_bucket[5m])))", "legendFormat": "{{graph_id}}"}]
+    },
+    {
+      "id": 3,
+      "title": "LLM 首 Token P95",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, model) (rate(triobase_llm_first_token_seconds_bucket[5m])))", "legendFormat": "{{model}}"}]
+    },
+    {
+      "id": 4,
+      "title": "Token 与估算成本",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "sum by (graph_id, direction) (rate(triobase_agent_model_tokens_total[5m]))", "legendFormat": "tokens {{graph_id}} {{direction}}"},
+        {"expr": "sum by (graph_id) (rate(triobase_agent_model_estimated_cost_usd_total[5m]))", "legendFormat": "cost {{graph_id}}"}
+      ]
+    },
+    {
+      "id": 5,
+      "title": "缓存、重试与人工中断",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "sum by (outcome) (rate(triobase_llm_cache_requests_total[5m]))", "legendFormat": "cache {{outcome}}"},
+        {"expr": "sum by (tool) (rate(triobase_agent_tool_retries_total[5m]))", "legendFormat": "retry {{tool}}"},
+        {"expr": "sum by (kind) (rate(triobase_agent_interrupts_total[5m]))", "legendFormat": "interrupt {{kind}}"}
+      ]
+    },
+    {
+      "id": 6,
+      "title": "候选校验与 Action 结果",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "sum by (action_type, status) (rate(triobase_agent_candidate_validations_total[5m]))", "legendFormat": "candidate {{action_type}} {{status}}"},
+        {"expr": "sum by (action_type, status) (rate(triobase_agent_action_outcomes_total[5m]))", "legendFormat": "action {{action_type}} {{status}}"}
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["triobase", "ai-agent"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "TrioBase AI Agent Runtime",
+  "uid": "triobase-ai-agent-runtime",
+  "version": 1
+}

@@ -2,7 +2,11 @@ package com.triobase.service.lowcode.service;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.triobase.common.action.enums.ActionActorType;
+import com.triobase.common.action.enums.ActionSource;
 import com.triobase.common.action.enums.ActionStatus;
+import com.triobase.common.action.model.ActionActor;
+import com.triobase.common.action.model.ActionContext;
 import com.triobase.common.action.model.GlobalActionRequest;
 import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.BizException;
@@ -269,11 +273,19 @@ class ApplicationRuntimeServiceTest {
         RuntimeRetryWorkflowRequest retry = new RuntimeRetryWorkflowRequest();
         retry.setIdempotencyKey("retry-idem-001");
 
-        var response = service.executeLocalWorkflowRetry("expense_report", null, "INS001", retry);
+        var response = service.executeLocalWorkflowRetry(
+                "expense_report", null, "INS001", retry, actionRequest("retry-idem-001"));
 
         assertEquals(ActionStatus.SUCCEEDED, response.getStatus());
         assertEquals("WORKFLOW_STARTED", response.getData().get("runtimeStatus"));
         assertEquals("retry-idem-001", commandRef.get().idempotencyKey());
+        assertEquals("act-test-001", commandRef.get().actionId());
+        assertEquals("lowcode.form.submit", commandRef.get().actionType());
+        assertEquals("LUI", commandRef.get().actionSource());
+        assertEquals("USER", commandRef.get().actionActorType());
+        assertEquals("U001", commandRef.get().actionActorId());
+        assertEquals("trace-test-001", commandRef.get().actionTraceId());
+        assertEquals("run-test-001", commandRef.get().actionCorrelationId());
         assertEquals("PROC002", ((RuntimeWorkflowResponse) response.getData().get("workflow")).getProcessInstanceId());
     }
 
@@ -296,6 +308,8 @@ class ApplicationRuntimeServiceTest {
         service.executeLocalAction("expense_report", null, "submitAndLaunch", actionRequest("global-idem-001"));
 
         assertEquals("global-idem-001", commandRef.get().idempotencyKey());
+        assertEquals("act-test-001", commandRef.get().actionId());
+        assertEquals("run-test-001", commandRef.get().actionCorrelationId());
     }
 
     @Test
@@ -479,7 +493,18 @@ class ApplicationRuntimeServiceTest {
 
     private GlobalActionRequest actionRequest(String idempotencyKey) {
         GlobalActionRequest request = new GlobalActionRequest();
+        request.setActionId("act-test-001");
         request.setActionType("lowcode.form.submit");
+        request.setSource(ActionSource.LUI);
+        ActionActor actor = new ActionActor();
+        actor.setType(ActionActorType.USER);
+        actor.setId("U001");
+        actor.setDisplayName("Alice");
+        request.setActor(actor);
+        ActionContext context = new ActionContext();
+        context.setTraceId("trace-test-001");
+        context.setCorrelationId("run-test-001");
+        request.setContext(context);
         request.setIdempotencyKey(idempotencyKey);
         request.setPayload(Map.of("data", Map.of("amount", 12)));
         return request;

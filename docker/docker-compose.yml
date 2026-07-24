@@ -1,3 +1,5 @@
+name: triobase
+
 services:
   # ========== 基础设施 ==========
   nacos:
@@ -189,10 +191,48 @@ services:
     environment:
       - DATABASE_URL=postgresql://triobase:triobase123@postgres:5432/triobase
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      - RAG_ADMIN_TOKEN=${RAG_ADMIN_TOKEN:-triobase-local-rag-admin-token}
     ports:
       - "8003:8003"
     depends_on:
       - postgres
+
+  ai-agent-orchestrator:
+    build:
+      context: ../trio-base-ai/ai-agent-orchestrator
+      dockerfile: Dockerfile
+    container_name: triobase-ai-agent-orchestrator
+    environment:
+      - AGENT_ENVIRONMENT=development
+      - AGENT_ENABLED=${AGENT_ENABLED:-true}
+      - AGENT_CHECKPOINT_BACKEND=postgres
+      - AGENT_DATABASE_URL=postgresql://triobase:triobase123@postgres:5432/triobase
+      - AGENT_LLM_GATEWAY_URL=http://host.docker.internal:8080
+      - AGENT_RAG_SERVICE_URL=http://host.docker.internal:8080
+      - AGENT_PLATFORM_GATEWAY_URL=http://host.docker.internal:8080/api/v1
+      - AGENT_DEFAULT_MODEL=${AGENT_DEFAULT_MODEL:-deepseek/deepseek-chat}
+      - AGENT_LLM_MODE=${AGENT_LLM_MODE:-auto}
+      - AGENT_OTLP_ENDPOINT=http://jaeger:4317
+      - AGENT_FEATURE_LEAVE_ENABLED=true
+      - AGENT_FEATURE_EXPENSE_ENABLED=false
+      - AGENT_FEATURE_KNOWLEDGE_ENABLED=false
+      - AGENT_MAX_CONCURRENT_INVOCATIONS=${AGENT_MAX_CONCURRENT_INVOCATIONS:-16}
+      - AGENT_MAX_QUEUED_INVOCATIONS=${AGENT_MAX_QUEUED_INVOCATIONS:-64}
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
 
 volumes:
   nacos-data:

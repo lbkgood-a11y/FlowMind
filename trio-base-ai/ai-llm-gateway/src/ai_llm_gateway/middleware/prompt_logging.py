@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import json
-import time
 import logging
-from typing import Optional
+import time
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
+from .data_masking import scan_and_redact
 
 logger = logging.getLogger("prompt_logging")
 
@@ -26,12 +28,10 @@ class PromptLoggingMiddleware(BaseHTTPMiddleware):
         except json.JSONDecodeError:
             body_json = {}
 
-        model = body_json.get("model", "unknown")
-        messages = body_json.get("messages", [])
-        prompt_preview = ""
-        if messages:
-            last_msg = str(messages[-1].get("content", "")) if isinstance(messages[-1], dict) else str(messages[-1])
-            prompt_preview = last_msg[:500]
+        model = str(body_json.get("model", "unknown"))[:128]
+        serialized = json.dumps(body_json.get("messages", []), ensure_ascii=False)
+        redacted, findings = scan_and_redact(serialized)
+        prompt_hash = hashlib.sha256(redacted.encode("utf-8")).hexdigest()
 
         response = await call_next(request)
         elapsed_ms = int((time.time() - start) * 1000)
@@ -39,8 +39,9 @@ class PromptLoggingMiddleware(BaseHTTPMiddleware):
         log_entry = {
             "trace_id": trace_id,
             "model": model,
-            "prompt_preview": prompt_preview,
-            "response_preview": "",
+            "prompt_hash": prompt_hash,
+            "prompt_chars": len(redacted),
+            "redaction_types": sorted(set(findings)),
             "tokens_used": 0,
             "cost_estimate": 0.0,
             "cache_hit": "X-Cache-Hit" in response.headers,

@@ -12,6 +12,9 @@ dist/
 venv/
 *.egg
 poetry.lock
+!trio-base-ai/ai-agent-orchestrator/poetry.lock
+!trio-base-ai/ai-llm-gateway/poetry.lock
+!trio-base-ai/ai-rag-service/poetry.lock
 
 # Node / Next.js
 node_modules/

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { LowcodeApi } from '#/api/lowcode';
 import type { TableProps } from 'ant-design-vue';
+
+import type { LowcodeApi } from '#/api/lowcode';
 
 import { computed, h, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -32,6 +33,7 @@ import {
   isActionDispatchError,
   useActionDispatch,
 } from '#/composables/useActionDispatch';
+import { useAgentRefreshScopes } from '#/composables/useAgentRefreshScopes';
 import {
   BusinessActionButton,
   CompactTableFrame,
@@ -52,12 +54,12 @@ import {
   getPrimaryCreateAction,
   getRetryWorkflowAction,
   getRuntimeDetailSections,
-  getRuntimeListDesign,
   getRuntimeListColumns,
+  getRuntimeListDesign,
   parseInstanceData,
-  toRuntimeTableRecord,
   type RuntimeFieldDescriptor,
   type RuntimeTableRecord,
+  toRuntimeTableRecord,
   workflowStatusTag,
 } from './runtime-metadata';
 
@@ -189,6 +191,13 @@ async function loadRecords(page = pagination.current) {
     loading.value = false;
   }
 }
+
+useAgentRefreshScopes({
+  document: () => loadRecords(1),
+  list: () => loadRecords(1),
+  relatedTables: () => loadRecords(1),
+  workflow: () => loadRecords(1),
+});
 
 function openCreate() {
   const action = createAction.value;

@@ -35,7 +35,10 @@ public class DataMaskingFilter implements GlobalFilter, Ordered {
 
     private static final Logger log = LoggerFactory.getLogger(DataMaskingFilter.class);
 
-    private static final Set<String> LLM_PATHS = Set.of("/api/v1/ai/", "/api/v1/llm/");
+    private static final Set<String> LLM_PATHS = Set.of(
+            "/api/v1/ai/",
+            "/api/v1/llm/",
+            "/api/v1/agent/");
     private static final Set<HttpMethod> METHODS_WITH_BODY = Set.of(HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH);
     private static final Pattern PHONE_PATTERN = Pattern.compile("1[3-9]\\d{9}");
     private static final Pattern ID_CARD_PATTERN = Pattern.compile("\\d{17}[\\dXx]");

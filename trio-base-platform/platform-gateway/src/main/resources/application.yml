@@ -59,6 +59,13 @@ spring:
           metadata:
             connect-timeout: 30000
             response-timeout: 120s
+        - id: ai-agent-orchestrator
+          uri: ${ai.services.agent-orchestrator.url}
+          predicates:
+            - Path=/api/v1/agent,/api/v1/agent/**
+          metadata:
+            connect-timeout: 30000
+            response-timeout: 300s
         - id: service-auth-users
           uri: ${AUTH_SERVICE_URL:http://localhost:8081}
           predicates:
@@ -109,6 +116,8 @@ ai:
     # Phase 3: 先默认直连独立 RAG 服务，后续接入 Nacos 后可改成 lb://ai-rag-service
     rag-service:
       url: ${AI_RAG_SERVICE_URL:http://localhost:8003}
+    agent-orchestrator:
+      url: ${AI_AGENT_ORCHESTRATOR_URL:http://localhost:8004}
 
 logging:
   level:

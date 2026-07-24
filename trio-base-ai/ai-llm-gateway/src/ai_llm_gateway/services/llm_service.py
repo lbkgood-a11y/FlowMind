@@ -10,9 +10,6 @@ from ..models.chat import ChatRequest, ChatResponse
 
 logger = logging.getLogger(__name__)
 
-litellm.drop_params = True
-
-
 async def chat_stream(request: ChatRequest) -> AsyncIterator[str]:
     provider, _, model_name = request.model.partition("/")
     provider_cfg = config.llm_providers.get(provider)
@@ -23,10 +20,6 @@ async def chat_stream(request: ChatRequest) -> AsyncIterator[str]:
         yield "data: [DONE]\n\n"
         return
 
-    litellm.api_key = provider_cfg.api_key
-    if provider_cfg.base_url:
-        litellm.api_base = provider_cfg.base_url
-
     litellm_model = f"{provider}/{model_name}"
 
     try:
@@ -36,6 +29,9 @@ async def chat_stream(request: ChatRequest) -> AsyncIterator[str]:
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             stream=True,
+            api_key=provider_cfg.api_key,
+            api_base=provider_cfg.base_url or None,
+            drop_params=True,
         )
 
         async for chunk in response:
@@ -45,9 +41,9 @@ async def chat_stream(request: ChatRequest) -> AsyncIterator[str]:
 
         yield "data: [DONE]\n\n"
 
-    except Exception as e:
-        logger.error("LLM call failed: %s", str(e))
-        yield f'data: {{"error": "LLM_CALL_FAILED", "detail": "{str(e)}"}}\n\n'
+    except Exception as error:
+        logger.error("LLM call failed: %s", type(error).__name__)
+        yield 'data: {"error": "LLM_CALL_FAILED"}\n\n'
         yield "data: [DONE]\n\n"
 
 
@@ -59,10 +55,6 @@ async def chat_sync(request: ChatRequest) -> ChatResponse:
         available = list(config.llm_providers.keys())
         raise ValueError(f"Unsupported model: {request.model}. Available: {available}")
 
-    litellm.api_key = provider_cfg.api_key
-    if provider_cfg.base_url:
-        litellm.api_base = provider_cfg.base_url
-
     litellm_model = f"{provider}/{model_name}"
 
     response = await litellm.acompletion(
@@ -71,6 +63,9 @@ async def chat_sync(request: ChatRequest) -> ChatResponse:
         temperature=request.temperature,
         max_tokens=request.max_tokens,
         stream=False,
+        api_key=provider_cfg.api_key,
+        api_base=provider_cfg.base_url or None,
+        drop_params=True,
     )
 
     content = response.choices[0].message.content if response.choices else ""

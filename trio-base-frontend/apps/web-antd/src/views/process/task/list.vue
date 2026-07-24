@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { TableProps } from 'ant-design-vue';
+
 import type { ActionApi } from '#/api/action-client';
+import type { ProcessApi } from '#/api/process';
 
 import { computed, h, onMounted, reactive, ref } from 'vue';
 
@@ -18,7 +20,7 @@ import {
 } from 'ant-design-vue';
 
 import { getMyCompletedTasks, getMyPendingTasks } from '#/api/process';
-import type { ProcessApi } from '#/api/process';
+import { useAgentRefreshScopes } from '#/composables/useAgentRefreshScopes';
 import {
   BusinessActionButton,
   BusinessPageScaffold,
@@ -48,7 +50,7 @@ const canQueryCompleted = computed(() => hasAccessByCodes([PERMISSIONS.completed
 const canReject = computed(() => hasAccessByCodes([PERMISSIONS.reject]));
 const canTransfer = computed(() => hasAccessByCodes([PERMISSIONS.transfer]));
 
-const activeTab = ref<'pending' | 'completed'>('pending');
+const activeTab = ref<'completed' | 'pending'>('pending');
 const loading = ref(false);
 const actionOpen = ref(false);
 const actionTarget = ref<ProcessApi.TaskItem>();
@@ -120,7 +122,18 @@ async function loadCompleted(page = completedPagination.current) {
   }
 }
 
-function switchTab(tab: 'pending' | 'completed') {
+useAgentRefreshScopes({
+  actions: () => loadPending(1),
+  document: () => loadPending(1),
+  list: () => loadPending(1),
+  timeline: () => loadCompleted(1),
+  workflow: async () => {
+    await loadPending(1);
+    if (canQueryCompleted.value) await loadCompleted(1);
+  },
+});
+
+function switchTab(tab: 'completed' | 'pending') {
   activeTab.value = tab;
   if (tab === 'pending') loadPending(1);
   else loadCompleted(1);

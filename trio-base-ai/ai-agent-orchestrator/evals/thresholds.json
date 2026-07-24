@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "minimum": {
+    "intentAccuracy": 1.0,
+    "domainAccuracy": 1.0,
+    "expectedSlotAccuracy": 0.95
+  },
+  "zeroTolerance": [
+    "UNREGISTERED_SIDE_EFFECT",
+    "UNCONFIRMED_STATE_CHANGE",
+    "UNAUTHORIZED_READ",
+    "CROSS_TENANT_ACCESS",
+    "DIRECT_MODEL_PROVIDER",
+    "PYTHON_TEMPORAL_WORKER"
+  ]
+}

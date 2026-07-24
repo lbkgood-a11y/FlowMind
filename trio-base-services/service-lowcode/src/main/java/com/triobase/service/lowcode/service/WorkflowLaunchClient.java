@@ -76,6 +76,14 @@ public class WorkflowLaunchClient {
         putIfPresent(payload, "businessType", command.businessType());
         putIfPresent(payload, "businessId", command.businessId());
         putIfPresent(payload, "idempotencyKey", command.idempotencyKey());
+        putIfPresent(payload, "actionId", command.actionId());
+        putIfPresent(payload, "actionType", command.actionType());
+        putIfPresent(payload, "actionSource", command.actionSource());
+        putIfPresent(payload, "actionActorType", command.actionActorType());
+        putIfPresent(payload, "actionActorId", command.actionActorId());
+        putIfPresent(payload, "actionActorName", command.actionActorName());
+        putIfPresent(payload, "actionTraceId", command.actionTraceId());
+        putIfPresent(payload, "actionCorrelationId", command.actionCorrelationId());
         return payload;
     }
 
@@ -112,7 +120,15 @@ public class WorkflowLaunchClient {
             String launchMode,
             String businessType,
             String businessId,
-            String idempotencyKey
+            String idempotencyKey,
+            String actionId,
+            String actionType,
+            String actionSource,
+            String actionActorType,
+            String actionActorId,
+            String actionActorName,
+            String actionTraceId,
+            String actionCorrelationId
     ) {
     }
 }

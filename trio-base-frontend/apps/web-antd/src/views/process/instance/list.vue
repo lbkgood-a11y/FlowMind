@@ -26,9 +26,9 @@ import {
   Spin,
   Table,
   Tag,
-  Tooltip,
   Timeline,
   TimelineItem,
+  Tooltip,
 } from 'ant-design-vue';
 
 import {
@@ -50,6 +50,7 @@ import {
   isActionDispatchError,
   useActionDispatch,
 } from '#/composables/useActionDispatch';
+import { useAgentRefreshScopes } from '#/composables/useAgentRefreshScopes';
 import {
   BusinessActionButton,
   BusinessPageScaffold,
@@ -251,6 +252,14 @@ async function loadInstances(page = pagination.current) {
     loading.value = false;
   }
 }
+
+useAgentRefreshScopes({
+  actions: () => loadInstances(1),
+  document: () => loadInstances(1),
+  list: () => loadInstances(1),
+  timeline: () => loadInstances(1),
+  workflow: () => loadInstances(1),
+});
 
 async function loadPackageOptions() {
   try {

@@ -15,4 +15,12 @@ public class StartProcessRequest {
     private String businessType;
     private String businessId;
     private String idempotencyKey;
+    private String actionId;
+    private String actionType;
+    private String actionSource;
+    private String actionActorType;
+    private String actionActorId;
+    private String actionActorName;
+    private String actionTraceId;
+    private String actionCorrelationId;
 }

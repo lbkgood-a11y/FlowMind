@@ -43,6 +43,27 @@ pipeline:
                   type: Run
                   spec:
                     command: cd trio-base-frontend && pnpm lint && pnpm typecheck && pnpm build
+              - step:
+                  name: AI Agent architecture safety and evaluation gates
+                  type: Run
+                  spec:
+                    command: cd trio-base-ai/ai-agent-orchestrator && pip install poetry==2.4.1 && poetry install --no-interaction && poetry run ruff check src tests && poetry run pytest --junitxml=agent-test-results.xml
+                    reports:
+                      - type: JUnit
+                        paths: ["trio-base-ai/ai-agent-orchestrator/agent-test-results.xml"]
+              - step:
+                  name: AI gateways redaction retrieval and isolation gates
+                  type: Run
+                  spec:
+                    command: for service in ai-llm-gateway ai-rag-service; do cd trio-base-ai/$service && poetry install --no-interaction && poetry run ruff check src tests && poetry run pytest --junitxml=test-results.xml && cd ../..; done
+                    reports:
+                      - type: JUnit
+                        paths: ["trio-base-ai/*/test-results.xml"]
+              - step:
+                  name: Agent LUI streaming and component registry gates
+                  type: Run
+                  spec:
+                    command: cd trio-base-frontend && pnpm vitest run apps/web-antd/src/api/agent.test.ts apps/web-antd/src/registry/agent-component-registry.test.ts apps/web-antd/src/store/agent.test.ts apps/web-antd/src/shared/action/useRefreshScopes.test.ts
         failure:
           - type: Pipeline
             action: Block

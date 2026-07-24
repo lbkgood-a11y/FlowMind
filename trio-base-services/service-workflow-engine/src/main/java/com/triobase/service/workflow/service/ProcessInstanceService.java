@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
+import com.triobase.common.core.trace.TraceUtil;
 import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.service.workflow.dto.ProcessHistoryResponse;
 import com.triobase.service.workflow.dto.ProcessPackageDefinition;
@@ -112,7 +113,7 @@ public class ProcessInstanceService {
         instance.setInitiatorId(userId);
         instance.setInitiatorName(userName);
         instance.setStartedAt(LocalDateTime.now());
-        applyActionMetadata(instance);
+        applyActionMetadata(instance, request);
         processInstanceMapper.insert(instance);
 
         // 5. 启动 Temporal Workflow
@@ -125,8 +126,20 @@ public class ProcessInstanceService {
                         .build());
 
         // Temporal 的 WorkflowClient.start 是异步调用，不会阻塞
-        WorkflowClient.start(workflow::startProcess,
-                packageDef, instanceId, userId, userName, formDataJson);
+        String previousTraceId = TraceUtil.getTraceId();
+        boolean applyRequestTrace = !StringUtils.hasText(previousTraceId)
+                && StringUtils.hasText(request.getActionTraceId());
+        if (applyRequestTrace) {
+            TraceUtil.setTraceId(request.getActionTraceId());
+        }
+        try {
+            WorkflowClient.start(workflow::startProcess,
+                    packageDef, instanceId, userId, userName, formDataJson);
+        } finally {
+            if (applyRequestTrace) {
+                TraceUtil.clear();
+            }
+        }
 
         // 6. 回填 Workflow ID
         instance.setWorkflowId(workflowId);
@@ -279,18 +292,26 @@ public class ProcessInstanceService {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
-    private void applyActionMetadata(ProcessInstance instance) {
+    private void applyActionMetadata(ProcessInstance instance, StartProcessRequest request) {
         WorkflowActionExecutionContext.Snapshot snapshot = WorkflowActionExecutionContext.current();
-        if (snapshot == null) {
+        if (snapshot != null) {
+            instance.setActionId(snapshot.actionId());
+            instance.setActionType(snapshot.actionType());
+            instance.setActionSource(snapshot.source());
+            instance.setActionActorType(snapshot.actorType());
+            instance.setActionActorId(snapshot.actorId());
+            instance.setActionActorName(snapshot.actorName());
+            instance.setActionTraceId(snapshot.traceId());
+            instance.setActionCorrelationId(snapshot.correlationId());
             return;
         }
-        instance.setActionId(snapshot.actionId());
-        instance.setActionType(snapshot.actionType());
-        instance.setActionSource(snapshot.source());
-        instance.setActionActorType(snapshot.actorType());
-        instance.setActionActorId(snapshot.actorId());
-        instance.setActionActorName(snapshot.actorName());
-        instance.setActionTraceId(snapshot.traceId());
-        instance.setActionCorrelationId(snapshot.correlationId());
+        instance.setActionId(normalizeBlank(request.getActionId()));
+        instance.setActionType(normalizeBlank(request.getActionType()));
+        instance.setActionSource(normalizeBlank(request.getActionSource()));
+        instance.setActionActorType(normalizeBlank(request.getActionActorType()));
+        instance.setActionActorId(normalizeBlank(request.getActionActorId()));
+        instance.setActionActorName(normalizeBlank(request.getActionActorName()));
+        instance.setActionTraceId(normalizeBlank(request.getActionTraceId()));
+        instance.setActionCorrelationId(normalizeBlank(request.getActionCorrelationId()));
     }
 }

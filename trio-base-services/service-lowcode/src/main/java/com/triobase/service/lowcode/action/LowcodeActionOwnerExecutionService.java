@@ -73,7 +73,8 @@ public class LowcodeActionOwnerExecutionService implements ActionOwnerExecutor {
                 string(ownerRequest, "appKey"),
                 integer(ownerRequest, "version"),
                 string(ownerRequest, "instanceId"),
-                retryRequest);
+                retryRequest,
+                globalActionRequest(ownerRequest));
         return toOwnerResponse(ownerRequest, result);
     }
 

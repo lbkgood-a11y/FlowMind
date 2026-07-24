@@ -4,19 +4,36 @@ from ..models.rag import AssembleRequest, AssembleResponse
 from .rag_search import search
 
 
-def assemble(request: AssembleRequest) -> AssembleResponse:
-    chunks = search(request.query, request.top_k)
+def assemble(
+    request: AssembleRequest,
+    *,
+    tenant_id: str,
+    actor_id: str,
+) -> AssembleResponse:
+    chunks = search(
+        request.query,
+        request.top_k,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        knowledge_space=request.knowledge_space,
+    )
 
     sources = [
-        {"title": c.document_title, "chunk_index": c.chunk_index, "similarity": c.similarity}
+        {
+            "id": c.id,
+            "document_id": c.document_id,
+            "title": c.document_title,
+            "uri": c.uri,
+            "knowledge_space": c.knowledge_space,
+            "version": c.version,
+            "chunk_index": c.chunk_index,
+            "similarity": c.similarity,
+        }
         for c in chunks
     ]
 
     if not chunks:
-        prompt = (
-            "未找到相关资料，请基于通用知识回答问题。\n"
-            f"问题: {request.query}"
-        )
+        prompt = "未找到有权限访问的相关资料。不得基于通用知识猜测企业答案。"
     else:
         context_parts = []
         for i, c in enumerate(chunks, 1):

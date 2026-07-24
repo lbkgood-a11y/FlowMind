@@ -18,6 +18,7 @@ class Config:
 
     cache_ttl: int = int(os.getenv("CACHE_TTL", "3600"))
     cache_similarity_threshold: float = float(os.getenv("CACHE_SIMILARITY_THRESHOLD", "0.85"))
+    cache_enabled: bool = os.getenv("LLM_CACHE_ENABLED", "false").lower() == "true"
 
     llm_providers: Dict[str, LLMProvider] = field(default_factory=dict)
 

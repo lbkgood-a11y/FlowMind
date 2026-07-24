@@ -215,14 +215,25 @@ public class ApplicationRuntimeService {
                                                         Integer version,
                                                         String instanceId,
                                                         RuntimeRetryWorkflowRequest request) {
+        return executeLocalWorkflowRetry(appKey, version, instanceId, request, null);
+    }
+
+    public GlobalActionResult executeLocalWorkflowRetry(String appKey,
+                                                        Integer version,
+                                                        String instanceId,
+                                                        RuntimeRetryWorkflowRequest request,
+                                                        GlobalActionRequest ownerActionRequest) {
         LcApplicationVersion applicationVersion = requireRuntimeVersion(appKey, version);
         FormInstanceResponse instance = getInstance(appKey, version, instanceId);
         if (!STATUS_PENDING_WORKFLOW.equals(instance.getWorkflowStatus())) {
             throw new BizException(40955, "APPLICATION_RUNTIME_WORKFLOW_NOT_PENDING");
         }
         LcApplicationAction action = resolveRetryAction(applicationVersion, request);
-        GlobalActionRequest actionRequest = new GlobalActionRequest();
-        actionRequest.setIdempotencyKey(request != null ? request.getIdempotencyKey() : null);
+        GlobalActionRequest actionRequest = ownerActionRequest != null
+                ? ownerActionRequest : new GlobalActionRequest();
+        if (request != null && StringUtils.hasText(request.getIdempotencyKey())) {
+            actionRequest.setIdempotencyKey(request.getIdempotencyKey());
+        }
         actionRequest.setPayload(Map.of("data", readData(instance.getDataJson())));
         return launchWorkflow(applicationVersion, action, actionRequest, instance, true);
     }
@@ -282,7 +293,16 @@ public class ApplicationRuntimeService {
                 launchMode,
                 businessType,
                 businessId,
-                idempotencyKey(version, action, request, instance));
+                idempotencyKey(version, action, request, instance),
+                request != null ? request.getActionId() : null,
+                request != null ? request.getActionType() : null,
+                request != null && request.getSource() != null ? request.getSource().name() : null,
+                request != null && request.getActor() != null && request.getActor().getType() != null
+                        ? request.getActor().getType().name() : null,
+                request != null && request.getActor() != null ? request.getActor().getId() : null,
+                request != null && request.getActor() != null ? request.getActor().getDisplayName() : null,
+                request != null && request.getContext() != null ? request.getContext().getTraceId() : null,
+                request != null && request.getContext() != null ? request.getContext().getCorrelationId() : null);
     }
 
     private GlobalActionResult savedResult(GlobalActionRequest request,
