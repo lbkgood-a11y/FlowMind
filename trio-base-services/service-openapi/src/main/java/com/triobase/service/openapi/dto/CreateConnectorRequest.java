@@ -1,8 +1,8 @@
 package com.triobase.service.openapi.dto;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.triobase.service.openapi.domain.enums.AuthenticationType;
-import com.triobase.service.openapi.domain.enums.ConnectorOperationClass;
+import com.triobase.common.openapi.enums.AuthenticationType;
+import com.triobase.common.openapi.enums.ConnectorOperationClass;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 

@@ -2,18 +2,19 @@ package com.triobase.service.lowcode.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.triobase.common.action.enums.ActionActorType;
 import com.triobase.common.action.enums.ActionSource;
 import com.triobase.common.action.model.ActionActor;
 import com.triobase.common.action.model.ActionContext;
-import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
+import com.triobase.common.action.model.GlobalActionRequest;
 import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.dto.authz.AuthorizationDecisionResponse;
-import com.triobase.service.lowcode.action.LowcodeActionExecutionContext;
+import com.triobase.common.action.runtime.ActionExecutionContext;
 import com.triobase.service.lowcode.dto.BindFormProcessRequest;
-import com.triobase.service.lowcode.dto.FormFieldValidationError;
+import com.triobase.common.dto.form.FormFieldValidationError;
 import com.triobase.service.lowcode.dto.FormInstanceResponse;
 import com.triobase.service.lowcode.dto.SubmitFormInstanceRequest;
 import com.triobase.service.lowcode.dto.UpdateFormInstanceRequest;
@@ -21,10 +22,13 @@ import com.triobase.service.lowcode.dto.UpdateWorkflowStatusRequest;
 import com.triobase.service.lowcode.entity.LcFormDefinition;
 import com.triobase.service.lowcode.entity.LcFormInstance;
 import com.triobase.service.lowcode.entity.LcFormInstanceWorkflowAudit;
-import com.triobase.service.lowcode.exception.FormDataValidationException;
+import com.triobase.common.dto.form.FormDataValidationException;
 import com.triobase.service.lowcode.mapper.FormInstanceMapper;
 import com.triobase.service.lowcode.mapper.FormInstanceWorkflowAuditMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -67,10 +71,17 @@ class FormInstanceServiceTest {
     @InjectMocks
     private FormInstanceService service;
 
+    @BeforeAll
+    static void initMybatisPlusTableInfo() {
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(new Configuration(), "");
+        assistant.setCurrentNamespace(FormInstanceMapper.class.getName());
+        TableInfoHelper.initTableInfo(assistant, LcFormInstance.class);
+    }
+
     @AfterEach
     void clearContext() {
         SecurityContextHolder.clear();
-        LowcodeActionExecutionContext.clear();
+        ActionExecutionContext.clear();
     }
 
     @Test
@@ -152,7 +163,7 @@ class FormInstanceServiceTest {
             instanceRef.set(invocation.getArgument(0));
             return 1;
         });
-        LowcodeActionExecutionContext.set(ownerDispatchRequest());
+        ActionExecutionContext.set(ownerDispatchRequest());
 
         var response = service.submit("expense", submitRequest(), "SUBMIT");
 
@@ -248,7 +259,7 @@ class FormInstanceServiceTest {
             auditRef.set(invocation.getArgument(0));
             return 1;
         });
-        LowcodeActionExecutionContext.set(ownerDispatchRequest());
+        ActionExecutionContext.set(ownerDispatchRequest());
 
         var response = service.bindProcess("expense", "INS001", bindRequest("PROC001", "RUNNING"));
 
@@ -461,8 +472,8 @@ class FormInstanceServiceTest {
                 "U001", "alice", "tenant-a", List.of(), List.of(), null, null, null));
     }
 
-    private ActionOwnerDispatchRequest ownerDispatchRequest() {
-        ActionOwnerDispatchRequest request = new ActionOwnerDispatchRequest();
+    private GlobalActionRequest ownerDispatchRequest() {
+        GlobalActionRequest request = new GlobalActionRequest();
         request.setActionId("act_lowcode_001");
         request.setActionType("lowcode.form.submit");
         request.setSource(ActionSource.GUI);

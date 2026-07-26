@@ -1,6 +1,8 @@
 package com.triobase.service.openapi.integration.credential;
 
-import com.triobase.service.openapi.domain.enums.AuthenticationType;
+import com.triobase.common.openapi.credential.CredentialMaterial;
+import com.triobase.common.openapi.credential.OutboundAuthenticationResolver;
+import com.triobase.common.openapi.enums.AuthenticationType;
 import org.junit.jupiter.api.Test;
 
 import java.security.KeyPairGenerator;

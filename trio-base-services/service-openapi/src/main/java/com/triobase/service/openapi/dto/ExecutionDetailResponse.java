@@ -1,6 +1,6 @@
 package com.triobase.service.openapi.dto;
 
-import com.triobase.service.openapi.domain.entity.ExecutionStepAttempt;
+import com.triobase.common.openapi.entity.ExecutionStepAttempt;
 
 import java.util.List;
 

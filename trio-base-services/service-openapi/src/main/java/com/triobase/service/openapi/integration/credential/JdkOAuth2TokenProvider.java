@@ -3,6 +3,8 @@ package com.triobase.service.openapi.integration.credential;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.openapi.credential.CredentialMaterial;
+import com.triobase.common.openapi.credential.OAuth2TokenProvider;
 import com.triobase.service.openapi.service.OutboundTargetPolicy;
 import org.springframework.stereotype.Component;
 

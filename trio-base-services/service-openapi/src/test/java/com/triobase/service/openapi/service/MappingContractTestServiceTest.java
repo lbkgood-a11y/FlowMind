@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.service.openapi.domain.entity.MappingContractTest;
-import com.triobase.service.openapi.dto.TransformationResult;
+import com.triobase.common.openapi.mapping.TransformationResult;
 import com.triobase.service.openapi.infrastructure.mapper.MappingContractTestMapper;
 import com.triobase.service.openapi.infrastructure.mapper.MappingVersionMapper;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -31,6 +32,8 @@ from ai_agent_orchestrator.security.context import ExecutionCredentials, use_exe
 from ai_agent_orchestrator.security.redaction import minimize_state_data
 
 from .graph_registry import GraphRegistry
+
+logger = logging.getLogger(__name__)
 
 _TERMINAL = {
     AgentRunStatus.COMPLETED,
@@ -330,6 +333,7 @@ class AgentRunService:
             code = str(exception)
             if not code or len(code) > 128 or any(char.isspace() for char in code):
                 code = "AGENT_RUN_FAILED"
+            logger.exception("Agent run %s failed with %s", record.run_id, code)
             await self._fail(record, code, "Agent 运行失败")
         finally:
             AGENT_RUN_DURATION.labels(record.graph_id).observe(time.monotonic() - started)

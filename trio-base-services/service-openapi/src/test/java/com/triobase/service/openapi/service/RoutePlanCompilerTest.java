@@ -1,9 +1,9 @@
 package com.triobase.service.openapi.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.triobase.service.openapi.domain.entity.RouteVersion;
-import com.triobase.service.openapi.domain.enums.Environment;
-import com.triobase.service.openapi.domain.enums.ExecutionMode;
+import com.triobase.common.openapi.entity.RouteVersion;
+import com.triobase.common.openapi.enums.Environment;
+import com.triobase.common.openapi.enums.ExecutionMode;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

@@ -6,22 +6,58 @@ info:
     name: Proprietary
 servers:
   - url: /api/v1/openapi
+tags:
+  - name: Runtime
+    description: Gateway-only public runtime APIs hosted by service-api-runtime.
+  - name: Callback Runtime
+    description: Gateway-only partner callback ingress hosted by service-api-runtime.
+  - name: Control Plane
+    description: Tenant-scoped management APIs hosted by service-openapi.
+  - name: Structures
+    description: Structure catalog, versions, import and export.
+  - name: Mappings
+    description: Mapping sets, mapping versions, contract tests and value maps.
+  - name: Connectors
+    description: Governed connector definitions and endpoint versions.
+  - name: Routes
+    description: Route definitions, immutable release snapshots and rollback.
+  - name: Orchestrations
+    description: Management APIs for orchestration DSL versions.
+  - name: Applications
+    description: API products, applications, clients, credentials, subscriptions and approvals.
+  - name: Policies
+    description: Traffic policy versions, signed snapshots and enforcement state.
+  - name: Operations
+    description: Operational readiness and lifecycle catalog APIs.
+  - name: Actions
+    description: Owner-hosted Global Action endpoints.
+  - name: Executions
+    description: Execution search, details and callback quarantine.
+  - name: Internal Admission
+    description: Internal admission decision APIs for platform-gateway and trusted runtime adapters.
 security:
   - applicationCredential: []
 paths:
   /runtime/{routeKey}:
     parameters:
       - $ref: '#/components/parameters/RouteKey'
+      - $ref: '#/components/parameters/EnvironmentHeader'
     post:
+      tags: [Runtime]
+      x-triobase-service: service-api-runtime
       operationId: invokeSynchronousRoute
       summary: Invoke an eligible synchronous integration route
+      description: Requires trusted gateway context headers and resolves the active release through runtime-local resolvers.
       responses:
         '200': { description: Successful canonical response }
         '409': { description: Route requires orchestration }
   /runtime/{routeKey}/orchestrations:
     parameters:
       - $ref: '#/components/parameters/RouteKey'
+      - $ref: '#/components/parameters/EnvironmentHeader'
     post:
+      tags: [Runtime]
+      x-triobase-service: service-api-runtime
       operationId: startOrchestration
       summary: Start or attach to a durable orchestration
       parameters:
@@ -42,30 +78,44 @@ paths:
         '429': { description: Active workflow capacity exhausted }
   /runtime/orchestrations/{executionId}:
     get:
+      tags: [Runtime]
+      x-triobase-service: service-api-runtime
       operationId: getOrchestrationStatus
       summary: Query orchestration status
-      parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
+      parameters:
+        - $ref: '#/components/parameters/ExecutionId'
+        - $ref: '#/components/parameters/ApplicationClientHeader'
       responses:
         '200': { description: Execution status }
         '404': { description: Execution not found }
   /runtime/orchestrations/{executionId}/result:
     get:
+      tags: [Runtime]
+      x-triobase-service: service-api-runtime
       operationId: getOrchestrationResult
       summary: Query orchestration result
-      parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
+      parameters:
+        - $ref: '#/components/parameters/ExecutionId'
+        - $ref: '#/components/parameters/ApplicationClientHeader'
       responses:
         '200': { description: Sanitized result }
         '404': { description: Execution not found }
   /runtime/orchestrations/{executionId}/cancel:
     post:
+      tags: [Runtime]
+      x-triobase-service: service-api-runtime
       operationId: cancelOrchestration
       summary: Request deterministic cancellation and compensation
-      parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
+      parameters:
+        - $ref: '#/components/parameters/ExecutionId'
+        - $ref: '#/components/parameters/ApplicationClientHeader'
       responses:
         '200': { description: Cancellation accepted }
         '409': { description: Execution cannot be cancelled }
   /callbacks/{callbackKey}:
     post:
+      tags: [Callback Runtime]
+      x-triobase-service: service-api-runtime
       operationId: receivePartnerCallback
       security:
         - callbackSignature: []
@@ -94,8 +144,28 @@ paths:
         '202': { description: Durably accepted or idempotent duplicate }
         '401': { description: Invalid signature or expired timestamp }
         '429': { description: Callback quota exceeded }
+  /internal/admission:
+    post:
+      tags: [Internal Admission]
+      x-triobase-service: service-openapi
+      operationId: evaluateIntegrationAdmission
+      summary: Evaluate tenant, credential, subscription, policy and quota admission
+      security:
+        - gatewayContext: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationAdmissionRequest'
+      responses:
+        '200': { description: Admission decision for gateway or runtime adapter }
+        '403': { description: Access denied by credential, subscription or policy }
+        '503': { description: Admission state unavailable; caller must fail closed }
   /management/executions:
     get:
+      tags: [Executions]
+      x-triobase-service: service-openapi
       operationId: searchExecutions
       summary: Search tenant-scoped integration executions
       responses:
@@ -103,11 +173,1105 @@ paths:
         '403': { description: Permission denied }
   /management/callback-quarantine:
     get:
+      tags: [Executions]
+      x-triobase-service: service-openapi
       operationId: listCallbackQuarantine
       summary: List quarantined callbacks
       responses:
         '200': { description: Quarantined callback records }
         '403': { description: Permission denied }
+  /management/actions/definitions:
+    get:
+      tags: [Actions]
+      x-triobase-service: service-openapi
+      operationId: listOpenApiActionDefinitions
+      summary: List owner-hosted OpenAPI Global Action definitions
+      responses:
+        '200': { description: Action definitions }
+  /management/actions/dispatch:
+    post:
+      tags: [Actions]
+      x-triobase-service: service-openapi
+      operationId: dispatchOpenApiOwnerAction
+      summary: Dispatch an owner-hosted OpenAPI Global Action
+      responses:
+        '200': { description: Action result }
+  /management/actions/candidates/validate:
+    post:
+      tags: [Actions]
+      x-triobase-service: service-openapi
+      operationId: validateOpenApiActionCandidate
+      summary: Validate one OpenAPI action candidate before dispatch
+      responses:
+        '200': { description: Candidate validation result }
+  /management/actions/candidates/batch-validate:
+    post:
+      tags: [Actions]
+      x-triobase-service: service-openapi
+      operationId: validateOpenApiActionCandidateBatch
+      summary: Validate multiple OpenAPI action candidates before dispatch
+      responses:
+        '200': { description: Batch validation result }
+  /management/actions/candidates/dispatch:
+    post:
+      tags: [Actions]
+      x-triobase-service: service-openapi
+      operationId: dispatchOpenApiActionCandidate
+      summary: Dispatch one validated OpenAPI action candidate
+      responses:
+        '200': { description: Action result }
+  /management/structures:
+    get:
+      tags: [Structures]
+      x-triobase-service: service-openapi
+      operationId: listStructures
+      summary: List tenant or global structure definitions
+      responses:
+        '200': { description: Structure list }
+    post:
+      tags: [Structures]
+      x-triobase-service: service-openapi
+      operationId: createStructure
+      summary: Create a structure and first draft version
+      responses:
+        '200': { description: Structure version }
+  /management/structures/{structureId}:
+    get:
+      tags: [Structures]
+      x-triobase-service: service-openapi
+      operationId: getStructure
+      summary: Get a structure definition
+      parameters:
+        - $ref: '#/components/parameters/StructureId'
+      responses:
+        '200': { description: Structure detail }
+  /management/structures/{structureId}/versions:
+    post:
+      tags: [Structures]
+      x-triobase-service: service-openapi
+      operationId: createStructureVersion
+      summary: Create a draft structure version
+      parameters:
+        - $ref: '#/components/parameters/StructureId'
+      responses:
+        '200': { description: Structure version }
+  /management/structures/versions/{versionId}:
+    put:
+      tags: [Structures]
+      x-triobase-service: service-openapi
+      operationId: updateStructureVersion
+      summary: Update a draft structure version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Structure version }
+  /management/structures/versions/{versionId}/publish:
+    post:
+      tags: [Structures]
+      x-triobase-service: service-openapi
+      operationId: publishStructureVersion
+      summary: Publish a structure version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Structure version }
+  /management/structures/versions/{versionId}/deprecate:
+    post:
+      tags: [Structures]
+      x-triobase-service: service-openapi
+      operationId: deprecateStructureVersion
+      summary: Deprecate a published structure version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Structure version }
+  /management/structures/versions/{versionId}/archive:
+    post:
+      tags: [Structures]
+      x-triobase-service: service-openapi
+      operationId: archiveStructureVersion
+      summary: Archive a structure version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Structure version }
+  /management/structures/imports/openapi:
+    post:
+      tags: [Structures]
+      x-triobase-service: service-openapi
+      operationId: importOpenApiStructure
+      summary: Import structures from an OpenAPI document
+      responses:
+        '200': { description: Imported structures }
+  /management/structures/exports/openapi:
+    post:
+      tags: [Structures]
+      x-triobase-service: service-openapi
+      operationId: exportOpenApiStructure
+      summary: Export structures as an OpenAPI document
+      responses:
+        '200': { description: OpenAPI export }
+  /management/mappings:
+    post:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: createMappingSet
+      summary: Create a mapping set and first draft version
+      responses:
+        '200': { description: Mapping version }
+  /management/mappings/{mappingSetId}/versions:
+    post:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: createMappingVersion
+      summary: Create a draft mapping version
+      parameters:
+        - $ref: '#/components/parameters/MappingSetId'
+      responses:
+        '200': { description: Mapping version }
+  /management/mappings/versions/{versionId}:
+    get:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: getMappingVersion
+      summary: Get a mapping version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Mapping version }
+  /management/mappings/versions/{versionId}/rules:
+    put:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: updateMappingRules
+      summary: Replace mapping rules on a draft version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Mapping version }
+  /management/mappings/versions/{versionId}/preview:
+    post:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: previewMappingVersion
+      summary: Preview mapping transformation
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Transformation preview }
+  /management/mappings/versions/{versionId}/contract-tests:
+    post:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: runMappingContractTests
+      summary: Run mapping contract tests before publication
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Contract test result }
+  /management/mappings/versions/{versionId}/publish:
+    post:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: publishMappingVersion
+      summary: Publish a mapping version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Mapping version }
+  /management/value-maps:
+    post:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: createValueMapSet
+      summary: Create a value-map set
+      responses:
+        '200': { description: Value-map set }
+  /management/value-maps/{valueMapSetId}/versions:
+    post:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: createValueMapVersion
+      summary: Create a draft value-map version
+      parameters:
+        - $ref: '#/components/parameters/ValueMapSetId'
+      responses:
+        '200': { description: Value-map version }
+  /management/value-maps/versions/{versionId}:
+    get:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: getValueMapVersion
+      summary: Get a value-map version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Value-map version }
+    put:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: updateValueMapVersion
+      summary: Update a draft value-map version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Value-map version }
+  /management/value-maps/versions/{versionId}/publish:
+    post:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: publishValueMapVersion
+      summary: Publish a value-map version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Value-map version }
+  /management/value-maps/versions/{versionId}/lookup:
+    post:
+      tags: [Mappings]
+      x-triobase-service: service-openapi
+      operationId: lookupValueMapEntry
+      summary: Resolve one or more value-map entries
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Lookup result }
+  /management/connectors:
+    post:
+      tags: [Connectors]
+      x-triobase-service: service-openapi
+      operationId: createConnector
+      summary: Create a connector and first draft endpoint version
+      responses:
+        '200': { description: Connector version }
+  /management/connectors/{connectorId}/versions:
+    post:
+      tags: [Connectors]
+      x-triobase-service: service-openapi
+      operationId: createConnectorVersion
+      summary: Create a draft connector endpoint version
+      parameters:
+        - $ref: '#/components/parameters/ConnectorId'
+      responses:
+        '200': { description: Connector version }
+  /management/connectors/versions/{versionId}:
+    get:
+      tags: [Connectors]
+      x-triobase-service: service-openapi
+      operationId: getConnectorVersion
+      summary: Get a connector endpoint version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Connector version }
+    put:
+      tags: [Connectors]
+      x-triobase-service: service-openapi
+      operationId: updateConnectorVersion
+      summary: Update a draft connector endpoint version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Connector version }
+  /management/connectors/versions/{versionId}/publish:
+    post:
+      tags: [Connectors]
+      x-triobase-service: service-openapi
+      operationId: publishConnectorVersion
+      summary: Publish a connector endpoint version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Connector version }
+  /management/connectors/versions/{versionId}/deprecate:
+    post:
+      tags: [Connectors]
+      x-triobase-service: service-openapi
+      operationId: deprecateConnectorVersion
+      summary: Deprecate a connector endpoint version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Connector version }
+  /management/connectors/versions/{versionId}/archive:
+    post:
+      tags: [Connectors]
+      x-triobase-service: service-openapi
+      operationId: archiveConnectorVersion
+      summary: Archive a connector endpoint version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Connector version }
+  /management/connectors/{connectorId}/archive:
+    post:
+      tags: [Connectors]
+      x-triobase-service: service-openapi
+      operationId: archiveConnector
+      summary: Archive a connector definition
+      parameters:
+        - $ref: '#/components/parameters/ConnectorId'
+      responses:
+        '200': { description: Connector archived }
+  /management/routes:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: createRoute
+      summary: Create a route definition and first draft version
+      responses:
+        '200': { description: Route version }
+  /management/routes/{routeId}/versions:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: createRouteVersion
+      summary: Create a draft route version
+      parameters:
+        - $ref: '#/components/parameters/RouteId'
+      responses:
+        '200': { description: Route version }
+  /management/routes/versions/{versionId}:
+    get:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: getRouteVersion
+      summary: Get a route version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Route version }
+    put:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: updateRouteVersion
+      summary: Update a draft route version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Route version }
+  /management/routes/versions/{versionId}/publish:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: publishRouteVersion
+      summary: Publish a route version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Route version }
+  /management/routes/versions/{versionId}/deprecate:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: deprecateRouteVersion
+      summary: Deprecate a route version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Route version }
+  /management/routes/versions/{versionId}/archive:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: archiveRouteVersion
+      summary: Archive a route version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Route version }
+  /management/routes/{routeId}/archive:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: archiveRoute
+      summary: Archive a route definition
+      parameters:
+        - $ref: '#/components/parameters/RouteId'
+      responses:
+        '200': { description: Route archived }
+  /management/routes/{routeKey}/resolve-preview:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: previewRouteResolution
+      summary: Preview route resolution before release activation
+      parameters:
+        - $ref: '#/components/parameters/RouteKey'
+      responses:
+        '200': { description: Resolved route preview }
+  /management/routes/versions/{versionId}/releases:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: createRouteRelease
+      summary: Create an immutable release snapshot from a published route version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Release snapshot }
+  /management/releases/{releaseId}/activate:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: activateRouteRelease
+      summary: Atomically activate a release snapshot
+      parameters:
+        - $ref: '#/components/parameters/ReleaseId'
+      responses:
+        '200': { description: Active release }
+  /management/routes/{routeId}/rollback:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: rollbackRouteRelease
+      summary: Roll back a route to a previous release snapshot
+      parameters:
+        - $ref: '#/components/parameters/RouteId'
+      responses:
+        '200': { description: Active release }
+  /management/releases/{releaseId}/deprecate:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: deprecateRouteRelease
+      summary: Deprecate a release snapshot
+      parameters:
+        - $ref: '#/components/parameters/ReleaseId'
+      responses:
+        '200': { description: Release snapshot }
+  /management/releases/{releaseId}/archive:
+    post:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: archiveRouteRelease
+      summary: Archive a release snapshot
+      parameters:
+        - $ref: '#/components/parameters/ReleaseId'
+      responses:
+        '200': { description: Release snapshot }
+  /management/routes/{routeId}/releases:
+    get:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: listRouteReleases
+      summary: List release snapshots for a route
+      parameters:
+        - $ref: '#/components/parameters/RouteId'
+      responses:
+        '200': { description: Release snapshots }
+  /management/routes/{routeKey}/active-release:
+    get:
+      tags: [Routes]
+      x-triobase-service: service-openapi
+      operationId: getActiveRouteRelease
+      summary: Resolve the active release for a route key and environment
+      parameters:
+        - $ref: '#/components/parameters/RouteKey'
+        - $ref: '#/components/parameters/EnvironmentQuery'
+      responses:
+        '200': { description: Active release }
+  /management/orchestrations:
+    post:
+      tags: [Orchestrations]
+      x-triobase-service: service-openapi
+      operationId: createOrchestration
+      summary: Create an orchestration definition and first draft version
+      responses:
+        '200': { description: Orchestration version }
+  /management/orchestrations/{orchestrationId}/versions:
+    post:
+      tags: [Orchestrations]
+      x-triobase-service: service-openapi
+      operationId: createOrchestrationVersion
+      summary: Create a draft orchestration DSL version
+      parameters:
+        - $ref: '#/components/parameters/OrchestrationId'
+      responses:
+        '200': { description: Orchestration version }
+  /management/orchestrations/versions/{versionId}:
+    get:
+      tags: [Orchestrations]
+      x-triobase-service: service-openapi
+      operationId: getOrchestrationVersion
+      summary: Get an orchestration DSL version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Orchestration version }
+    put:
+      tags: [Orchestrations]
+      x-triobase-service: service-openapi
+      operationId: updateOrchestrationVersion
+      summary: Update a draft orchestration DSL version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Orchestration version }
+  /management/orchestrations/versions/{versionId}/publish:
+    post:
+      tags: [Orchestrations]
+      x-triobase-service: service-openapi
+      operationId: publishOrchestrationVersion
+      summary: Publish an orchestration DSL version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Orchestration version }
+  /management/orchestrations/versions/{versionId}/deprecate:
+    post:
+      tags: [Orchestrations]
+      x-triobase-service: service-openapi
+      operationId: deprecateOrchestrationVersion
+      summary: Deprecate an orchestration DSL version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Orchestration version }
+  /management/orchestrations/versions/{versionId}/archive:
+    post:
+      tags: [Orchestrations]
+      x-triobase-service: service-openapi
+      operationId: archiveOrchestrationVersion
+      summary: Archive an orchestration DSL version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Orchestration version }
+  /management/orchestrations/{orchestrationId}/archive:
+    post:
+      tags: [Orchestrations]
+      x-triobase-service: service-openapi
+      operationId: archiveOrchestration
+      summary: Archive an orchestration definition
+      parameters:
+        - $ref: '#/components/parameters/OrchestrationId'
+      responses:
+        '200': { description: Orchestration archived }
+  /management/callback-profiles:
+    post:
+      tags: [Callback Runtime]
+      x-triobase-service: service-openapi
+      operationId: createCallbackProfile
+      summary: Create a callback profile and first draft version
+      responses:
+        '200': { description: Callback profile version }
+  /management/callback-profiles/{profileId}/versions:
+    post:
+      tags: [Callback Runtime]
+      x-triobase-service: service-openapi
+      operationId: createCallbackProfileVersion
+      summary: Create a draft callback profile version
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200': { description: Callback profile version }
+  /management/callback-profiles/versions/{versionId}:
+    get:
+      tags: [Callback Runtime]
+      x-triobase-service: service-openapi
+      operationId: getCallbackProfileVersion
+      summary: Get a callback profile version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Callback profile version }
+    put:
+      tags: [Callback Runtime]
+      x-triobase-service: service-openapi
+      operationId: updateCallbackProfileVersion
+      summary: Update a draft callback profile version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Callback profile version }
+  /management/callback-profiles/versions/{versionId}/publish:
+    post:
+      tags: [Callback Runtime]
+      x-triobase-service: service-openapi
+      operationId: publishCallbackProfileVersion
+      summary: Publish a callback profile version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Callback profile version }
+  /management/callback-profiles/versions/{versionId}/deprecate:
+    post:
+      tags: [Callback Runtime]
+      x-triobase-service: service-openapi
+      operationId: deprecateCallbackProfileVersion
+      summary: Deprecate a callback profile version
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200': { description: Callback profile version }
+  /management/products:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: createApiProduct
+      summary: Create an API product and first version
+      responses:
+        '200': { description: API product version }
+  /management/products/{id}:
+    put:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: updateApiProduct
+      summary: Update API product metadata
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: API product }
+  /management/products/{id}/versions:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: createApiProductVersion
+      summary: Create an API product draft version
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: API product version }
+  /management/products/versions/{id}:
+    get:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: getApiProductVersion
+      summary: Get an API product version
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: API product version }
+    put:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: updateApiProductVersion
+      summary: Update an API product draft version
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: API product version }
+  /management/products/versions/{id}/publish:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: publishApiProductVersion
+      summary: Publish an API product version
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: API product version }
+  /management/products/versions/{id}/deprecate:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: deprecateApiProductVersion
+      summary: Deprecate an API product version
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: API product version }
+  /management/products/versions/{id}/archive:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: archiveApiProductVersion
+      summary: Archive an API product version
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: API product version }
+  /management/products/{id}/archive:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: archiveApiProduct
+      summary: Archive an API product
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: API product archived }
+  /management/products/{id}/grants/applications/{applicationId}:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: grantApiProductToApplication
+      summary: Grant a private API product to an application
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/ApplicationId'
+      responses:
+        '200': { description: Access grant }
+  /management/products/discover:
+    get:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: discoverApiProducts
+      summary: Discover API products available to an application
+      parameters:
+        - $ref: '#/components/parameters/ApplicationIdQuery'
+      responses:
+        '200': { description: Discoverable products }
+  /management/applications:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: createIntegrationApplication
+      summary: Create an integration application
+      responses:
+        '200': { description: Application }
+  /management/applications/{id}:
+    get:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: getIntegrationApplication
+      summary: Get an integration application
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application }
+    put:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: updateIntegrationApplication
+      summary: Update an integration application
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application }
+  /management/applications/{id}/submit:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: submitIntegrationApplication
+      summary: Submit an application for approval
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application }
+  /management/applications/{id}/activate:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: activateIntegrationApplication
+      summary: Activate an approved application
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application }
+  /management/applications/{id}/suspend:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: suspendIntegrationApplication
+      summary: Suspend an application
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application }
+  /management/applications/{id}/reactivate:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: reactivateIntegrationApplication
+      summary: Reactivate a suspended application
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application }
+  /management/applications/{id}/expire:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: expireIntegrationApplication
+      summary: Expire an application
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application }
+  /management/applications/{id}/revoke:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: revokeIntegrationApplication
+      summary: Revoke an application
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application }
+  /management/applications/{id}/clients:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: createApplicationClient
+      summary: Create an environment-scoped application client
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application client }
+  /management/applications/clients/{id}/activate:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: activateApplicationClient
+      summary: Activate an application client
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application client }
+  /management/applications/clients/{id}/suspend:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: suspendApplicationClient
+      summary: Suspend an application client
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application client }
+  /management/applications/clients/{id}/reactivate:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: reactivateApplicationClient
+      summary: Reactivate an application client
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application client }
+  /management/applications/clients/{id}/revoke:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: revokeApplicationClient
+      summary: Revoke an application client
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Application client }
+  /management/applications/clients/{id}/credentials:
+    get:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: listApplicationCredentials
+      summary: List credential bindings for an application client
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Credential bindings }
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: bindApplicationCredential
+      summary: Bind an imported secret reference to an application client
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Credential binding }
+  /management/applications/clients/{id}/credentials/rotate:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: rotateApplicationCredential
+      summary: Rotate a generated credential and return it once
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Credential binding with one-time material }
+  /management/applications/credentials/{id}/revoke:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: revokeApplicationCredential
+      summary: Revoke a credential binding and publish fail-closed policy state
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Credential binding }
+  /management/applications/credentials/{id}/plaintext:
+    get:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: rejectStoredCredentialPlaintextRead
+      summary: Always rejects stored credential plaintext retrieval
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '403': { description: Stored credential plaintext is never returned }
+  /management/subscriptions:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: requestProductSubscription
+      summary: Request a product subscription
+      responses:
+        '200': { description: Subscription }
+  /management/subscriptions/{id}/activate:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: activateProductSubscription
+      summary: Approve and activate a product subscription
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Subscription }
+  /management/subscriptions/{id}/upgrade:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: upgradeProductSubscription
+      summary: Request a subscription upgrade to another product version
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Subscription }
+  /management/subscriptions/{id}/suspend:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: suspendProductSubscription
+      summary: Suspend a product subscription
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Subscription }
+  /management/subscriptions/{id}/revoke:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: revokeProductSubscription
+      summary: Revoke a product subscription
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Subscription }
+  /management/subscriptions/{id}/expire:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: expireProductSubscription
+      summary: Expire a product subscription
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Subscription }
+  /management/approvals/{id}/decision:
+    post:
+      tags: [Applications]
+      x-triobase-service: service-openapi
+      operationId: decideAssetApproval
+      summary: Approve or reject an application or product access request
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Approval decision }
+  /management/policies:
+    post:
+      tags: [Policies]
+      x-triobase-service: service-openapi
+      operationId: createTrafficPolicy
+      summary: Create a draft traffic policy
+      responses:
+        '200': { description: Traffic policy version }
+  /management/policies/{id}:
+    put:
+      tags: [Policies]
+      x-triobase-service: service-openapi
+      operationId: updateTrafficPolicy
+      summary: Update a draft traffic policy
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Traffic policy version }
+  /management/policies/{id}/publish:
+    post:
+      tags: [Policies]
+      x-triobase-service: service-openapi
+      operationId: publishTrafficPolicy
+      summary: Publish a traffic policy version
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Traffic policy version }
+  /management/policies/snapshots:
+    post:
+      tags: [Policies]
+      x-triobase-service: service-openapi
+      operationId: publishPolicySnapshot
+      summary: Publish a signed immutable policy snapshot
+      parameters:
+        - $ref: '#/components/parameters/TenantIdQuery'
+        - $ref: '#/components/parameters/EnvironmentQuery'
+      responses:
+        '200': { description: Policy snapshot }
+  /management/policies/enforcement/{point}/applied:
+    post:
+      tags: [Policies]
+      x-triobase-service: service-openapi
+      operationId: reportPolicySnapshotApplied
+      summary: Report that an enforcement point applied a policy snapshot
+      parameters:
+        - $ref: '#/components/parameters/Point'
+        - $ref: '#/components/parameters/TenantIdQuery'
+        - $ref: '#/components/parameters/EnvironmentQuery'
+        - name: version
+          in: query
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        '200': { description: Enforcement state }
+  /management/policies/enforcement/{point}:
+    get:
+      tags: [Policies]
+      x-triobase-service: service-openapi
+      operationId: getPolicyEnforcementState
+      summary: Get policy snapshot application state for an enforcement point
+      parameters:
+        - $ref: '#/components/parameters/Point'
+        - $ref: '#/components/parameters/TenantIdQuery'
+        - $ref: '#/components/parameters/EnvironmentQuery'
+      responses:
+        '200': { description: Enforcement state }
+  /management/operations/assets/{assetType}:
+    get:
+      tags: [Operations]
+      x-triobase-service: service-openapi
+      operationId: listLifecycleAssets
+      summary: List assets by lifecycle state for operations review
+      parameters:
+        - $ref: '#/components/parameters/AssetType'
+      responses:
+        '200': { description: Lifecycle assets }
+  /management/operations/readiness:
+    get:
+      tags: [Operations]
+      x-triobase-service: service-openapi
+      operationId: getOpenApiReadiness
+      summary: Get OpenAPI control/runtime readiness snapshot
+      responses:
+        '200': { description: Readiness snapshot }
+  /management/executions/{executionId}:
+    get:
+      tags: [Executions]
+      x-triobase-service: service-openapi
+      operationId: getExecutionDetail
+      summary: Get one execution with sanitized step evidence
+      parameters:
+        - $ref: '#/components/parameters/ExecutionId'
+      responses:
+        '200': { description: Execution detail }
+  /management/callback-quarantine/{inboxId}/resolve:
+    post:
+      tags: [Executions]
+      x-triobase-service: service-openapi
+      operationId: resolveCallbackQuarantine
+      summary: Resolve, retry, associate or discard a quarantined callback
+      parameters:
+        - $ref: '#/components/parameters/InboxId'
+      responses:
+        '200': { description: Callback quarantine resolution }
 components:
   securitySchemes:
     applicationCredential:
@@ -120,6 +1284,11 @@ components:
       in: header
       name: X-Signature
       description: HMAC or RSA signature validated with timestamp and nonce replay protection.
+    gatewayContext:
+      type: apiKey
+      in: header
+      name: X-OpenAPI-Gateway-Secret
+      description: Shared gateway/runtime trust secret. Production callers must also send service identity headers.
   parameters:
     RouteKey:
       name: routeKey
@@ -131,3 +1300,125 @@ components:
       in: path
       required: true
       schema: { type: string }
+    EnvironmentHeader:
+      name: X-Environment
+      in: header
+      required: true
+      schema:
+        type: string
+        enum: [DEV, TEST, PROD]
+    ApplicationClientHeader:
+      name: X-Application-Client-Id
+      in: header
+      required: true
+      schema: { type: string }
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema: { type: string }
+    StructureId:
+      name: structureId
+      in: path
+      required: true
+      schema: { type: string }
+    MappingSetId:
+      name: mappingSetId
+      in: path
+      required: true
+      schema: { type: string }
+    ValueMapSetId:
+      name: valueMapSetId
+      in: path
+      required: true
+      schema: { type: string }
+    ConnectorId:
+      name: connectorId
+      in: path
+      required: true
+      schema: { type: string }
+    RouteId:
+      name: routeId
+      in: path
+      required: true
+      schema: { type: string }
+    ReleaseId:
+      name: releaseId
+      in: path
+      required: true
+      schema: { type: string }
+    OrchestrationId:
+      name: orchestrationId
+      in: path
+      required: true
+      schema: { type: string }
+    ProfileId:
+      name: profileId
+      in: path
+      required: true
+      schema: { type: string }
+    ApplicationId:
+      name: applicationId
+      in: path
+      required: true
+      schema: { type: string }
+    InboxId:
+      name: inboxId
+      in: path
+      required: true
+      schema: { type: string }
+    Point:
+      name: point
+      in: path
+      required: true
+      schema: { type: string }
+    AssetType:
+      name: assetType
+      in: path
+      required: true
+      schema: { type: string }
+    TenantIdQuery:
+      name: tenantId
+      in: query
+      required: false
+      schema: { type: string }
+    EnvironmentQuery:
+      name: environment
+      in: query
+      required: true
+      schema:
+        type: string
+        enum: [DEV, TEST, PROD]
+    ApplicationIdQuery:
+      name: applicationId
+      in: query
+      required: true
+      schema: { type: string }
+  schemas:
+    IntegrationAdmissionRequest:
+      type: object
+      required: [tenantId, clientKey, environment, routeKey, operation, contentLength]
+      properties:
+        tenantId: { type: string }
+        clientKey: { type: string }
+        environment: { type: string, enum: [DEV, TEST, PROD] }
+        routeKey: { type: string }
+        operation: { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+        credential: { type: string }
+        signature: { type: string }
+        timestamp: { type: string }
+        nonce: { type: string }
+        bodyHash: { type: string }
+        clientCertificateFingerprint: { type: string }
+        tls: { type: boolean }
+        sourceIp: { type: string }
+        contentLength: { type: integer, format: int64, minimum: 0 }
+        callback: { type: boolean, default: false }

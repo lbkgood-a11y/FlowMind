@@ -1,8 +1,8 @@
 package com.triobase.service.openapi.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.triobase.service.openapi.domain.enums.Environment;
-import com.triobase.service.openapi.dto.CompiledRouteRelease;
+import com.triobase.common.openapi.enums.Environment;
+import com.triobase.common.openapi.dto.CompiledRouteRelease;
 import lombok.extern.slf4j.Slf4j;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;

@@ -1,6 +1,7 @@
 package com.triobase.service.openapi.dto;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.triobase.common.openapi.mapping.TransformationResult;
 
 import java.util.List;
 

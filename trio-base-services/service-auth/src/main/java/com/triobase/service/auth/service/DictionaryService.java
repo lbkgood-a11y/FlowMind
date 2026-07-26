@@ -1,5 +1,7 @@
 package com.triobase.service.auth.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
@@ -155,19 +157,19 @@ public class DictionaryService {
         type.setStatus(toStatus(request.getStatus()));
         type.setSystemFlag(toShort(request.getSystemFlag()));
         type.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 100);
-        type.setDescription(normalizeBlank(request.getDescription()));
+        type.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
     }
 
     private void applyItemRequest(SysDictItem item, SaveDictItemRequest request) {
         item.setItemLabel(request.getItemLabel().trim());
         item.setItemValue(request.getItemValue().trim());
-        item.setTagType(normalizeBlank(request.getTagType()));
-        item.setCssClass(normalizeBlank(request.getCssClass()));
+        item.setTagType(StringHelpers.normalizeBlank(request.getTagType()));
+        item.setCssClass(StringHelpers.normalizeBlank(request.getCssClass()));
         item.setStatus(toStatus(request.getStatus()));
         item.setSystemFlag(toShort(request.getSystemFlag()));
         item.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 100);
-        item.setDescription(normalizeBlank(request.getDescription()));
-        item.setMetadata(normalizeBlank(request.getMetadata()));
+        item.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
+        item.setMetadata(StringHelpers.normalizeBlank(request.getMetadata()));
     }
 
     private void validateTypeRequest(SaveDictTypeRequest request) {
@@ -228,9 +230,6 @@ public class DictionaryService {
         return value.trim().toUpperCase(Locale.ROOT);
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 
     private Short toStatus(Integer value) {
         return (short) (value != null && value == 0 ? 0 : 1);

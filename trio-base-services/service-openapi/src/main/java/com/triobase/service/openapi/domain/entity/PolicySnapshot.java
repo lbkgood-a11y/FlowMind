@@ -4,8 +4,8 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.triobase.service.openapi.domain.enums.Environment;
-import com.triobase.service.openapi.infrastructure.persistence.PostgresJsonbTypeHandler;
+import com.triobase.common.openapi.enums.Environment;
+import com.triobase.common.openapi.PostgresJsonbTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
 @Data @TableName(value="oa_policy_snapshot",autoResultMap=true)

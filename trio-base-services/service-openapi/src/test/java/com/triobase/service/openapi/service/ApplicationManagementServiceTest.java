@@ -5,7 +5,7 @@ import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.service.openapi.domain.entity.ApplicationClient;
 import com.triobase.service.openapi.domain.entity.IntegrationApplication;
 import com.triobase.service.openapi.domain.enums.ApplicationLifecycleState;
-import com.triobase.service.openapi.domain.enums.Environment;
+import com.triobase.common.openapi.enums.Environment;
 import com.triobase.service.openapi.domain.enums.RiskLevel;
 import com.triobase.service.openapi.dto.CreateApplicationClientRequest;
 import com.triobase.service.openapi.infrastructure.mapper.ApplicationClientMapper;

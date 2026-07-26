@@ -1,5 +1,5 @@
 package com.triobase.service.openapi.service;
-import com.triobase.service.openapi.domain.enums.Environment;
+import com.triobase.common.openapi.enums.Environment;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;

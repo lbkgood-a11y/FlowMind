@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
+import com.triobase.common.core.util.StringHelpers;
 import com.triobase.common.core.trace.TraceUtil;
 import com.triobase.common.dto.authz.AuthorizationBatchDecisionRequest;
 import com.triobase.common.dto.authz.AuthorizationBatchDecisionResponse;
@@ -433,13 +434,13 @@ public class AuthorizationDecisionService {
         log.setOwnerService(response.getOwnerService());
         log.setBusinessObjectId(response.getBusinessObjectId());
         log.setTraceId(StringUtils.hasText(TraceUtil.getTraceId()) ? TraceUtil.getTraceId()
-                : firstNonBlank(attr(request, "traceId"), request.getActionCorrelationId()));
+                : StringHelpers.firstNonBlank(attr(request, "traceId"), request.getActionCorrelationId()));
         log.setActionId(request.getActionId());
-        log.setActionType(firstNonBlank(request.getActionType(), attr(request, "actionType")));
-        log.setActionSource(firstNonBlank(request.getActionSource(), attr(request, "source")));
-        log.setActionTargetType(firstNonBlank(request.getActionTargetType(), attr(request, "targetType")));
-        log.setActionTargetId(firstNonBlank(request.getActionTargetId(), attr(request, "targetId")));
-        log.setActionCorrelationId(firstNonBlank(request.getActionCorrelationId(), attr(request, "correlationId")));
+        log.setActionType(StringHelpers.firstNonBlank(request.getActionType(), attr(request, "actionType")));
+        log.setActionSource(StringHelpers.firstNonBlank(request.getActionSource(), attr(request, "source")));
+        log.setActionTargetType(StringHelpers.firstNonBlank(request.getActionTargetType(), attr(request, "targetType")));
+        log.setActionTargetId(StringHelpers.firstNonBlank(request.getActionTargetId(), attr(request, "targetId")));
+        log.setActionCorrelationId(StringHelpers.firstNonBlank(request.getActionCorrelationId(), attr(request, "correlationId")));
         log.setActionPayloadMetadata(toJson(request.getActionPayloadMetadata()));
         log.setDecidedAt(LocalDateTime.now());
         decisionLogMapper.insert(log);
@@ -540,18 +541,6 @@ public class AuthorizationDecisionService {
         } catch (JsonProcessingException e) {
             return String.valueOf(value);
         }
-    }
-
-    private String firstNonBlank(String... values) {
-        if (values == null) {
-            return null;
-        }
-        for (String value : values) {
-            if (StringUtils.hasText(value)) {
-                return value.trim();
-            }
-        }
-        return null;
     }
 
     private record MatchedAction(String resourceCode, SysAuthAction action, SysAuthResource resource) {

@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     otlp_endpoint: str | None = None
     feature_leave_enabled: bool = True
-    feature_expense_enabled: bool = False
+    feature_expense_enabled: bool = True
     feature_knowledge_enabled: bool = False
 
     @model_validator(mode="after")

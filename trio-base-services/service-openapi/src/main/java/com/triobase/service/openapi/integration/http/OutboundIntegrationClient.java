@@ -1,8 +1,8 @@
 package com.triobase.service.openapi.integration.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.triobase.service.openapi.domain.entity.ConnectorVersion;
-import com.triobase.service.openapi.integration.credential.CredentialMaterial;
+import com.triobase.common.openapi.entity.ConnectorVersion;
+import com.triobase.common.openapi.credential.CredentialMaterial;
 
 import java.util.List;
 import java.util.Map;

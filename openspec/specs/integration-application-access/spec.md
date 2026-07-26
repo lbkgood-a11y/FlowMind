@@ -32,7 +32,7 @@ The system SHALL require an active published API product subscription granting a
 
 #### Scenario: Invoke subscribed route
 - **WHEN** an authenticated active client invokes a route and operation covered by an effective subscription and required scopes
-- **THEN** the request proceeds to traffic and runtime validation
+- **THEN** the request proceeds to traffic and runtime validation through a governed enforcement point using the shared OpenAPI runtime contract
 
 #### Scenario: Invoke unsubscribed route
 - **WHEN** an authenticated client invokes a route not covered by an active subscription
@@ -138,7 +138,7 @@ The system SHALL support TLS enforcement, authentication profile, credential exp
 - **THEN** the gateway denies admission before the integration runtime is invoked
 
 ### Requirement: Publish policies to enforcement points
-The system SHALL publish immutable versioned access and traffic policy snapshots to `platform-gateway` and the integration runtime and SHALL expose their applied policy versions.
+The system SHALL publish immutable versioned access and traffic policy snapshots to `platform-gateway` and any enabled OpenAPI runtime adapter and SHALL expose their applied policy versions.
 
 #### Scenario: Revoke access
 - **WHEN** a credential or subscription is revoked
@@ -147,6 +147,10 @@ The system SHALL publish immutable versioned access and traffic policy snapshots
 #### Scenario: Detect policy lag
 - **WHEN** an enforcement point reports an applied version older than the required version
 - **THEN** the system surfaces the lag operationally and does not allow revoked or newly uncertain privileged access
+
+#### Scenario: Runtime adapter disabled
+- **WHEN** no OpenAPI runtime adapter is enabled for an environment
+- **THEN** `service-openapi` continues to manage products, applications, subscriptions, credentials, and policy snapshots, while public route invocation remains denied by default
 
 ### Requirement: Audit and respond to security events
 The system SHALL audit application lifecycle, credential rotation, subscription approval, policy publication, denied access, authentication failure, replay, quota abuse, suspension, and reactivation without recording secrets.

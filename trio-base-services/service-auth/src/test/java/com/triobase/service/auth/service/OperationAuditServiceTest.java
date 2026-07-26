@@ -54,7 +54,7 @@ class OperationAuditServiceTest {
     @Test
     void record_shouldPersistActionLinkedFailureWithRedactedSummary() {
         SysOperationAuditLog log = new SysOperationAuditLog();
-        log.setRequestPath("/api/v1/actions");
+        log.setRequestPath("/api/v1/workflow-actions/dispatch");
         log.setResultStatus("FAILURE");
         log.setActionId("act-failed");
         log.setActionType("integration.orchestration.start");
@@ -124,7 +124,7 @@ class OperationAuditServiceTest {
     void detail_shouldReturnActionLinkedRedactedDetail() {
         SysOperationAuditLog log = new SysOperationAuditLog();
         log.setId("A002");
-        log.setRequestPath("/api/v1/actions");
+        log.setRequestPath("/api/v1/workflow-actions/dispatch");
         log.setActionId("act-2");
         log.setActionType("process.task.approve");
         log.setActionSource("GUI");

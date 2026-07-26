@@ -9,13 +9,13 @@ import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.openapi.domain.entity.ApplicationClient;
 import com.triobase.service.openapi.domain.entity.CallbackProfile;
-import com.triobase.service.openapi.domain.entity.CallbackProfileVersion;
+import com.triobase.common.openapi.entity.CallbackProfileVersion;
 import com.triobase.service.openapi.domain.entity.MappingVersion;
-import com.triobase.service.openapi.domain.entity.StructureVersion;
+import com.triobase.common.openapi.entity.StructureVersion;
 import com.triobase.service.openapi.domain.enums.ApplicationLifecycleState;
 import com.triobase.service.openapi.domain.enums.AssetLifecycleState;
-import com.triobase.service.openapi.domain.enums.AuthenticationType;
-import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
+import com.triobase.common.openapi.enums.AuthenticationType;
+import com.triobase.common.openapi.enums.VersionLifecycleState;
 import com.triobase.service.openapi.dto.CallbackProfileVersionMutationRequest;
 import com.triobase.service.openapi.dto.CallbackProfileVersionResponse;
 import com.triobase.service.openapi.dto.CreateCallbackProfileRequest;
@@ -24,7 +24,7 @@ import com.triobase.service.openapi.infrastructure.mapper.CallbackProfileMapper;
 import com.triobase.service.openapi.infrastructure.mapper.CallbackProfileVersionMapper;
 import com.triobase.service.openapi.infrastructure.mapper.MappingVersionMapper;
 import com.triobase.service.openapi.infrastructure.mapper.StructureVersionMapper;
-import com.triobase.service.openapi.integration.credential.CredentialProvider;
+import com.triobase.common.openapi.credential.CredentialProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -159,7 +159,7 @@ public class CallbackProfileService {
     }
 
     public PublishedCallback resolvePublished(String callbackKey, String tenantId,
-                                               com.triobase.service.openapi.domain.enums.Environment environment) {
+                                               com.triobase.common.openapi.enums.Environment environment) {
         CallbackProfile profile = profileMapper.selectOne(new LambdaQueryWrapper<CallbackProfile>()
                 .eq(CallbackProfile::getCallbackKey, callbackKey)
                 .eq(CallbackProfile::getTenantId, tenantId)
@@ -290,7 +290,7 @@ public class CallbackProfileService {
                 && !pointer.contains("..") && !pointer.contains("*");
     }
 
-    private void initialize(com.triobase.service.openapi.domain.model.VersionedEntity entity,
+    private void initialize(com.triobase.common.openapi.entity.VersionedEntity entity,
                             LocalDateTime now) {
         entity.setRowVersion(0L);
         entity.setCreatedBy(operator());

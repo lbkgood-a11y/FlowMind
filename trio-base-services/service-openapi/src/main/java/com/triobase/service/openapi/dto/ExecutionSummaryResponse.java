@@ -1,8 +1,8 @@
 package com.triobase.service.openapi.dto;
 
-import com.triobase.service.openapi.domain.enums.Environment;
-import com.triobase.service.openapi.domain.enums.ExecutionMode;
-import com.triobase.service.openapi.domain.enums.ExecutionState;
+import com.triobase.common.openapi.enums.Environment;
+import com.triobase.common.openapi.enums.ExecutionMode;
+import com.triobase.common.openapi.enums.ExecutionState;
 
 import java.time.LocalDateTime;
 

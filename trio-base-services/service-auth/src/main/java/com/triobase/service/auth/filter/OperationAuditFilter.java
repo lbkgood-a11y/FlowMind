@@ -1,6 +1,7 @@
 package com.triobase.service.auth.filter;
 
 import com.triobase.common.core.context.SecurityContextHolder;
+import com.triobase.common.core.util.StringHelpers;
 import com.triobase.service.auth.entity.SysOperationAuditLog;
 import com.triobase.service.auth.service.OperationAuditService;
 import jakarta.servlet.FilterChain;
@@ -78,7 +79,7 @@ public class OperationAuditFilter extends OncePerRequestFilter {
             audit.setActionTargetType(header(request, "X-Action-Target-Type"));
             audit.setActionTargetId(header(request, "X-Action-Target-Id"));
             audit.setActionCorrelationId(header(request, "X-Action-Correlation-Id"));
-            audit.setActionIdempotencyKey(firstNonBlank(
+            audit.setActionIdempotencyKey(StringHelpers.firstNonBlank(
                     header(request, "X-Action-Idempotency-Key"),
                     header(request, "Idempotency-Key")));
             audit.setActionSummary(limit(header(request, "X-Action-Summary"), 2000));
@@ -129,10 +130,6 @@ public class OperationAuditFilter extends OncePerRequestFilter {
 
     private String header(HttpServletRequest request, String name) {
         return limit(request.getHeader(name), 512);
-    }
-
-    private String firstNonBlank(String first, String fallback) {
-        return StringUtils.hasText(first) ? first : fallback;
     }
 
     private String limit(String value, int max) {

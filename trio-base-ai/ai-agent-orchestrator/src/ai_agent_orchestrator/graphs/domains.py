@@ -50,6 +50,8 @@ def classify_intent(message: str, settings: Settings) -> tuple[str, str | None, 
     action_words = ("帮我", "申请", "提交", "新建", "填写", "创建", "办理", "我要")
     question_words = ("制度", "规定", "怎么", "多少", "是什么", "可以吗", "要求")
     for key, domain in domains(settings).items():
+        if not domain.enabled:
+            continue
         if any(word in lowered for word in domain.keywords):
             if any(word in lowered for word in action_words):
                 return "business-assistant", key, 0.95

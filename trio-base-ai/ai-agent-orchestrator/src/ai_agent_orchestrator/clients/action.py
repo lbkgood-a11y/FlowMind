@@ -35,17 +35,19 @@ class ActionValidationResult(BaseModel):
 
 class ActionClient(GovernedHttpClient):
     async def validate_candidate(self, candidate: ActionCandidate) -> ActionValidationResult:
+        base_path = _action_base_path(candidate)
         payload = await self.request_json(
             "POST",
-            "/actions/candidates/validate",
+            f"{base_path}/candidates/validate",
             json_body=candidate.model_dump(mode="json", by_alias=True),
         )
         return ActionValidationResult.model_validate(payload)
 
     async def dispatch_candidate(self, candidate: ActionCandidate) -> dict[str, Any]:
+        base_path = _action_base_path(candidate)
         payload = await self.request_json(
             "POST",
-            "/actions/candidates/dispatch",
+            f"{base_path}/candidates/dispatch",
             json_body=candidate.model_dump(mode="json", by_alias=True),
         )
         if not isinstance(payload, dict):
@@ -57,3 +59,24 @@ class ActionClient(GovernedHttpClient):
         if not isinstance(payload, dict):
             raise ValueError("ACTION_RESULT_INVALID")
         return payload
+
+
+OWNER_ACTION_BASE_PATHS = {
+    "service-lowcode": "/lowcode-runtime/actions",
+    "service-workflow-engine": "/workflow-actions",
+    "service-openapi": "/openapi/management/actions",
+}
+
+
+def _action_base_path(candidate: ActionCandidate) -> str:
+    owner_service = candidate.target.owner_service if candidate.target else None
+    if owner_service in OWNER_ACTION_BASE_PATHS:
+        return OWNER_ACTION_BASE_PATHS[owner_service]
+    action_type = candidate.action_type
+    if action_type.startswith("lowcode."):
+        return OWNER_ACTION_BASE_PATHS["service-lowcode"]
+    if action_type.startswith("process."):
+        return OWNER_ACTION_BASE_PATHS["service-workflow-engine"]
+    if action_type.startswith("integration."):
+        return OWNER_ACTION_BASE_PATHS["service-openapi"]
+    raise ValueError("ACTION_OWNER_UNRESOLVED")

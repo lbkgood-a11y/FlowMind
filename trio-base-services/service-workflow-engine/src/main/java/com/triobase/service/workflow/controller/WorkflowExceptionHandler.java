@@ -1,9 +1,9 @@
 package com.triobase.service.workflow.controller;
 
 import com.triobase.common.core.result.R;
-import com.triobase.service.workflow.dto.FormValidationErrorResponse;
+import com.triobase.common.dto.form.FormValidationErrorResponse;
 import com.triobase.service.workflow.dto.ProcessVersionConflictResponse;
-import com.triobase.service.workflow.exception.FormDataValidationException;
+import com.triobase.common.dto.form.FormDataValidationException;
 import com.triobase.service.workflow.exception.ProcessVersionConflictException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;

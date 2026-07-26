@@ -2,11 +2,12 @@ package com.triobase.service.openapi.service;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.triobase.common.openapi.mapping.JsonPayloadValidator;
 import com.triobase.service.openapi.domain.entity.MappingRule;
 import com.triobase.service.openapi.domain.entity.MappingVersion;
-import com.triobase.service.openapi.domain.entity.StructureVersion;
-import com.triobase.service.openapi.domain.enums.MappingOperation;
-import com.triobase.service.openapi.dto.TransformationResult;
+import com.triobase.common.openapi.entity.StructureVersion;
+import com.triobase.common.openapi.mapping.MappingOperation;
+import com.triobase.common.openapi.mapping.TransformationResult;
 import com.triobase.service.openapi.infrastructure.mapper.MappingRuleMapper;
 import com.triobase.service.openapi.infrastructure.mapper.MappingVersionMapper;
 import com.triobase.service.openapi.infrastructure.mapper.StructureVersionMapper;

@@ -3,7 +3,7 @@ package com.triobase.service.openapi.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.triobase.service.openapi.domain.entity.RouteVersion;
+import com.triobase.common.openapi.entity.RouteVersion;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;

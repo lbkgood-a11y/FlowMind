@@ -1,8 +1,11 @@
 package com.triobase.common.action.owner;
 
+import com.triobase.common.action.model.GlobalActionRequest;
+import com.triobase.common.action.model.GlobalActionResult;
+
 public interface ActionOwnerExecutor {
 
     String actionType();
 
-    ActionOwnerDispatchResponse execute(ActionOwnerDispatchRequest request);
+    GlobalActionResult execute(GlobalActionRequest request);
 }

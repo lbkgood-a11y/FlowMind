@@ -1,4 +1,4 @@
-FROM maven:3.9.11-eclipse-temurin-21 AS build
+FROM maven:3.9.11-eclipse-temurin-25 AS build
 WORKDIR /workspace
 COPY . .
 RUN mvn -pl trio-base-services/service-openapi -am -DskipTests package

@@ -13,7 +13,7 @@ import com.triobase.common.dto.internal.ResolvedUserDto;
 import com.triobase.service.workflow.dto.AddSignRequest;
 import com.triobase.service.workflow.dto.AddSignTaskCommand;
 import com.triobase.service.workflow.dto.ApproveTaskRequest;
-import com.triobase.service.workflow.action.WorkflowActionExecutionContext;
+import com.triobase.common.action.runtime.ActionExecutionContext;
 import com.triobase.service.workflow.dto.ProcessPackageDefinition;
 import com.triobase.service.workflow.dto.RejectTaskCommand;
 import com.triobase.service.workflow.entity.ProcessInstance;
@@ -490,7 +490,7 @@ public class TaskService {
     }
 
     private void applyActionMetadata(TaskOperation operation) {
-        WorkflowActionExecutionContext.Snapshot snapshot = WorkflowActionExecutionContext.current();
+        ActionExecutionContext.Snapshot snapshot = ActionExecutionContext.current();
         if (snapshot == null) {
             return;
         }

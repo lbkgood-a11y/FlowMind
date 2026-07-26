@@ -48,12 +48,99 @@ const enabled =
     import.meta.env.VITE_AGENT_ASSISTANT_ENABLED !== 'false');
 let streamController: AbortController | undefined;
 
+const AGENT_ERROR_MESSAGES: Record<string, string> = {
+  AGENT_RUN_CREATE_FAILED:
+    'Agent Run 创建失败，请检查 ai-agent-orchestrator 数据库连接和运行状态',
+  AGENT_RUN_NOT_FOUND: 'Agent Run 不存在，或当前账号无权访问该会话',
+  AGENT_RUNTIME_DISABLED: 'AI Agent 运行时未启用，请检查 AGENT_ENABLED 配置',
+  HTTP_401: '登录态已失效，或请求没有经过 platform-gateway',
+  HTTP_403: '当前账号未获得 AI 助手访问授权',
+  HTTP_500: 'AI Agent 服务内部异常，请查看 ai-agent-orchestrator 日志',
+  HTTP_503: 'AI Agent 服务暂不可用，请确认服务已启动',
+  TENANT_NOT_AVAILABLE: '当前租户暂未开放 AI 助手',
+  TRACE_CONTEXT_REQUIRED: '请求缺少 TraceId，请确认网关 TraceIdFilter 已启用',
+  TRUSTED_USER_CONTEXT_REQUIRED:
+    '请求缺少可信用户上下文，请通过 platform-gateway 访问并重新登录',
+};
+
 const candidateData = computed(() => {
   const data = store.pendingCandidate?.payload?.data;
   return data && typeof data === 'object'
     ? Object.entries(data as Record<string, unknown>)
     : [];
 });
+
+function resolveAgentRequestError(
+  error: unknown,
+  fallbackCode: string,
+  fallbackMessage: string,
+) {
+  const payload = responsePayload(error);
+  const statusCode = responseStatus(error);
+  const statusErrorCode = statusCode ? `HTTP_${statusCode}` : undefined;
+  const code =
+    findErrorCode(payload) ??
+    findErrorCode(error) ??
+    statusErrorCode ??
+    fallbackCode;
+  const rawMessage = findErrorMessage(payload) ?? findErrorMessage(error);
+  return {
+    code,
+    message: AGENT_ERROR_MESSAGES[code] ?? rawMessage ?? fallbackMessage,
+  };
+}
+
+function responsePayload(error: unknown) {
+  if (!isRecord(error)) return undefined;
+  const response = error.response;
+  if (isRecord(response) && 'data' in response) {
+    return response.data;
+  }
+  if ('data' in error) {
+    return error.data;
+  }
+  return undefined;
+}
+
+function responseStatus(error: unknown) {
+  if (!isRecord(error)) return undefined;
+  const response = error.response;
+  if (!isRecord(response)) return undefined;
+  return typeof response.status === 'number' ? response.status : undefined;
+}
+
+function findErrorCode(source: unknown) {
+  return [readErrorField(source, 'code'), readErrorField(source, 'error'), readErrorField(source, 'detail')]
+    .map(errorText)
+    .find((value) => value && /^[A-Z][A-Z0-9_]*$/.test(value));
+}
+
+function findErrorMessage(source: unknown) {
+  return (
+    errorText(readErrorField(source, 'message')) ??
+    errorText(readErrorField(source, 'detail')) ??
+    errorText(readErrorField(source, 'error'))
+  );
+}
+
+function readErrorField(source: unknown, key: string) {
+  if (!isRecord(source)) return undefined;
+  return source[key];
+}
+
+function errorText(value: unknown) {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+  if (Array.isArray(value) && value.length > 0) {
+    return JSON.stringify(value);
+  }
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
 async function send() {
   const message = input.value.trim();
@@ -75,8 +162,13 @@ async function send() {
     store.begin(run, message);
     input.value = '';
     startStream(run.runId, run.lastSequence);
-  } catch {
-    store.setError('AGENT_RUN_CREATE_FAILED', '无法启动 AI 助手，请稍后重试');
+  } catch (error) {
+    const resolved = resolveAgentRequestError(
+      error,
+      'AGENT_RUN_CREATE_FAILED',
+      '无法启动 AI 助手，请稍后重试',
+    );
+    store.setError(resolved.code, resolved.message);
   } finally {
     submitting.value = false;
   }
@@ -89,9 +181,14 @@ function startStream(runId: string, cursor: number) {
     cursor,
     onEvent: store.applyEvent,
     signal: streamController.signal,
-  }).catch(() => {
+  }).catch((error) => {
     if (!streamController?.signal.aborted) {
-      store.setError('AGENT_STREAM_FAILED', 'AI 消息连接已中断，请重新发送');
+      const resolved = resolveAgentRequestError(
+        error,
+        'AGENT_STREAM_FAILED',
+        'AI 消息连接已中断，请重新发送',
+      );
+      store.setError(resolved.code, resolved.message);
     }
   });
 }
@@ -108,8 +205,13 @@ async function submitSupplement() {
     });
     store.setRun(updated);
     supplement.value = '';
-  } catch {
-    store.setError('AGENT_RESUME_FAILED', '补充信息提交失败');
+  } catch (error) {
+    const resolved = resolveAgentRequestError(
+      error,
+      'AGENT_RESUME_FAILED',
+      '补充信息提交失败',
+    );
+    store.setError(resolved.code, resolved.message);
   } finally {
     submitting.value = false;
   }
@@ -147,8 +249,13 @@ async function confirmCandidate() {
       values: result as Record<string, unknown>,
     });
     store.setRun(updated);
-  } catch {
-    store.setError('ACTION_DISPATCH_FAILED', '提交失败，未重复执行该操作');
+  } catch (error) {
+    const resolved = resolveAgentRequestError(
+      error,
+      'ACTION_DISPATCH_FAILED',
+      '提交失败，未重复执行该操作',
+    );
+    store.setError(resolved.code, resolved.message);
   } finally {
     submitting.value = false;
   }
@@ -164,6 +271,13 @@ async function cancelPending() {
       values: {},
     });
     store.setRun(updated);
+  } catch (error) {
+    const resolved = resolveAgentRequestError(
+      error,
+      'AGENT_CANCEL_FAILED',
+      '取消操作失败',
+    );
+    store.setError(resolved.code, resolved.message);
   } finally {
     submitting.value = false;
   }
@@ -192,7 +306,7 @@ onBeforeUnmount(() => streamController?.abort());
   >
     <div class="tb-ai-assistant">
       <Alert
-        description="当前优先支持请假申请。所有业务操作都会先展示预览，并在确认后通过统一 Action 执行。"
+        description="当前支持请假申请和费用报销。所有业务操作都会先展示预览，并在确认后通过统一 Action 执行。"
         message="安全执行模式"
         show-icon
         type="info"

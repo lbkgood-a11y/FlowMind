@@ -40,6 +40,10 @@ The system SHALL show prerequisite readiness from contracts through runtime and 
 - **WHEN** a published API product exists but no active application subscription is present
 - **THEN** the overview marks exposure as blocked and links the operator to application and subscription management
 
+#### Scenario: Runtime adapter not enabled
+- **WHEN** structures, mappings, connectors, routes, products, subscriptions, and policies are complete but no governed runtime adapter or gateway route is enabled
+- **THEN** the overview reports management readiness separately from runtime exposure and does not imply that public invocation is available
+
 ### Requirement: Preserve governance in operations UI
 The system MUST enforce existing permissions, tenant isolation, approval rules, secret redaction, policy fail-closed behavior, and disabled-by-default public runtime regardless of UI actions.
 
@@ -50,3 +54,14 @@ The system MUST enforce existing permissions, tenant isolation, approval rules, 
 #### Scenario: Lifecycle becomes ready
 - **WHEN** every managed asset and policy prerequisite is satisfied
 - **THEN** the console reports readiness but does not automatically enable the public gateway route
+
+### Requirement: Use management APIs for control-plane operations
+The OpenAPI console SHALL use typed management APIs under `/api/v1/openapi/management/**` for lifecycle assets and SHALL NOT call runtime invocation, callback reception, or arbitrary connector URLs directly.
+
+#### Scenario: Operator publishes a policy snapshot
+- **WHEN** an authorized operator publishes or inspects policy state from the console
+- **THEN** the frontend calls the management API, and enforcement points consume the resulting immutable snapshot through their configured contract
+
+#### Scenario: Operator inspects runtime evidence
+- **WHEN** an authorized operator opens execution or callback quarantine pages
+- **THEN** the console reads sanitized evidence and remediation metadata without exposing request bodies, resolved credentials, or direct partner endpoints

@@ -7,14 +7,14 @@ import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.openapi.domain.entity.ApplicationClient;
 import com.triobase.service.openapi.domain.entity.CredentialBinding;
 import com.triobase.service.openapi.domain.enums.ApplicationLifecycleState;
-import com.triobase.service.openapi.domain.enums.AuthenticationType;
+import com.triobase.common.openapi.enums.AuthenticationType;
 import com.triobase.service.openapi.domain.enums.CredentialBindingState;
 import com.triobase.service.openapi.dto.CreateCredentialBindingRequest;
 import com.triobase.service.openapi.dto.CredentialBindingResponse;
 import com.triobase.service.openapi.dto.RotateCredentialRequest;
 import com.triobase.service.openapi.infrastructure.mapper.ApplicationClientMapper;
 import com.triobase.service.openapi.infrastructure.mapper.CredentialBindingMapper;
-import com.triobase.service.openapi.integration.credential.CredentialProvider;
+import com.triobase.common.openapi.credential.CredentialProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,5 +39,5 @@ public class ApplicationCredentialService {
  private void validateType(AuthenticationType t){if(t==null||t==AuthenticationType.NONE)throw invalid();}private boolean invalidWindow(LocalDateTime from,LocalDateTime until){return from!=null&&until!=null&&!until.isAfter(from);}private BizException invalid(){return new BizException(40072,"OPENAPI_CREDENTIAL_BINDING_INVALID");}
  private CredentialBindingResponse response(CredentialBinding b,Map<String,String> once){return new CredentialBindingResponse(b.getId(),b.getApplicationClientId(),b.getAuthenticationType(),b.getCredentialVersion(),b.getSecretReference(),b.getLifecycleState(),b.getValidFrom(),b.getExpiresAt(),b.getRetirementAt(),once);}
  private void audit(String event,CredentialBinding b){auditService.success(event,"CREDENTIAL_BINDING",b.getId(),JsonNodeFactory.instance.objectNode().put("clientId",b.getApplicationClientId()).put("credentialVersion",b.getCredentialVersion()));}
- private void initialize(com.triobase.common.core.entity.BaseEntity e){LocalDateTime n=LocalDateTime.now();e.setCreatedBy(operator());e.setCreatedAt(n);e.setUpdatedBy(operator());e.setUpdatedAt(n);if(e instanceof com.triobase.service.openapi.domain.model.VersionedEntity v)v.setRowVersion(0L);}private void touch(com.triobase.common.core.entity.BaseEntity e){e.setUpdatedBy(operator());e.setUpdatedAt(LocalDateTime.now());}private String operator(){return StringUtils.hasText(SecurityContextHolder.getUserId())?SecurityContextHolder.getUserId():"SYSTEM";}
+ private void initialize(com.triobase.common.core.entity.BaseEntity e){LocalDateTime n=LocalDateTime.now();e.setCreatedBy(operator());e.setCreatedAt(n);e.setUpdatedBy(operator());e.setUpdatedAt(n);if(e instanceof com.triobase.common.openapi.entity.VersionedEntity v)v.setRowVersion(0L);}private void touch(com.triobase.common.core.entity.BaseEntity e){e.setUpdatedBy(operator());e.setUpdatedAt(LocalDateTime.now());}private String operator(){return StringUtils.hasText(SecurityContextHolder.getUserId())?SecurityContextHolder.getUserId():"SYSTEM";}
 }

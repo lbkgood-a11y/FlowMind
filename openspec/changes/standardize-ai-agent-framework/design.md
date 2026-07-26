@@ -4,7 +4,7 @@ TrioBase 的 AI 层已经包含 `ai-llm-gateway`、`ai-rag-service`、`ai-intent
 
 平台侧已经具备 Global Action、RBAC、审计和 Spring Boot 内嵌 Temporal Worker。Agent 框架必须复用这些确定性能力，不能成为新的业务写入口，也不能在 Python 侧建立与 Java Temporal 重叠的业务流程运行时。
 
-本设计面向 AI 开发人员、业务服务开发人员、前端开发人员、安全与运维人员。它遵守现有十一条铁律以及 ADR-001、ADR-002，并以默认租户 `default` 运行，同时保留未来的租户命名空间。
+本设计面向 AI 开发人员、业务服务开发人员、前端开发人员、安全与运维人员。它遵守现有十四条铁律以及 ADR-001、ADR-002，并以默认租户 `default` 运行，同时保留未来的租户命名空间。
 
 ## Goals / Non-Goals
 

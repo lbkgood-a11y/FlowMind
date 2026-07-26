@@ -7,7 +7,7 @@ import com.triobase.service.workflow.entity.NodeRecord;
 import com.triobase.service.workflow.entity.ProcessInstance;
 import com.triobase.service.workflow.entity.ProcessPackage;
 import com.triobase.service.workflow.entity.TaskOperation;
-import com.triobase.service.workflow.exception.FormDataValidationException;
+import com.triobase.common.dto.form.FormDataValidationException;
 import com.triobase.service.workflow.exception.ProcessVersionConflictException;
 import com.triobase.service.workflow.mapper.ProcessInstanceMapper;
 import com.triobase.service.workflow.mapper.ProcessPackageMapper;

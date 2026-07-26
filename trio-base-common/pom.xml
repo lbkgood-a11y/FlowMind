@@ -21,5 +21,6 @@
         <module>common-action</module>
         <module>common-temporal</module>
         <module>common-archunit</module>
+        <module>openapi-common</module>
     </modules>
 </project>

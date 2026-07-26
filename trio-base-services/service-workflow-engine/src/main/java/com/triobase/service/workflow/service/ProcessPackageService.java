@@ -1,5 +1,7 @@
 package com.triobase.service.workflow.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -109,7 +111,7 @@ public class ProcessPackageService {
         pkg.setProcessJson(request.getProcessJson());
         pkg.setFormSchema(snapshot.schema());
         pkg.setFormUiSchema(snapshot.uiSchema());
-        pkg.setFormDefinitionId(normalizeBlank(request.getFormDefinitionId()));
+        pkg.setFormDefinitionId(StringHelpers.normalizeBlank(request.getFormDefinitionId()));
         processPackageMapper.insert(pkg);
         return toResponse(pkg);
     }
@@ -142,7 +144,7 @@ public class ProcessPackageService {
             clearBusinessClosureSnapshots(pkg);
         }
         if (request.getFormDefinitionId() != null) {
-            pkg.setFormDefinitionId(normalizeBlank(request.getFormDefinitionId()));
+            pkg.setFormDefinitionId(StringHelpers.normalizeBlank(request.getFormDefinitionId()));
             pkg.setFormDefinitionVersion(null);
         }
 
@@ -270,7 +272,7 @@ public class ProcessPackageService {
     }
 
     private String normalizeCategory(String category) {
-        String value = normalizeBlank(category);
+        String value = StringHelpers.normalizeBlank(category);
         if (value == null) {
             return "approval";
         }
@@ -280,9 +282,6 @@ public class ProcessPackageService {
         return value;
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 
     private FormSnapshot extractInlineFormSnapshot(String processJson) {
         try {

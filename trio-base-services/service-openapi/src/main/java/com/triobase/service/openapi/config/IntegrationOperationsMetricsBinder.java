@@ -2,12 +2,12 @@ package com.triobase.service.openapi.config;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.service.openapi.domain.entity.AuditEvent;
-import com.triobase.service.openapi.domain.entity.CallbackInbox;
-import com.triobase.service.openapi.domain.entity.ExecutionStepAttempt;
-import com.triobase.service.openapi.domain.entity.IntegrationExecution;
+import com.triobase.common.openapi.entity.CallbackInbox;
+import com.triobase.common.openapi.entity.ExecutionStepAttempt;
+import com.triobase.common.openapi.entity.IntegrationExecution;
 import com.triobase.service.openapi.domain.entity.PolicyEnforcementState;
-import com.triobase.service.openapi.domain.enums.CallbackInboxState;
-import com.triobase.service.openapi.domain.enums.ExecutionState;
+import com.triobase.common.openapi.enums.CallbackInboxState;
+import com.triobase.common.openapi.enums.ExecutionState;
 import com.triobase.service.openapi.infrastructure.mapper.AuditEventMapper;
 import com.triobase.service.openapi.infrastructure.mapper.CallbackInboxMapper;
 import com.triobase.service.openapi.infrastructure.mapper.ExecutionStepAttemptMapper;
@@ -76,7 +76,9 @@ public class IntegrationOperationsMetricsBinder implements MeterBinder {
     }
 
     private void gauge(MeterRegistry registry, String name, LongSupplier supplier) {
-        Gauge.builder(name, supplier, value -> safe(value)).register(registry);
+        Gauge.builder(name, supplier, value -> safe(value))
+                .strongReference(true)
+                .register(registry);
     }
 
     private double safe(LongSupplier supplier) {

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.service.openapi.domain.entity.PolicySnapshot;
 import com.triobase.service.openapi.domain.entity.TrafficPolicyVersion;
-import com.triobase.service.openapi.domain.enums.Environment;
+import com.triobase.common.openapi.enums.Environment;
 import com.triobase.service.openapi.domain.enums.PolicyScopeType;
 import com.triobase.service.openapi.infrastructure.mapper.PolicyEnforcementStateMapper;
 import com.triobase.service.openapi.infrastructure.mapper.PolicySnapshotMapper;

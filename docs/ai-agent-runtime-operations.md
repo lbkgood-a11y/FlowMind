@@ -2,7 +2,7 @@
 
 ## 运行边界
 
-`ai-agent-orchestrator` 负责 LangGraph 对话与人工介入状态，不是业务事实来源。业务状态变更只能通过 `service-action`，跨服务长流程只能由 Spring Boot 内嵌 Temporal Worker 执行。
+`ai-agent-orchestrator` 负责 LangGraph 对话与人工介入状态，不是业务事实来源。业务状态变更只能通过 owner-hosted Global Action Runtime，跨服务长流程只能由 Spring Boot 内嵌 Temporal Worker 执行。
 
 当前正式场景只启用默认租户 `default`。请假应用使用运行时标识 `leave / leave`；费用报销使用 `expense_report / expense`，由独立功能开关控制。知识问答和多 Agent 默认关闭。
 
@@ -15,7 +15,7 @@
 - service-auth 8081
 - service-lowcode 8085
 - service-workflow-engine 8086
-- service-action 8089
+- service-business-catalog 8090
 - ai-llm-gateway 8002
 - ai-rag-service 8003
 - ai-agent-orchestrator 8004

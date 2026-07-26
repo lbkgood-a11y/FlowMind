@@ -1,5 +1,7 @@
 package com.triobase.service.auth.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.triobase.common.core.context.SecurityContextHolder;
@@ -269,7 +271,7 @@ public class DataPolicyService {
         policy.setEffect(normalizeEnum(request.getEffect(), "ALLOW", EFFECTS, "DATA_POLICY_EFFECT_INVALID"));
         policy.setCombineMode(normalizeEnum(request.getCombineMode(), "AND", COMBINE_MODES, "DATA_POLICY_COMBINE_MODE_INVALID"));
         policy.setStatus(toStatus(request.getStatus()));
-        policy.setDescription(normalizeBlank(request.getDescription()));
+        policy.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
     }
 
     private void validateRequest(SaveDataPolicyRequest request) {
@@ -292,7 +294,7 @@ public class DataPolicyService {
         }
         Set<String> dimensionCodes = new LinkedHashSet<>();
         for (DataPolicyDimensionRequest dimension : request.getDimensions()) {
-            String dimensionCode = normalizeBlank(dimension.getDimensionCode());
+            String dimensionCode = StringHelpers.normalizeBlank(dimension.getDimensionCode());
             String scopeType = normalizeEnum(dimension.getScopeType(), null, SCOPE_TYPES, "DATA_POLICY_SCOPE_INVALID");
             if (dimensionCode == null) {
                 throw new BizException(40064, "DATA_POLICY_DIMENSION_REQUIRED");
@@ -368,7 +370,7 @@ public class DataPolicyService {
             return List.of();
         }
         return orgUnitIds.stream()
-                .map(this::normalizeBlank)
+                .map(StringHelpers::normalizeBlank)
                 .filter(StringUtils::hasText)
                 .collect(Collectors.toCollection(LinkedHashSet::new))
                 .stream()
@@ -376,7 +378,7 @@ public class DataPolicyService {
     }
 
     private String normalizeEnum(String value, String defaultValue, Set<String> allowed, String errorMessage) {
-        String normalized = normalizeBlank(value);
+        String normalized = StringHelpers.normalizeBlank(value);
         if (normalized == null) {
             normalized = defaultValue;
         }
@@ -394,9 +396,6 @@ public class DataPolicyService {
         return status != null && status == 0 ? (short) 0 : (short) 1;
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 
     private String currentTenantId() {
         String tenantId = SecurityContextHolder.getTenantId();

@@ -1,5 +1,7 @@
 package com.triobase.service.auth.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.service.auth.entity.SysAuthFieldPolicy;
 import com.triobase.service.auth.entity.SysAuthGrant;
@@ -37,7 +39,7 @@ public class RoleAuthorizationDataService {
     private final AuthorizationVersionService versionService;
 
     public List<String> menuIdsForRole(String roleId) {
-        String normalizedRoleId = normalizeBlank(roleId);
+        String normalizedRoleId = StringHelpers.normalizeBlank(roleId);
         if (normalizedRoleId == null) {
             return List.of();
         }
@@ -72,7 +74,7 @@ public class RoleAuthorizationDataService {
 
     @Transactional
     public void deleteRoleAuthorizationData(String roleId) {
-        String normalizedRoleId = normalizeBlank(roleId);
+        String normalizedRoleId = StringHelpers.normalizeBlank(roleId);
         if (normalizedRoleId == null) {
             return;
         }
@@ -89,7 +91,7 @@ public class RoleAuthorizationDataService {
     }
 
     private PermissionKey resolvePermissionKey(SysMenu menu) {
-        String permissionCode = normalizeBlank(menu.getPermissionCode());
+        String permissionCode = StringHelpers.normalizeBlank(menu.getPermissionCode());
         if (permissionCode != null) {
             return parsePermissionCode(permissionCode);
         }
@@ -101,8 +103,8 @@ public class RoleAuthorizationDataService {
         if (separator <= 0 || separator >= permissionCode.length() - 1) {
             return null;
         }
-        String resourceCode = normalizeBlank(permissionCode.substring(0, separator));
-        String actionCode = normalizeBlank(permissionCode.substring(separator + 1));
+        String resourceCode = StringHelpers.normalizeBlank(permissionCode.substring(0, separator));
+        String actionCode = StringHelpers.normalizeBlank(permissionCode.substring(separator + 1));
         return resourceCode != null && actionCode != null
                 ? new PermissionKey(resourceCode, actionCode)
                 : null;
@@ -130,9 +132,6 @@ public class RoleAuthorizationDataService {
         }
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 
     private void includeAncestorMenus(List<SysMenu> menus, Set<String> menuIds) {
         if (menuIds.isEmpty()) {

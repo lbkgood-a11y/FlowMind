@@ -304,7 +304,7 @@ TrioBase/
 
 ---
 
-## 工程治理：十一条铁律
+## 工程治理：十四条铁律
 
 所有接入 TrioBase 的子工程必须在 Harness CI 阶段通过静态检查、单测覆盖率和架构依赖检查。违反任何一条，Pipeline 直接 Block。
 
@@ -366,12 +366,27 @@ TrioBase/
 - 当用户通过自然语言修改界面数据时（如"帮我修改审批单金额为 5000 元"），LUI 禁止直接通过 DOM 操作修改 GUI 上的 Input 值
 - 必须由 AI SDK 触发状态机动作（Action），更新 Pinia Store 全局状态，再由 Store 驱动 GUI 视图重新渲染，确保界面变更可追溯
 
+### 架构与 AI-native 铁律（3 条）
+
+**铁律 12：业务事实归 Owner**
+- 每个微服务只拥有并直接读写自己的业务事实和数据库表，严禁通过跨库查询、共享表或直接读取其他服务表来完成运行时业务逻辑
+- 跨服务查询聚合必须通过 owner API、事件投影、只读模型或授权数据产品完成；投影服务只能读写自己的 projection 表
+
+**铁律 13：跨服务状态协作用事件和 Temporal**
+- 跨服务状态变更、长流程、补偿、重试和最终一致性必须通过领域事件、Outbox/Kafka 投影或 Temporal Workflow 协作，禁止用同步 HTTP/Feign 链式调用串联副作用
+- Owner 服务必须提供稳定事件 ID、幂等消费语义和可重放/可补偿路径，避免投影丢失或重复 side effect
+
+**铁律 14：AI 只能走受治理的 Action 和工具契约**
+- AI/LUI/Agent 只能读取经过权限过滤的数据工具、生成 `ActionCandidate`，并在确认和授权后通过 owner-hosted Global Action 执行业务副作用
+- 严禁 AI/Agent 直接调用任意 URL、执行 SQL/脚本、绕过 owner 服务权限、写业务库、拼装含敏感明文的 Prompt 或使用未注册工具改变业务状态
+
 ### CI 门禁落地方式
 
 | 阶段 | 手段 | 拦截内容 |
 |------|------|----------|
 | 编码期 | ArchUnit 单测（common-archunit 包内置） | Workflow 类中出现 `java.util.UUID`、`java.io.*` 等违禁模式 |
 | 编码期 | ESLint + Schema Check（前端） | Generative UI 组件未注册、缺少 Schema 校验 |
+| 编码期 | 架构测试 + 契约测试 | 跨库访问、未注册 Action、绕过 owner-hosted runtime、投影服务读取 owner 表 |
 | CI 门禁 | Harness Pipeline + SonarQube + Checkstyle | Activity 缺少 RetryPolicy、代码规范不合规 → 拒绝 Merge |
 | CI 门禁 | 前端 Bundle Analysis + Lighthouse | Streaming 降级为阻塞请求、首屏性能不达标 |
 

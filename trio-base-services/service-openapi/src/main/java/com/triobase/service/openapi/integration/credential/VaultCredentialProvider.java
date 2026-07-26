@@ -2,7 +2,9 @@ package com.triobase.service.openapi.integration.credential;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.triobase.common.core.exception.BizException;
-import com.triobase.service.openapi.domain.enums.AuthenticationType;
+import com.triobase.common.openapi.credential.CredentialMaterial;
+import com.triobase.common.openapi.credential.CredentialProvider;
+import com.triobase.common.openapi.enums.AuthenticationType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;

@@ -1,5 +1,5 @@
 package com.triobase.service.openapi.dto;
-import com.triobase.service.openapi.domain.enums.AuthenticationType;
+import com.triobase.common.openapi.enums.AuthenticationType;
 import com.triobase.service.openapi.domain.enums.CredentialBindingState;
 import java.time.LocalDateTime;
 import java.util.Map;

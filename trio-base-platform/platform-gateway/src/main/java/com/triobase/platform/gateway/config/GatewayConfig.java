@@ -16,11 +16,11 @@ public class GatewayConfig {
     @ConditionalOnProperty(prefix = "triobase.openapi.runtime", name = "enabled", havingValue = "true")
     RouteLocator openApiRuntimeRoutes(
             RouteLocatorBuilder builder,
-            @Value("${triobase.openapi.service-url:http://localhost:8088}") String serviceUrl) {
+            @Value("${triobase.openapi.runtime.service-url:http://localhost:8095}") String runtimeServiceUrl) {
         return builder.routes()
-                .route("service-openapi-runtime", route -> route
+                .route("service-api-runtime", route -> route
                         .path("/api/v1/openapi/runtime/**", "/api/v1/openapi/callbacks/**")
-                        .uri(serviceUrl))
+                        .uri(runtimeServiceUrl))
                 .build();
     }
 }

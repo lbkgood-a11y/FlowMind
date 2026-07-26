@@ -7,7 +7,7 @@ import com.triobase.service.openapi.domain.entity.AssetApproval;
 import com.triobase.service.openapi.domain.entity.PolicyEnforcementState;
 import com.triobase.service.openapi.domain.entity.PolicySnapshot;
 import com.triobase.service.openapi.domain.entity.TrafficPolicyVersion;
-import com.triobase.service.openapi.domain.enums.Environment;
+import com.triobase.common.openapi.enums.Environment;
 import com.triobase.service.openapi.dto.*;
 import com.triobase.service.openapi.service.*;
 import jakarta.validation.Valid;

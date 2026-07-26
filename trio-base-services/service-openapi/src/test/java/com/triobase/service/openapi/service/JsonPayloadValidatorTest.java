@@ -1,6 +1,7 @@
 package com.triobase.service.openapi.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.triobase.common.openapi.mapping.JsonPayloadValidator;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

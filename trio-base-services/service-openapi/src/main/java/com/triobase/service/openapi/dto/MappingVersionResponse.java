@@ -1,8 +1,9 @@
 package com.triobase.service.openapi.dto;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.triobase.common.openapi.enums.VersionLifecycleState;
+import com.triobase.common.openapi.mapping.MappingRuleRequest;
 import com.triobase.service.openapi.domain.enums.MappingDirection;
-import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
 
 import java.util.List;
 

@@ -407,7 +407,7 @@ def build_assistant_graph(
             "events": [
                 _event(
                     AgentEventType.MESSAGE_DELTA,
-                    {"text": "当前仅支持请假申请；费用报销和知识问答将在后续启用。"},
+                    {"text": "当前支持请假申请和费用报销；知识问答和更多业务场景将在后续启用。"},
                 ),
                 _event(AgentEventType.RUN_COMPLETED, {"status": "UNSUPPORTED"}),
             ],

@@ -36,19 +36,79 @@ export namespace OpenApiOperationsApi {
     workflowId?: string;
   }
 
+  export interface ExecutionStepAttempt {
+    actionActorId?: string;
+    actionActorName?: string;
+    actionActorType?: string;
+    actionCorrelationId?: string;
+    actionId?: string;
+    actionSource?: string;
+    actionTraceId?: string;
+    actionType?: string;
+    attemptNumber?: number;
+    attemptState?: string;
+    completedAt?: string;
+    createdAt?: string;
+    durationMillis?: number;
+    errorCode?: string;
+    evidence?: Record<string, unknown>;
+    executionId: string;
+    externalStatus?: number;
+    id: string;
+    sanitizedError?: string;
+    startedAt?: string;
+    stepKey?: string;
+    stepType?: string;
+  }
+
+  export interface ExecutionDetail {
+    attempts: ExecutionStepAttempt[];
+    execution: Execution;
+  }
+
+  export interface DiagnosticCaptureRequest {
+    redactionPolicy?: Record<string, unknown>;
+    requestPayload?: Record<string, unknown>;
+    responsePayload?: Record<string, unknown>;
+  }
+
+  export interface DiagnosticCaptureResponse {
+    diagnosticId: string;
+    executionId: string;
+    expiresAt: string;
+  }
+
   export interface CallbackInbox {
+    actionActorId?: string;
+    actionActorName?: string;
+    actionActorType?: string;
+    actionCorrelationId?: string;
+    actionId?: string;
+    actionSource?: string;
+    actionTraceId?: string;
+    actionType?: string;
     applicationClientId: string;
+    bodyHash?: string;
     callbackProfileVersionId: string;
     correlationValue: string;
     executionId?: string;
     id: string;
     inboxState: string;
+    lastSignalError?: string;
+    mappedPayload?: Record<string, unknown>;
+    nextSignalAt?: string;
     partnerEventId: string;
     quarantineReason?: string;
     receivedAt: string;
+    resolvedAt?: string;
+    resolvedBy?: string;
+    resolutionState?: string;
     resolutionNote?: string;
+    retentionUntil?: string;
+    signalName?: string;
     signalAttempts: number;
     tenantId: string;
+    updatedAt?: string;
   }
 
   export interface LifecycleAsset {
@@ -170,6 +230,22 @@ async function getOpenApiExecutions(params?: Record<string, any>) {
   );
 }
 
+async function getOpenApiExecutionDetail(executionId: string) {
+  return requestClient.get<OpenApiOperationsApi.ExecutionDetail>(
+    `/openapi/management/executions/${executionId}`,
+  );
+}
+
+async function captureOpenApiExecutionDiagnostic(
+  executionId: string,
+  data: OpenApiOperationsApi.DiagnosticCaptureRequest,
+) {
+  return requestClient.post<OpenApiOperationsApi.DiagnosticCaptureResponse>(
+    `/openapi/management/executions/${executionId}/diagnostics`,
+    data,
+  );
+}
+
 async function getCallbackQuarantine(params?: Record<string, any>) {
   return requestClient.get<OpenApiOperationsApi.CallbackInbox[]>(
     '/openapi/management/callback-quarantine',
@@ -188,9 +264,11 @@ async function resolveCallbackQuarantine(
 }
 
 export {
+  captureOpenApiExecutionDiagnostic,
   getCallbackQuarantine,
   getLifecycleAssets,
   getLifecycleReadiness,
+  getOpenApiExecutionDetail,
   getOpenApiLifecycleData,
   getOpenApiExecutions,
   invokeOpenApiLifecycleAction,

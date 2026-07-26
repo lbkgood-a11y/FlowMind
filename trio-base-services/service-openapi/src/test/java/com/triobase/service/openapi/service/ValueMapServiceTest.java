@@ -7,7 +7,7 @@ import com.triobase.service.openapi.domain.entity.ValueMapEntry;
 import com.triobase.service.openapi.domain.entity.ValueMapSet;
 import com.triobase.service.openapi.domain.entity.ValueMapVersion;
 import com.triobase.service.openapi.domain.enums.UnmappedValuePolicy;
-import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
+import com.triobase.common.openapi.enums.VersionLifecycleState;
 import com.triobase.service.openapi.dto.CreateValueMapRequest;
 import com.triobase.service.openapi.infrastructure.mapper.ValueMapEntryMapper;
 import com.triobase.service.openapi.infrastructure.mapper.ValueMapSetMapper;

@@ -1,8 +1,8 @@
 package com.triobase.service.lowcode.controller;
 
 import com.triobase.common.core.result.R;
-import com.triobase.service.lowcode.dto.FormValidationErrorResponse;
-import com.triobase.service.lowcode.exception.FormDataValidationException;
+import com.triobase.common.dto.form.FormValidationErrorResponse;
+import com.triobase.common.dto.form.FormDataValidationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 

@@ -1,6 +1,7 @@
 package com.triobase.service.openapi.integration.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.triobase.common.openapi.integration.SensitiveDataRedactor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

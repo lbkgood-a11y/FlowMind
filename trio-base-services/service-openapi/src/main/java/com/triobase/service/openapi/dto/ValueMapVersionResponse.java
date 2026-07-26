@@ -1,7 +1,7 @@
 package com.triobase.service.openapi.dto;
 
 import com.triobase.service.openapi.domain.enums.UnmappedValuePolicy;
-import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
+import com.triobase.common.openapi.enums.VersionLifecycleState;
 
 import java.util.List;
 

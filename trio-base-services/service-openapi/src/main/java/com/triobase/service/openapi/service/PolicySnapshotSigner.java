@@ -1,5 +1,5 @@
 package com.triobase.service.openapi.service;
-import com.triobase.service.openapi.integration.credential.CredentialProvider;
+import com.triobase.common.openapi.credential.CredentialProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import javax.crypto.Mac;

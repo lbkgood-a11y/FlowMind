@@ -4,11 +4,14 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
-import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
+import com.triobase.common.action.model.ActionCandidate;
+import com.triobase.common.action.model.ActionCandidateBatchRequest;
+import com.triobase.common.action.model.GlobalActionRequest;
 import com.triobase.common.archunit.ActionMutationEndpointRule;
 import com.triobase.common.core.result.R;
-import com.triobase.service.lowcode.action.LowcodeActionOwnerController;
+import com.triobase.service.lowcode.action.LowcodeOwnerHostedActionController;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -30,21 +33,35 @@ class LowcodeActionArchitectureTest {
                     "FormDefinitionController"));
 
     @Test
-    void actionOwnerControllerExposesStandardInternalEndpoints() throws NoSuchMethodException {
-        assertStandardActionOwnerEndpoints(LowcodeActionOwnerController.class);
+    void ownerHostedActionControllerExposesStandardEndpoints() throws NoSuchMethodException {
+        assertStandardOwnerHostedEndpoints(LowcodeOwnerHostedActionController.class,
+                "/api/v1/lowcode-runtime/actions");
     }
 
-    private void assertStandardActionOwnerEndpoints(Class<?> controllerType) throws NoSuchMethodException {
+    private void assertStandardOwnerHostedEndpoints(Class<?> controllerType, String path) throws NoSuchMethodException {
         RequestMapping requestMapping = controllerType.getAnnotation(RequestMapping.class);
         assertThat(requestMapping).isNotNull();
-        assertThat(requestMapping.value()).contains("/internal/v1/actions");
-        assertPostEndpoint(controllerType, "execute", "/execute");
-        assertPostEndpoint(controllerType, "guard", "/guard");
+        assertThat(requestMapping.value()).contains(path);
+        assertGetEndpoint(controllerType, "definitions", "/definitions");
+        assertPostEndpoint(controllerType, "validate", "/candidates/validate", ActionCandidate.class);
+        assertPostEndpoint(controllerType, "validateBatch", "/candidates/batch-validate",
+                ActionCandidateBatchRequest.class);
+        assertPostEndpoint(controllerType, "dispatchCandidate", "/candidates/dispatch", ActionCandidate.class);
+        assertPostEndpoint(controllerType, "dispatch", "/dispatch", GlobalActionRequest.class);
     }
 
-    private void assertPostEndpoint(Class<?> controllerType, String methodName, String path)
+    private void assertGetEndpoint(Class<?> controllerType, String methodName, String path)
             throws NoSuchMethodException {
-        Method method = controllerType.getDeclaredMethod(methodName, ActionOwnerDispatchRequest.class);
+        Method method = controllerType.getDeclaredMethod(methodName);
+        GetMapping getMapping = method.getAnnotation(GetMapping.class);
+        assertThat(getMapping).isNotNull();
+        assertThat(getMapping.value()).contains(path);
+        assertThat(method.getReturnType()).isEqualTo(R.class);
+    }
+
+    private void assertPostEndpoint(Class<?> controllerType, String methodName, String path, Class<?> requestType)
+            throws NoSuchMethodException {
+        Method method = controllerType.getDeclaredMethod(methodName, requestType);
         PostMapping postMapping = method.getAnnotation(PostMapping.class);
         assertThat(postMapping).isNotNull();
         assertThat(postMapping.value()).contains(path);

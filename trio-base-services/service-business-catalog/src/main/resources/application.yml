@@ -6,6 +6,10 @@ spring:
     name: service-business-catalog
   config:
     import: optional:nacos:${spring.application.name}.yml
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=500,expireAfterWrite=5m
   datasource:
     url: ${BUSINESS_CATALOG_DB_URL:jdbc:postgresql://localhost:5433/triobase}
     username: ${BUSINESS_CATALOG_DB_USERNAME:triobase}
@@ -37,7 +41,7 @@ mybatis-plus:
 triobase:
   internal:
     token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
-    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-action,service-lowcode,service-workflow-engine,service-openapi,service-auth,platform-gateway}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-lowcode,service-workflow-engine,service-openapi,service-api-runtime,service-auth,platform-gateway}
 
 logging:
   level:

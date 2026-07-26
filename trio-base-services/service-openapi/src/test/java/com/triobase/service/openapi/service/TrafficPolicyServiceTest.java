@@ -2,7 +2,7 @@ package com.triobase.service.openapi.service;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.service.openapi.domain.entity.TrafficPolicyVersion;
-import com.triobase.service.openapi.domain.enums.Environment;
+import com.triobase.common.openapi.enums.Environment;
 import com.triobase.service.openapi.domain.enums.PolicyScopeType;
 import com.triobase.service.openapi.infrastructure.mapper.TrafficPolicyVersionMapper;
 import org.junit.jupiter.api.Test;

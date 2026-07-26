@@ -7,7 +7,6 @@ import com.triobase.common.action.enums.ActionStatus;
 import com.triobase.common.action.model.ActionError;
 import com.triobase.common.action.model.GlobalActionRequest;
 import com.triobase.common.action.model.GlobalActionResult;
-import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
 import com.triobase.service.lowcode.dto.FormInstanceResponse;
 import com.triobase.service.lowcode.service.ApplicationRuntimeService;
 import org.junit.jupiter.api.Test;
@@ -92,11 +91,11 @@ class LowcodeActionOwnerExecutionServiceTest {
         assertEquals("LOWCODE_ACTION_UNSUPPORTED", response.getMessage());
     }
 
-    private ActionOwnerDispatchRequest request(String actionType, String actionCode) {
-        ActionOwnerDispatchRequest request = new ActionOwnerDispatchRequest();
+    private GlobalActionRequest request(String actionType, String actionCode) {
+        GlobalActionRequest request = new GlobalActionRequest();
         request.setActionId("act_001");
         request.setActionType(actionType);
-        request.setOwnerService("service-lowcode");
+        request.getTarget().setOwnerService("service-lowcode");
         request.setSource(ActionSource.GUI);
         request.setExecutionMode(ActionExecutionMode.SYNC);
         request.setIdempotencyKey("idem-001");

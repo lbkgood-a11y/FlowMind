@@ -1,6 +1,6 @@
 package com.triobase.service.openapi.integration.http;
 
-import com.triobase.service.openapi.domain.entity.ConnectorVersion;
+import com.triobase.common.openapi.entity.ConnectorVersion;
 
 import java.net.URI;
 

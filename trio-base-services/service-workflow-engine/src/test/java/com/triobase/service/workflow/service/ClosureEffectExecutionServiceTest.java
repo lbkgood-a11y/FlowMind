@@ -1,12 +1,13 @@
 package com.triobase.service.workflow.service;
 
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.action.enums.ActionActorType;
 import com.triobase.common.action.enums.ActionSource;
 import com.triobase.common.action.model.ActionActor;
 import com.triobase.common.action.model.ActionContext;
-import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
-import com.triobase.service.workflow.action.WorkflowActionExecutionContext;
+import com.triobase.common.action.model.GlobalActionRequest;
+import com.triobase.common.action.runtime.ActionExecutionContext;
 import com.triobase.service.workflow.entity.ClosureEffect;
 import com.triobase.service.workflow.entity.ClosureOutbox;
 import com.triobase.service.workflow.entity.ProcessClosure;
@@ -22,6 +23,9 @@ import com.triobase.service.workflow.mapper.ClosureEffectMapper;
 import com.triobase.service.workflow.mapper.ClosureOutboxMapper;
 import com.triobase.service.workflow.mapper.ProcessClosureMapper;
 import com.triobase.service.workflow.mapper.ProcessOutcomeMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.ibatis.session.Configuration;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.mockito.ArgumentCaptor;
@@ -53,9 +57,21 @@ class ClosureEffectExecutionServiceTest {
             executorRegistry,
             new ObjectMapper());
 
+    @BeforeAll
+    static void initMybatisPlusTableInfo() {
+        initTableInfo(ClosureEffectMapper.class.getName(), ClosureEffect.class);
+        initTableInfo(ClosureOutboxMapper.class.getName(), ClosureOutbox.class);
+    }
+
+    private static void initTableInfo(String namespace, Class<?> entityType) {
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(new Configuration(), "");
+        assistant.setCurrentNamespace(namespace);
+        TableInfoHelper.initTableInfo(assistant, entityType);
+    }
+
     @AfterEach
     void tearDown() {
-        WorkflowActionExecutionContext.clear();
+        ActionExecutionContext.clear();
     }
 
     @Test
@@ -241,7 +257,7 @@ class ClosureEffectExecutionServiceTest {
         when(processClosureMapper.selectById("CLO001")).thenReturn(closure);
         when(closureOutboxMapper.selectList(any())).thenReturn(List.of(outbox));
         when(closureEffectMapper.selectList(any())).thenReturn(List.of(effect));
-        WorkflowActionExecutionContext.set(ownerRequest());
+        ActionExecutionContext.set(ownerRequest());
 
         ClosureEffect result = service.markManuallyHandled(
                 "EFF001",
@@ -302,8 +318,8 @@ class ClosureEffectExecutionServiceTest {
         return outcome;
     }
 
-    private ActionOwnerDispatchRequest ownerRequest() {
-        ActionOwnerDispatchRequest request = new ActionOwnerDispatchRequest();
+    private GlobalActionRequest ownerRequest() {
+        GlobalActionRequest request = new GlobalActionRequest();
         request.setActionId("act_closure_001");
         request.setActionType("process.closure.effect.markHandled");
         request.setSource(ActionSource.GUI);

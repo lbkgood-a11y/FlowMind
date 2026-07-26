@@ -1,5 +1,7 @@
 package com.triobase.service.auth.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -37,7 +39,7 @@ public class RoleService {
     public List<SysRole> list(String keyword, Integer status) {
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<SysRole>()
                 .orderByDesc(SysRole::getCreatedAt);
-        String normalizedKeyword = normalizeBlank(keyword);
+        String normalizedKeyword = StringHelpers.normalizeBlank(keyword);
         if (normalizedKeyword != null) {
             wrapper.and(query -> query
                     .like(SysRole::getRoleCode, normalizedKeyword)
@@ -62,7 +64,7 @@ public class RoleService {
                                     LocalDateTime createdEnd) {
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<SysRole>()
                 .orderByDesc(SysRole::getCreatedAt);
-        String normalizedKeyword = normalizeBlank(keyword);
+        String normalizedKeyword = StringHelpers.normalizeBlank(keyword);
         if (normalizedKeyword != null) {
             wrapper.and(query -> query
                     .like(SysRole::getRoleCode, normalizedKeyword)
@@ -71,11 +73,11 @@ public class RoleService {
                     .or()
                     .like(SysRole::getDescription, normalizedKeyword));
         }
-        String normalizedRoleCode = normalizeBlank(roleCode);
+        String normalizedRoleCode = StringHelpers.normalizeBlank(roleCode);
         if (normalizedRoleCode != null) {
             wrapper.like(SysRole::getRoleCode, normalizedRoleCode);
         }
-        String normalizedRoleName = normalizeBlank(roleName);
+        String normalizedRoleName = StringHelpers.normalizeBlank(roleName);
         if (normalizedRoleName != null) {
             wrapper.like(SysRole::getRoleName, normalizedRoleName);
         }
@@ -103,7 +105,7 @@ public class RoleService {
     }
 
     public boolean existsRoleCode(String roleCode, String excludeId) {
-        String normalizedCode = normalizeBlank(roleCode);
+        String normalizedCode = StringHelpers.normalizeBlank(roleCode);
         if (normalizedCode == null) {
             return false;
         }
@@ -119,7 +121,7 @@ public class RoleService {
         role.setId(UlidGenerator.nextUlid());
         role.setRoleCode(request.getRoleCode().trim());
         role.setRoleName(request.getRoleName().trim());
-        role.setDescription(normalizeBlank(request.getDescription()));
+        role.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         role.setStatus(toStatus(request.getStatus()));
         roleMapper.insert(role);
         return role;
@@ -146,7 +148,7 @@ public class RoleService {
         }
         validateRequired(role.getRoleCode(), request.getRoleName());
         role.setRoleName(request.getRoleName().trim());
-        role.setDescription(normalizeBlank(request.getDescription()));
+        role.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         if (request.getStatus() != null) {
             role.setStatus(toStatus(request.getStatus()));
         }
@@ -172,7 +174,7 @@ public class RoleService {
     }
 
     private void validateUniqueRoleCode(String roleCode, String currentId) {
-        String normalizedCode = normalizeBlank(roleCode);
+        String normalizedCode = StringHelpers.normalizeBlank(roleCode);
         if (normalizedCode != null && countRoleCode(normalizedCode, currentId) > 0) {
             throw new BizException(40042, "ROLE_CODE_ALREADY_EXISTS");
         }
@@ -191,7 +193,4 @@ public class RoleService {
         return status != null && status == 0 ? (short) 0 : (short) 1;
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 }

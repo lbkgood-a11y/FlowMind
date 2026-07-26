@@ -1,10 +1,10 @@
 package com.triobase.service.openapi.service;
 
 import com.triobase.common.core.context.SecurityContextHolder;
-import com.triobase.service.openapi.domain.entity.CallbackInbox;
-import com.triobase.service.openapi.domain.entity.IntegrationExecution;
-import com.triobase.service.openapi.domain.enums.CallbackInboxState;
-import com.triobase.service.openapi.domain.enums.ExecutionState;
+import com.triobase.common.openapi.entity.CallbackInbox;
+import com.triobase.common.openapi.entity.IntegrationExecution;
+import com.triobase.common.openapi.enums.CallbackInboxState;
+import com.triobase.common.openapi.enums.ExecutionState;
 import com.triobase.service.openapi.dto.ResolveCallbackQuarantineRequest;
 import com.triobase.service.openapi.infrastructure.mapper.CallbackInboxMapper;
 import com.triobase.service.openapi.infrastructure.mapper.IntegrationExecutionMapper;

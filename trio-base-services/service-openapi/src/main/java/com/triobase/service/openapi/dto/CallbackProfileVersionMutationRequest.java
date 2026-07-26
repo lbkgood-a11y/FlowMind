@@ -1,9 +1,9 @@
 package com.triobase.service.openapi.dto;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.triobase.service.openapi.domain.enums.AuthenticationType;
-import com.triobase.service.openapi.domain.enums.CallbackCorrelationType;
-import com.triobase.service.openapi.domain.enums.Environment;
+import com.triobase.common.openapi.enums.AuthenticationType;
+import com.triobase.common.openapi.enums.CallbackCorrelationType;
+import com.triobase.common.openapi.enums.Environment;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;

@@ -1,5 +1,7 @@
 package com.triobase.service.org.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.triobase.common.core.exception.BizException;
@@ -71,7 +73,7 @@ public class OrgUnitService {
                 .eq(SysOrgUnit::getTenantId, DEFAULT_TENANT)
                 .orderByAsc(SysOrgUnit::getTreePath)
                 .orderByAsc(SysOrgUnit::getSortOrder);
-        String normalizedKeyword = normalizeBlank(keyword);
+        String normalizedKeyword = StringHelpers.normalizeBlank(keyword);
         if (normalizedKeyword != null) {
             wrapper.and(query -> query
                     .like(SysOrgUnit::getUnitCode, normalizedKeyword)
@@ -80,7 +82,7 @@ public class OrgUnitService {
                     .or()
                     .like(SysOrgUnit::getDescription, normalizedKeyword));
         }
-        String normalizedUnitType = normalizeBlank(unitType);
+        String normalizedUnitType = StringHelpers.normalizeBlank(unitType);
         if (normalizedUnitType != null) {
             wrapper.eq(SysOrgUnit::getUnitType, normalizedUnitType);
         }
@@ -123,7 +125,7 @@ public class OrgUnitService {
         if (!StringUtils.hasText(request.getUnitCode()) || !StringUtils.hasText(request.getUnitName())) {
             throw new BizException(40041, "ORG_UNIT_CODE_NAME_REQUIRED");
         }
-        String dimensionCode = normalizeBlank(request.getDimensionCode()) != null
+        String dimensionCode = StringHelpers.normalizeBlank(request.getDimensionCode()) != null
                 ? request.getDimensionCode().trim()
                 : DEFAULT_DIMENSION_CODE;
 
@@ -149,7 +151,7 @@ public class OrgUnitService {
                 : null);
         unit.setUnitCode(request.getUnitCode());
         unit.setUnitName(request.getUnitName());
-        unit.setUnitType(normalizeBlank(request.getUnitType()) != null ? request.getUnitType().trim() : DEFAULT_UNIT_TYPE);
+        unit.setUnitType(StringHelpers.normalizeBlank(request.getUnitType()) != null ? request.getUnitType().trim() : DEFAULT_UNIT_TYPE);
         unit.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 100);
         unit.setStatus(Boolean.FALSE.equals(request.getEnabled()) ? (short) 0 : (short) 1);
         unit.setDescription(request.getDescription());
@@ -159,7 +161,7 @@ public class OrgUnitService {
         orgUnitMapper.insert(unit);
 
         SaveOrgRelationRequest relationRequest = new SaveOrgRelationRequest();
-        relationRequest.setParentUnitId(normalizeBlank(request.getParentId()));
+        relationRequest.setParentUnitId(StringHelpers.normalizeBlank(request.getParentId()));
         relationRequest.setSortOrder(unit.getSortOrder());
         relationRequest.setEnabled(unit.getStatus() == null || unit.getStatus() == 1);
         saveRelation(dimensionCode, unit.getId(), relationRequest);
@@ -176,10 +178,10 @@ public class OrgUnitService {
             throw new BizException(40041, "ORG_UNIT_CODE_NAME_REQUIRED");
         }
         unit.setUnitName(request.getUnitName().trim());
-        unit.setUnitType(normalizeBlank(request.getUnitType()) != null ? request.getUnitType().trim() : DEFAULT_UNIT_TYPE);
+        unit.setUnitType(StringHelpers.normalizeBlank(request.getUnitType()) != null ? request.getUnitType().trim() : DEFAULT_UNIT_TYPE);
         unit.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 100);
         unit.setStatus(Boolean.FALSE.equals(request.getEnabled()) ? (short) 0 : (short) 1);
-        unit.setDescription(normalizeBlank(request.getDescription()));
+        unit.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         orgUnitMapper.updateById(unit);
         return unit;
     }
@@ -213,7 +215,7 @@ public class OrgUnitService {
         if (child == null) {
             throw new BizException(40442, "ORG_UNIT_NOT_FOUND");
         }
-        String parentUnitId = normalizeBlank(request.getParentUnitId());
+        String parentUnitId = StringHelpers.normalizeBlank(request.getParentUnitId());
         SysOrgRelation parentRelation = null;
         if (parentUnitId != null) {
             if (parentUnitId.equals(childUnitId)) {
@@ -400,7 +402,7 @@ public class OrgUnitService {
         validatePrimaryAssignment(assignments, request.getPrimaryOrgUnitId());
 
         for (UserOrgAssignmentItem assignment : assignments) {
-            String orgUnitId = normalizeBlank(assignment.getOrgUnitId());
+            String orgUnitId = StringHelpers.normalizeBlank(assignment.getOrgUnitId());
             if (orgUnitId == null || orgUnitMapper.selectById(orgUnitId) == null) {
                 throw new BizException(40443, "ORG_UNIT_NOT_FOUND");
             }
@@ -422,8 +424,8 @@ public class OrgUnitService {
             relation.setDimensionId(dimension.getId());
             relation.setOrgUnitId(assignment.getOrgUnitId().trim());
             relation.setIsPrimary(Boolean.TRUE.equals(assignment.getPrimary()) ? (short) 1 : (short) 0);
-            relation.setPositionId(normalizeBlank(assignment.getPositionId()));
-            relation.setPositionName(normalizeBlank(assignment.getPositionName()));
+            relation.setPositionId(StringHelpers.normalizeBlank(assignment.getPositionId()));
+            relation.setPositionName(StringHelpers.normalizeBlank(assignment.getPositionName()));
             relation.setIsLeader(Boolean.TRUE.equals(assignment.getLeader()) ? (short) 1 : (short) 0);
             relation.setEffectiveFrom(assignment.getEffectiveFrom());
             relation.setEffectiveTo(assignment.getEffectiveTo());
@@ -449,7 +451,7 @@ public class OrgUnitService {
     }
 
     private SysOrgDimension findDimensionByCode(String dimensionCode) {
-        String normalizedCode = normalizeBlank(dimensionCode);
+        String normalizedCode = StringHelpers.normalizeBlank(dimensionCode);
         if (normalizedCode == null) {
             normalizedCode = DEFAULT_DIMENSION_CODE;
         }
@@ -474,17 +476,17 @@ public class OrgUnitService {
         List<UserOrgAssignmentItem> assignments = new ArrayList<>();
         if (request.getAssignments() != null && !request.getAssignments().isEmpty()) {
             for (UserOrgAssignmentItem assignment : request.getAssignments()) {
-                if (normalizeBlank(assignment.getOrgUnitId()) != null) {
+                if (StringHelpers.normalizeBlank(assignment.getOrgUnitId()) != null) {
                     assignment.setOrgUnitId(assignment.getOrgUnitId().trim());
                     assignments.add(assignment);
                 }
             }
         } else if (request.getOrgUnitIds() != null) {
             LinkedHashSet<String> orgUnitIds = request.getOrgUnitIds().stream()
-                    .map(this::normalizeBlank)
+                    .map(StringHelpers::normalizeBlank)
                     .filter(StringUtils::hasText)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
-            String primaryOrgUnitId = normalizeBlank(request.getPrimaryOrgUnitId());
+            String primaryOrgUnitId = StringHelpers.normalizeBlank(request.getPrimaryOrgUnitId());
             boolean hasExplicitPrimary = primaryOrgUnitId != null;
             int index = 0;
             for (String orgUnitId : orgUnitIds) {
@@ -503,11 +505,11 @@ public class OrgUnitService {
     }
 
     private void validatePrimaryAssignment(List<UserOrgAssignmentItem> assignments, String primaryOrgUnitId) {
-        String normalizedPrimaryOrgUnitId = normalizeBlank(primaryOrgUnitId);
+        String normalizedPrimaryOrgUnitId = StringHelpers.normalizeBlank(primaryOrgUnitId);
         Map<String, UserOrgAssignmentItem> byOrgUnitId = new LinkedHashMap<>();
         int primaryCount = 0;
         for (UserOrgAssignmentItem assignment : assignments) {
-            String orgUnitId = normalizeBlank(assignment.getOrgUnitId());
+            String orgUnitId = StringHelpers.normalizeBlank(assignment.getOrgUnitId());
             if (orgUnitId == null) {
                 continue;
             }
@@ -533,7 +535,4 @@ public class OrgUnitService {
         return status != null && status == 0 ? (short) 0 : (short) 1;
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 }

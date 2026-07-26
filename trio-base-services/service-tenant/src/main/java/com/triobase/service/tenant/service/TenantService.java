@@ -1,5 +1,7 @@
 package com.triobase.service.tenant.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -56,7 +58,7 @@ public class TenantService {
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 200);
         String normalizedStatus = normalizeStatus(status, false);
-        String normalizedKeyword = normalizeBlank(keyword);
+        String normalizedKeyword = StringHelpers.normalizeBlank(keyword);
         LambdaQueryWrapper<SysTenant> wrapper = new LambdaQueryWrapper<SysTenant>()
                 .eq(!isPlatformAdmin(), SysTenant::getId, currentTenantId())
                 .eq(normalizedStatus != null, SysTenant::getStatus, normalizedStatus)
@@ -110,21 +112,21 @@ public class TenantService {
         tenant.setId(tenantId);
         tenant.setTenantCode(tenantId);
         tenant.setTenantName(request.getTenantName().trim());
-        tenant.setShortName(normalizeBlank(request.getShortName()));
+        tenant.setShortName(StringHelpers.normalizeBlank(request.getShortName()));
         tenant.setTenantType(normalizeTenantType(request.getTenantType()));
         tenant.setStatus(STATUS_ACTIVE);
         tenant.setIsolationMode(ISOLATION_SHARED_SCHEMA);
-        tenant.setContactName(normalizeBlank(request.getContactName()));
-        tenant.setContactEmail(normalizeBlank(request.getContactEmail()));
-        tenant.setContactPhone(normalizeBlank(request.getContactPhone()));
-        tenant.setRegion(normalizeBlank(request.getRegion()));
+        tenant.setContactName(StringHelpers.normalizeBlank(request.getContactName()));
+        tenant.setContactEmail(StringHelpers.normalizeBlank(request.getContactEmail()));
+        tenant.setContactPhone(StringHelpers.normalizeBlank(request.getContactPhone()));
+        tenant.setRegion(StringHelpers.normalizeBlank(request.getRegion()));
         tenant.setTimezone(defaultIfBlank(request.getTimezone(), "Asia/Shanghai"));
         tenant.setLocale(defaultIfBlank(request.getLocale(), "zh-CN"));
-        tenant.setIndustry(normalizeBlank(request.getIndustry()));
+        tenant.setIndustry(StringHelpers.normalizeBlank(request.getIndustry()));
         tenant.setPlanCode(defaultIfBlank(request.getPlanCode(), "BASIC").toUpperCase(Locale.ROOT));
         tenant.setMaxUsers(normalizeMaxUsers(request.getMaxUsers()));
         tenant.setExpireAt(request.getExpireAt());
-        tenant.setAttributesJson(normalizeBlank(request.getAttributesJson()));
+        tenant.setAttributesJson(StringHelpers.normalizeBlank(request.getAttributesJson()));
         tenantMapper.insert(tenant);
         return TenantResponse.from(tenant);
     }
@@ -160,7 +162,7 @@ public class TenantService {
         }
         tenant.setStatus(normalizedStatus);
         tenant.setSuspendedReason(STATUS_SUSPENDED.equals(normalizedStatus)
-                ? normalizeBlank(request.getReason())
+                ? StringHelpers.normalizeBlank(request.getReason())
                 : null);
         tenantMapper.updateById(tenant);
         return TenantResponse.from(tenant);
@@ -204,7 +206,7 @@ public class TenantService {
         setting.setValueType(valueType);
         setting.setSensitiveFlag(Boolean.TRUE.equals(request.getSensitive()) ? (short) 1 : (short) 0);
         setting.setStatus(Boolean.FALSE.equals(request.getEnabled()) ? (short) 0 : (short) 1);
-        setting.setDescription(normalizeBlank(request.getDescription()));
+        setting.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         if (create) {
             settingMapper.insert(setting);
         } else {
@@ -257,22 +259,22 @@ public class TenantService {
 
     private void applyCommonUpdates(SysTenant tenant, UpdateTenantRequest request) {
         if (request.getShortName() != null) {
-            tenant.setShortName(normalizeBlank(request.getShortName()));
+            tenant.setShortName(StringHelpers.normalizeBlank(request.getShortName()));
         }
         if (request.getTenantType() != null) {
             tenant.setTenantType(normalizeTenantType(request.getTenantType()));
         }
         if (request.getContactName() != null) {
-            tenant.setContactName(normalizeBlank(request.getContactName()));
+            tenant.setContactName(StringHelpers.normalizeBlank(request.getContactName()));
         }
         if (request.getContactEmail() != null) {
-            tenant.setContactEmail(normalizeBlank(request.getContactEmail()));
+            tenant.setContactEmail(StringHelpers.normalizeBlank(request.getContactEmail()));
         }
         if (request.getContactPhone() != null) {
-            tenant.setContactPhone(normalizeBlank(request.getContactPhone()));
+            tenant.setContactPhone(StringHelpers.normalizeBlank(request.getContactPhone()));
         }
         if (request.getRegion() != null) {
-            tenant.setRegion(normalizeBlank(request.getRegion()));
+            tenant.setRegion(StringHelpers.normalizeBlank(request.getRegion()));
         }
         if (request.getTimezone() != null) {
             tenant.setTimezone(defaultIfBlank(request.getTimezone(), "Asia/Shanghai"));
@@ -281,7 +283,7 @@ public class TenantService {
             tenant.setLocale(defaultIfBlank(request.getLocale(), "zh-CN"));
         }
         if (request.getIndustry() != null) {
-            tenant.setIndustry(normalizeBlank(request.getIndustry()));
+            tenant.setIndustry(StringHelpers.normalizeBlank(request.getIndustry()));
         }
         if (request.getPlanCode() != null) {
             tenant.setPlanCode(defaultIfBlank(request.getPlanCode(), "BASIC").toUpperCase(Locale.ROOT));
@@ -293,7 +295,7 @@ public class TenantService {
             tenant.setExpireAt(request.getExpireAt());
         }
         if (request.getAttributesJson() != null) {
-            tenant.setAttributesJson(normalizeBlank(request.getAttributesJson()));
+            tenant.setAttributesJson(StringHelpers.normalizeBlank(request.getAttributesJson()));
         }
     }
 
@@ -331,7 +333,7 @@ public class TenantService {
     }
 
     private String normalizeTenantId(String tenantId) {
-        String normalized = normalizeBlank(tenantId);
+        String normalized = StringHelpers.normalizeBlank(tenantId);
         return normalized != null ? normalized.toLowerCase(Locale.ROOT) : null;
     }
 
@@ -372,7 +374,7 @@ public class TenantService {
     }
 
     private String normalizeSettingKey(String settingKey) {
-        String normalized = normalizeBlank(settingKey);
+        String normalized = StringHelpers.normalizeBlank(settingKey);
         if (normalized == null || !SETTING_KEY_PATTERN.matcher(normalized).matches()) {
             throw new BizException(40070, "TENANT_SETTING_KEY_INVALID");
         }
@@ -416,11 +418,8 @@ public class TenantService {
     }
 
     private String defaultIfBlank(String value, String defaultValue) {
-        String normalized = normalizeBlank(value);
+        String normalized = StringHelpers.normalizeBlank(value);
         return normalized != null ? normalized : defaultValue;
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 }

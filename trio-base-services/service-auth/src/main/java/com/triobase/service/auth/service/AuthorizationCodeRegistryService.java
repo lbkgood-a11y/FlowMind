@@ -1,5 +1,7 @@
 package com.triobase.service.auth.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.service.auth.entity.SysAuthAction;
 import com.triobase.service.auth.entity.SysAuthResource;
@@ -57,8 +59,8 @@ public class AuthorizationCodeRegistryService {
         if (separator <= 0 || separator >= permissionCode.length() - 1) {
             return null;
         }
-        String resourceCode = normalizeBlank(permissionCode.substring(0, separator));
-        String actionCode = normalizeBlank(permissionCode.substring(separator + 1));
+        String resourceCode = StringHelpers.normalizeBlank(permissionCode.substring(0, separator));
+        String actionCode = StringHelpers.normalizeBlank(permissionCode.substring(separator + 1));
         return resourceCode != null && actionCode != null
                 ? new PermissionKey(resourceCode, actionCode)
                 : null;
@@ -74,9 +76,6 @@ public class AuthorizationCodeRegistryService {
                 .collect(Collectors.toCollection(TreeSet::new));
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 
     private record PermissionKey(String resourceCode, String actionCode) {
     }

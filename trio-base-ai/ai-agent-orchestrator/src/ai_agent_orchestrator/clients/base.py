@@ -67,13 +67,37 @@ class GovernedHttpClient:
                 code, status_code=response.status_code, retryable=response.status_code >= 500
             )
         payload = response.json()
-        if (
-            isinstance(payload, dict)
-            and "data" in payload
-            and ("code" in payload or "success" in payload)
-        ):
-            return payload["data"]
+        if isinstance(payload, dict) and ("code" in payload or "success" in payload):
+            if not _wrapped_response_success(payload):
+                raise GovernedClientError(
+                    _bounded_payload_error_code(payload),
+                    status_code=response.status_code,
+                    retryable=False,
+                )
+            return payload.get("data")
         return payload
+
+
+def _wrapped_response_success(payload: dict[str, Any]) -> bool:
+    success = payload.get("success")
+    if success is False:
+        return False
+    code = payload.get("code")
+    if code is None:
+        return success is not False
+    return str(code) == "0"
+
+
+def _bounded_payload_error_code(payload: dict[str, Any]) -> str:
+    for key in ("error", "message", "code"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            normalized = _normalize_error_code(value)
+            if normalized:
+                return normalized
+        if isinstance(value, int):
+            return f"DOWNSTREAM_CODE_{value}"
+    return "DOWNSTREAM_BUSINESS_ERROR"
 
 
 def _bounded_error_code(response: httpx.Response) -> str:
@@ -85,9 +109,11 @@ def _bounded_error_code(response: httpx.Response) -> str:
         for key in ("error", "code", "message"):
             value = payload.get(key)
             if isinstance(value, str) and value and len(value) <= 128:
-                normalized = "".join(
-                    character for character in value if character.isalnum() or character in "_-."
-                )
+                normalized = _normalize_error_code(value)
                 if normalized:
                     return normalized[:128]
     return f"DOWNSTREAM_HTTP_{response.status_code}"
+
+
+def _normalize_error_code(value: str) -> str:
+    return "".join(character for character in value if character.isalnum() or character in "_-.")[:128]

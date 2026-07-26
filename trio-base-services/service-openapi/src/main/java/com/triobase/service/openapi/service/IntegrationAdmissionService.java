@@ -11,16 +11,18 @@ import com.triobase.service.openapi.domain.entity.CredentialBinding;
 import com.triobase.service.openapi.domain.entity.PolicyEnforcementState;
 import com.triobase.service.openapi.domain.entity.ProductSubscription;
 import com.triobase.service.openapi.domain.enums.ApplicationLifecycleState;
-import com.triobase.service.openapi.domain.enums.AuthenticationType;
+import com.triobase.common.openapi.enums.AuthenticationType;
 import com.triobase.service.openapi.domain.enums.CredentialBindingState;
-import com.triobase.service.openapi.domain.enums.Environment;
+import com.triobase.common.openapi.enums.Environment;
 import com.triobase.service.openapi.dto.EffectiveTrafficPolicy;
 import com.triobase.service.openapi.infrastructure.mapper.ApiProductVersionMapper;
 import com.triobase.service.openapi.infrastructure.mapper.ApplicationClientMapper;
 import com.triobase.service.openapi.infrastructure.mapper.CredentialBindingMapper;
-import com.triobase.service.openapi.integration.credential.CredentialMaterial;
-import com.triobase.service.openapi.integration.credential.CredentialProvider;
+import com.triobase.common.openapi.credential.CredentialMaterial;
+import com.triobase.common.openapi.credential.CredentialProvider;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +43,7 @@ import java.util.Locale;
 import java.util.Set;
 @Service @RequiredArgsConstructor
 public class IntegrationAdmissionService {
+ private static final Logger log=LoggerFactory.getLogger(IntegrationAdmissionService.class);
  private final ApplicationClientMapper clientMapper;private final CredentialBindingMapper bindingMapper;private final ApiProductVersionMapper productVersionMapper;
  private final CredentialProvider credentialProvider;private final ProductSubscriptionService subscriptionService;private final TrafficPolicyService trafficPolicyService;
  private final PolicySnapshotService snapshotService;private final NetworkPolicyMatcher networkMatcher;private final StringRedisTemplate redis;
@@ -55,7 +58,7 @@ public class IntegrationAdmissionService {
   ApiProductVersion productVersion=productVersionMapper.selectById(subscription.getApiProductVersionId());
   EffectiveTrafficPolicy effective=trafficPolicyService.resolve(r.tenantId(),env,client.getId(),productVersion.getApiProductId(),r.routeKey(),r.operation(),subscription.getId());
   return enforce(r,env,client,subscription.getId(),effective.policy());
- }catch(BizException e){int status=e.getCode()>=50300?503:403;return deny(status==503?"POLICY_UNAVAILABLE":"ACCESS_DENIED",status,0);}catch(Exception e){return deny("ADMISSION_UNAVAILABLE",503,0);}}
+ }catch(BizException e){int status=e.getCode()>=50300?503:403;return deny(status==503?"POLICY_UNAVAILABLE":"ACCESS_DENIED",status,0);}catch(Exception e){log.warn("OpenAPI admission unavailable tenant={} routeKey={} operation={}: {}",r!=null?r.tenantId():null,r!=null?r.routeKey():null,r!=null?r.operation():null,e.toString());return deny("ADMISSION_UNAVAILABLE",503,0);}}
  private IntegrationAdmissionDecision admitCallback(IntegrationAdmissionRequest r,Environment env,ApplicationClient client){CallbackProfileService.PublishedCallback callback=callbackProfileService.resolvePublished(r.routeKey(),r.tenantId(),env);if(!client.getId().equals(callback.version().getApplicationClientId()))return deny("ACCESS_DENIED",403,0);JsonNode policy=callback.version().getSecurityPolicy().deepCopy();if(policy.isObject()){((com.fasterxml.jackson.databind.node.ObjectNode)policy).put("maxBodyBytes",callback.version().getMaxBodyBytes());}return enforce(r,env,client,"CALLBACK:"+callback.version().getId(),policy);}
  private IntegrationAdmissionDecision enforce(IntegrationAdmissionRequest r,Environment env,ApplicationClient client,String subscriptionId,JsonNode policy){if(policy.path("requireTls").asBoolean(false)&&!r.tls())return deny("TLS_REQUIRED",403,0);long maxBody=policy.path("maxBodyBytes").asLong(Long.MAX_VALUE);if(r.contentLength()>maxBody)return deny("REQUEST_TOO_LARGE",413,0);if(!sourceAllowed(r.sourceIp(),policy.path("allowedNetworks"))){violation(client,"SOURCE_NETWORK_DENIED",policy);return deny("ACCESS_DENIED",403,0);}long retry=consumeLimits(r.tenantId(),client.getId(),r.routeKey(),policy);if(retry>0)return deny("RATE_LIMITED",429,retry);PolicyEnforcementState state=snapshotService.status("platform-gateway",r.tenantId(),env);return new IntegrationAdmissionDecision(true,200,"ALLOWED",r.tenantId(),client.getId(),subscriptionId,state.getAppliedPolicyVersion(),0,maxBody,policy.path("maxConcurrency").asLong(100),policy.path("maxActiveWorkflows").asLong(20));}
  private boolean authenticate(ApplicationClient client,IntegrationAdmissionRequest r){List<CredentialBinding> bindings=bindingMapper.selectList(new LambdaQueryWrapper<CredentialBinding>().eq(CredentialBinding::getApplicationClientId,client.getId()).in(CredentialBinding::getLifecycleState,CredentialBindingState.ACTIVE,CredentialBindingState.RETIRING));LocalDateTime now=LocalDateTime.now();return bindings.stream().filter(b->!now.isBefore(b.getValidFrom())&&(b.getExpiresAt()==null||now.isBefore(b.getExpiresAt()))&&(b.getRetirementAt()==null||now.isBefore(b.getRetirementAt()))).anyMatch(b->{try{return verify(b.getAuthenticationType(),credentialProvider.resolve(b.getSecretReference()),r);}catch(Exception e){return false;}});}

@@ -1,82 +1,84 @@
 # business-object-catalog Specification
 
 ## Purpose
-TBD - created by archiving change standardize-frontend-operation-and-business-action-contract. Update Purpose after archive.
+
+The Business Object Catalog defines process-aware business object metadata for workflow package design, runtime closure, permission mapping, and AI follow-up governance. The catalog is hosted by `service-workflow-engine` because the current metadata is tightly coupled to process launch, outcome, closure, and executor registration. `service-business-catalog` is not the object metadata owner; it owns only the document timeline projection read model.
+
 ## Requirements
-### Requirement: Platform catalog stores business object metadata
-The system SHALL maintain a platform-level Business Object Catalog for business object types, owner services, display metadata, status definitions, action definitions, field metadata, page metadata, permission mappings, and tenant overrides.
 
-#### Scenario: Register purchase order object
-- **WHEN** `service-scm` synchronizes a purchase order manifest
-- **THEN** the catalog stores the purchase order object type, owner service, display name, status groups, supported actions, page metadata, field metadata, and permission mappings
+### Requirement: Workflow engine owns process business object metadata
+The system SHALL store process business object metadata in `service-workflow-engine` using the `wf_biz_object*` tables and SHALL expose it through `/api/v1/process-business-objects`.
 
-#### Scenario: Query object metadata
-- **WHEN** the frontend opens a document page for a registered object type
-- **THEN** it can load the object metadata needed to render consistent status, actions, fields, page sections, and document chrome
+#### Scenario: Register process business object
+- **WHEN** an expense report or purchase order process object is published
+- **THEN** `service-workflow-engine` stores the object type, owner service code, version, status definitions, form bindings, permission mappings, business actions, domain events, Agent actions, and recommended templates
 
-### Requirement: Status groups are normalized across business domains
-The Business Object Catalog SHALL define normalized status groups for business documents while allowing owner services to expose domain-specific statuses.
+#### Scenario: Query process object metadata
+- **WHEN** the workflow designer opens a process package configuration page
+- **THEN** it loads published object metadata from `/api/v1/process-business-objects` and renders selectable statuses, forms, actions, events, permissions, and Agent follow-up options
+
+### Requirement: Service-business-catalog does not store object manifests
+The system SHALL NOT use `service-business-catalog` as the source of truth for business object manifests, object metadata, status options, field metadata, action metadata, page metadata, or tenant overrides.
+
+#### Scenario: Deprecated catalog storage removed
+- **WHEN** `service-business-catalog` starts after the refactor
+- **THEN** it has no `bc_business_object` runtime dependency and does not expose `/api/v1/business-catalog/**` object metadata APIs
+
+#### Scenario: Shared metadata bridge
+- **WHEN** another service needs shared process object metadata
+- **THEN** it calls a workflow-owned API or internal bridge such as `/internal/v1/workflow-business-catalog/objects/{typeCode}` instead of reading `service-business-catalog` storage
+
+### Requirement: Status groups are normalized across process business domains
+The Business Object Catalog SHALL define normalized status groups for process-enabled business documents while allowing owner services to expose domain-specific statuses.
 
 #### Scenario: Domain status maps to normalized group
-- **WHEN** a WMS inbound order has domain status `RECEIVING`
-- **THEN** the catalog or owner service maps it to a normalized status group that frontend page standards can understand
+- **WHEN** an expense report has domain status `IN_APPROVAL`
+- **THEN** the catalog maps it to a normalized status group that workflow runtime, frontend page standards, and closure policies can understand
 
 #### Scenario: Terminal status
 - **WHEN** a document status is marked terminal
-- **THEN** the frontend treats lifecycle actions and editing affordances according to the terminal status metadata unless backend action availability returns a more specific result
+- **THEN** workflow runtime and frontend affordances treat lifecycle actions and editing behavior according to the terminal status metadata unless owner-hosted action availability returns a more specific result
 
-### Requirement: Catalog exposes action metadata for rendering
-The Business Object Catalog SHALL expose action metadata including action code, Global Action type, display name, group, order, danger level, confirmation policy, default execution mode, owner service, and payload schema reference.
+### Requirement: Catalog exposes governed executor metadata
+The Business Object Catalog SHALL expose only governed executor metadata for process launch, closure effects, domain events, and Agent follow-up actions and SHALL NOT store arbitrary URLs, SQL, scripts, class names, or free Prompt execution definitions.
 
-#### Scenario: Render primary action
-- **WHEN** a document metadata response marks `SUBMIT` as a primary action
-- **THEN** the frontend renders it in the standard primary action position if action availability also marks it visible
+#### Scenario: Render process action option
+- **WHEN** a process designer selects an object action such as `updateStatus`
+- **THEN** the catalog provides action code, display name, action type, executor key, default mode, permission action, parameter schema, and sort order
 
-#### Scenario: Render more actions
-- **WHEN** a document has secondary or dangerous actions beyond the direct action limit
-- **THEN** the frontend renders them through the standard more-action surface using catalog ordering and grouping
+#### Scenario: Reject arbitrary execution definition
+- **WHEN** a catalog row attempts to define an arbitrary URL, SQL statement, dynamic class, script, or Prompt as executable behavior
+- **THEN** the catalog and runtime reject it because side effects must be implemented by registered code executors
 
-### Requirement: Catalog supports page and field metadata
-The Business Object Catalog SHALL expose page and field metadata required for consistent list pages, detail pages, query bars, document summary forms, editable grids, side panels, and timelines.
+### Requirement: Catalog supports forms, permissions, events, Agent actions, and templates
+The Business Object Catalog SHALL expose the metadata required for workflow design and runtime validation, including form bindings, permission mappings, domain events, Agent follow-up actions, and recommended templates.
 
-#### Scenario: Render document sections
-- **WHEN** a document page loads page metadata
-- **THEN** it renders configured sections using standard page pattern components without hard-coding page structure in each business module
+#### Scenario: Configure workflow package
+- **WHEN** a process package references a published business object type
+- **THEN** the workflow designer can select forms, status gates, permissions, outcome actions, events, Agent follow-ups, and templates from the catalog without hard-coding them in the frontend
 
-#### Scenario: Apply field metadata
-- **WHEN** a field is configured as required, readonly, hidden, masked, or grid-editable
-- **THEN** the frontend renders the field consistently and owner services enforce the field rule during writes
-
-### Requirement: Owner services synchronize catalog manifests
-Owner services SHALL synchronize catalog manifests through an internal contract so business object metadata can be registered, versioned, updated, and taken offline without manual frontend duplication.
-
-#### Scenario: Service publishes manifest
-- **WHEN** an owner service starts or publishes a business object version
-- **THEN** it synchronizes the object manifest to the Business Object Catalog with a stable version and owner-service identity
-
-#### Scenario: Manifest invalid
-- **WHEN** a manifest is missing required object type, owner service, status, or action metadata
-- **THEN** the catalog rejects the manifest and records diagnostics without publishing partial metadata
+#### Scenario: Validate closure policy
+- **WHEN** a workflow package is saved or published
+- **THEN** `service-workflow-engine` validates referenced statuses, permission actions, business action executors, domain events, and Agent action executors against the published catalog
 
 ### Requirement: Tenant-specific metadata overrides global defaults
-The Business Object Catalog SHALL support global defaults with tenant-scoped overrides and offline markers.
+The Business Object Catalog SHALL support `GLOBAL` defaults with tenant-scoped overrides and offline markers inside the workflow-owned catalog tables.
 
 #### Scenario: Tenant override
-- **WHEN** tenant `T1` overrides a global business object field label or available action configuration
-- **THEN** catalog reads for tenant `T1` return the tenant-specific metadata while other tenants continue to receive global defaults
+- **WHEN** tenant `T1` overrides a global business object status label, form binding, permission mapping, action, event, Agent action, or template
+- **THEN** catalog reads for tenant `T1` merge the tenant-specific child rows over the `GLOBAL` defaults while other tenants continue to receive global metadata
 
 #### Scenario: Tenant offline object
 - **WHEN** tenant `T1` marks a globally available object offline
 - **THEN** catalog reads for tenant `T1` omit or reject that object while global and other tenant reads remain unaffected
 
-### Requirement: Workflow engine consumes catalog instead of owning all business object metadata
-The system SHALL allow `service-workflow-engine` to consume and contribute Business Object Catalog metadata without being the exclusive owner of all business object definitions.
+### Requirement: Workflow catalog remains separate from document timeline projection
+The system SHALL keep workflow-owned process object metadata separate from `service-business-catalog` document timeline projection data.
 
-#### Scenario: Workflow uses catalog object
-- **WHEN** a process package references a registered business object type
-- **THEN** the workflow engine loads object actions, statuses, permissions, and form references from the catalog or synchronized local projection
+#### Scenario: Process metadata read
+- **WHEN** the frontend needs object metadata for workflow design
+- **THEN** it calls `/api/v1/process-business-objects/**` through `service-workflow-engine`
 
-#### Scenario: SCM object without workflow
-- **WHEN** an SCM document does not currently use an approval workflow
-- **THEN** the object can still be registered, rendered, authorized, and action-enabled through the Business Object Catalog
-
+#### Scenario: Document timeline read
+- **WHEN** the frontend needs a document timeline
+- **THEN** it calls `/api/v1/business-timeline` through `service-business-catalog`, which reads only `bc_document_timeline_event`

@@ -1,5 +1,6 @@
 package com.triobase.service.openapi.dto;
 
+import com.triobase.common.openapi.mapping.MappingRuleRequest;
 import com.triobase.service.openapi.domain.enums.MappingDirection;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

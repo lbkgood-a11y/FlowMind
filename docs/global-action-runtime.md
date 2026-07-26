@@ -69,15 +69,14 @@ Action Runtime 先用 `(tenantId, actionType, idempotencyKey)` 防重复 dispatc
 
 ## 后端接入
 
-公共入口只允许：
+公共入口只允许 owner-hosted Action Runtime，例如：
 
-- `service-action` 的 Action facade
-- owner service 的 `/internal/v1/actions/execute`
+- `service-lowcode`: `/api/v1/lowcode-runtime/actions`
+- `service-workflow-engine`: `/api/v1/workflow-actions`
+- `service-openapi`: `/api/v1/openapi/management/actions`
 - 必要的内部服务接口，例如 workflow 内部启动接口
 
-迁移后的 public runtime/task/closure/form mutation endpoint 必须删除，或者作为非 public internal adapter 存在。新增 public mutation controller 需要通过 `ActionMutationEndpointRule` 架构测试。
-
-owner executor 只做业务所有权内的校验和执行，返回结构化 `ActionOwnerDispatchResponse`。guard 失败必须返回 `ActionErrorCategory.GUARD`，并包含 guard code/message。
+新增 public mutation controller 需要通过 `ActionMutationEndpointRule` 架构测试。owner executor 只做业务所有权内的校验和执行，guard 失败必须返回 `ActionErrorCategory.GUARD`，并包含 guard code/message。
 
 ## 前端接入
 

@@ -1,5 +1,7 @@
 package com.triobase.service.workflow.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -15,7 +17,7 @@ import com.triobase.service.workflow.dto.ProcessPackageDefinition;
 import com.triobase.service.workflow.dto.ProcessInstanceResponse;
 import com.triobase.service.workflow.dto.ProcessVersionConflictResponse;
 import com.triobase.service.workflow.dto.StartProcessRequest;
-import com.triobase.service.workflow.action.WorkflowActionExecutionContext;
+import com.triobase.common.action.runtime.ActionExecutionContext;
 import com.triobase.service.workflow.entity.ProcessInstance;
 import com.triobase.service.workflow.entity.ProcessPackage;
 import com.triobase.service.workflow.entity.NodeRecord;
@@ -109,7 +111,7 @@ public class ProcessInstanceService {
         instance.setBusinessType(businessLaunch.businessType());
         instance.setBusinessId(businessLaunch.businessId());
         instance.setLaunchMode(businessLaunch.launchMode());
-        instance.setLaunchIdempotencyKey(normalizeBlank(request.getIdempotencyKey()));
+        instance.setLaunchIdempotencyKey(StringHelpers.normalizeBlank(request.getIdempotencyKey()));
         instance.setInitiatorId(userId);
         instance.setInitiatorName(userName);
         instance.setStartedAt(LocalDateTime.now());
@@ -166,7 +168,7 @@ public class ProcessInstanceService {
     }
 
     private ProcessInstance findExistingLaunch(ProcessPackage pkg, StartProcessRequest request) {
-        String idempotencyKey = normalizeBlank(request.getIdempotencyKey());
+        String idempotencyKey = StringHelpers.normalizeBlank(request.getIdempotencyKey());
         if (idempotencyKey == null) {
             return null;
         }
@@ -288,12 +290,9 @@ public class ProcessInstanceService {
         return resp;
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 
     private void applyActionMetadata(ProcessInstance instance, StartProcessRequest request) {
-        WorkflowActionExecutionContext.Snapshot snapshot = WorkflowActionExecutionContext.current();
+        ActionExecutionContext.Snapshot snapshot = ActionExecutionContext.current();
         if (snapshot != null) {
             instance.setActionId(snapshot.actionId());
             instance.setActionType(snapshot.actionType());
@@ -305,13 +304,13 @@ public class ProcessInstanceService {
             instance.setActionCorrelationId(snapshot.correlationId());
             return;
         }
-        instance.setActionId(normalizeBlank(request.getActionId()));
-        instance.setActionType(normalizeBlank(request.getActionType()));
-        instance.setActionSource(normalizeBlank(request.getActionSource()));
-        instance.setActionActorType(normalizeBlank(request.getActionActorType()));
-        instance.setActionActorId(normalizeBlank(request.getActionActorId()));
-        instance.setActionActorName(normalizeBlank(request.getActionActorName()));
-        instance.setActionTraceId(normalizeBlank(request.getActionTraceId()));
-        instance.setActionCorrelationId(normalizeBlank(request.getActionCorrelationId()));
+        instance.setActionId(StringHelpers.normalizeBlank(request.getActionId()));
+        instance.setActionType(StringHelpers.normalizeBlank(request.getActionType()));
+        instance.setActionSource(StringHelpers.normalizeBlank(request.getActionSource()));
+        instance.setActionActorType(StringHelpers.normalizeBlank(request.getActionActorType()));
+        instance.setActionActorId(StringHelpers.normalizeBlank(request.getActionActorId()));
+        instance.setActionActorName(StringHelpers.normalizeBlank(request.getActionActorName()));
+        instance.setActionTraceId(StringHelpers.normalizeBlank(request.getActionTraceId()));
+        instance.setActionCorrelationId(StringHelpers.normalizeBlank(request.getActionCorrelationId()));
     }
 }

@@ -2,8 +2,10 @@ package com.triobase.service.openapi.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.exception.BizException;
-import com.triobase.service.openapi.domain.enums.MappingOperation;
-import com.triobase.service.openapi.dto.MappingRuleRequest;
+import com.triobase.common.openapi.mapping.JsonTreeAccess;
+import com.triobase.common.openapi.mapping.MappingOperation;
+import com.triobase.common.openapi.mapping.MappingRuleRequest;
+import com.triobase.common.openapi.mapping.MappingSecurityValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

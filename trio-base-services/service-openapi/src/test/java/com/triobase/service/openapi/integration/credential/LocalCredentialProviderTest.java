@@ -2,6 +2,7 @@ package com.triobase.service.openapi.integration.credential;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.openapi.credential.CredentialMaterial;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
 

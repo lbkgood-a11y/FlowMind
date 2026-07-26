@@ -5,7 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.exception.BizException;
-import com.triobase.service.workflow.action.WorkflowActionExecutionContext;
+import com.triobase.common.action.runtime.ActionExecutionContext;
 import com.triobase.service.workflow.entity.ClosureEffect;
 import com.triobase.service.workflow.entity.ClosureOutbox;
 import com.triobase.service.workflow.entity.ProcessClosure;
@@ -301,7 +301,7 @@ public class ClosureEffectExecutionService {
     }
 
     private void applyCurrentActionMetadata(ClosureEffect effect) {
-        WorkflowActionExecutionContext.Snapshot snapshot = WorkflowActionExecutionContext.current();
+        ActionExecutionContext.Snapshot snapshot = ActionExecutionContext.current();
         if (snapshot == null) {
             return;
         }
@@ -315,7 +315,7 @@ public class ClosureEffectExecutionService {
     }
 
     private void applyCurrentActionMetadata(ProcessClosure closure) {
-        WorkflowActionExecutionContext.Snapshot snapshot = WorkflowActionExecutionContext.current();
+        ActionExecutionContext.Snapshot snapshot = ActionExecutionContext.current();
         if (snapshot == null) {
             return;
         }

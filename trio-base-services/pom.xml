@@ -20,13 +20,22 @@
         <module>service-ops</module>
         <module>service-org</module>
         <module>service-tenant</module>
-        <module>service-billing</module>
         <module>service-lowcode</module>
-        <module>service-action</module>
         <module>service-business-catalog</module>
         <module>service-openapi</module>
+        <module>service-api-runtime</module>
         <module>service-workflow-engine</module>
     </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.triobase</groupId>
+                <artifactId>openapi-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <plugins>

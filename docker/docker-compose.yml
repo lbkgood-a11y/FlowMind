@@ -144,11 +144,33 @@ services:
       REDIS_HOST: redis
       NACOS_ENABLED: "true"
       NACOS_SERVER_ADDR: nacos:8848
-      TEMPORAL_TARGET: temporal:7233
-      TEMPORAL_WORKERS_ENABLED: "true"
       OPENAPI_RUNTIME_ENABLED: "false"
     ports:
       - "8089:8088"
+    depends_on:
+      openapi-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  service-api-runtime:
+    profiles: ["openapi"]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service-api-runtime
+    container_name: triobase-service-api-runtime
+    environment:
+      API_RUNTIME_DB_URL: jdbc:postgresql://postgres:5432/triobase
+      API_RUNTIME_DB_USERNAME: triobase
+      API_RUNTIME_DB_PASSWORD: triobase123
+      REDIS_HOST: redis
+      NACOS_ENABLED: "true"
+      NACOS_SERVER_ADDR: nacos:8848
+      TEMPORAL_TARGET: temporal:7233
+      TEMPORAL_WORKERS_ENABLED: "true"
+      OPENAPI_GATEWAY_AUTH_SECRET: ${OPENAPI_GATEWAY_AUTH_SECRET:-}
+    ports:
+      - "8095:8095"
     depends_on:
       openapi-migrate:
         condition: service_completed_successfully
@@ -214,7 +236,7 @@ services:
       - AGENT_LLM_MODE=${AGENT_LLM_MODE:-auto}
       - AGENT_OTLP_ENDPOINT=http://jaeger:4317
       - AGENT_FEATURE_LEAVE_ENABLED=true
-      - AGENT_FEATURE_EXPENSE_ENABLED=false
+      - AGENT_FEATURE_EXPENSE_ENABLED=true
       - AGENT_FEATURE_KNOWLEDGE_ENABLED=false
       - AGENT_MAX_CONCURRENT_INVOCATIONS=${AGENT_MAX_CONCURRENT_INVOCATIONS:-16}
       - AGENT_MAX_QUEUED_INVOCATIONS=${AGENT_MAX_QUEUED_INVOCATIONS:-64}

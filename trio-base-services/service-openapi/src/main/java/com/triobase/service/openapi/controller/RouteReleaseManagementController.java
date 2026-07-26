@@ -2,8 +2,8 @@ package com.triobase.service.openapi.controller;
 
 import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.R;
-import com.triobase.service.openapi.domain.enums.Environment;
-import com.triobase.service.openapi.dto.CompiledRouteRelease;
+import com.triobase.common.openapi.enums.Environment;
+import com.triobase.common.openapi.dto.CompiledRouteRelease;
 import com.triobase.service.openapi.dto.CreateRouteRequest;
 import com.triobase.service.openapi.dto.PublishReleaseRequest;
 import com.triobase.service.openapi.dto.ReleaseSnapshotResponse;

@@ -5,7 +5,7 @@ import com.triobase.common.core.exception.BizException;
 import com.triobase.service.openapi.domain.enums.AssetLifecycleState;
 import com.triobase.service.openapi.domain.enums.StructureDirection;
 import com.triobase.service.openapi.domain.enums.StructureKind;
-import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
+import com.triobase.common.openapi.enums.VersionLifecycleState;
 import com.triobase.service.openapi.domain.entity.StructureProvenance;
 import com.triobase.service.openapi.dto.ImportOpenApiRequest;
 import com.triobase.service.openapi.dto.StructureResponse;

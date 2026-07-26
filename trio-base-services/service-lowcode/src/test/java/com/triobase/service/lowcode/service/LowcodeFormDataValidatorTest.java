@@ -1,8 +1,8 @@
 package com.triobase.service.lowcode.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.triobase.service.lowcode.dto.FormFieldValidationError;
-import com.triobase.service.lowcode.exception.FormDataValidationException;
+import com.triobase.common.dto.form.FormFieldValidationError;
+import com.triobase.common.dto.form.FormDataValidationException;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

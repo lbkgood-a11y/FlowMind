@@ -36,11 +36,11 @@ spring:
         - id: service-workflow-engine
           uri: ${WF_SERVICE_URL:http://localhost:8086}
           predicates:
-            - Path=/api/v1/process-packages,/api/v1/process-packages/**,/api/v1/process-instances,/api/v1/process-instances/**,/api/v1/process-business-objects,/api/v1/process-business-objects/**,/api/v1/tasks,/api/v1/tasks/**
-        - id: service-action
-          uri: ${ACTION_SERVICE_URL:http://localhost:8089}
+            - Path=/api/v1/process-packages,/api/v1/process-packages/**,/api/v1/process-instances,/api/v1/process-instances/**,/api/v1/process-business-objects,/api/v1/process-business-objects/**,/api/v1/tasks,/api/v1/tasks/**,/api/v1/workflow-actions,/api/v1/workflow-actions/**
+        - id: service-business-catalog
+          uri: ${BUSINESS_CATALOG_SERVICE_URL:http://localhost:8090}
           predicates:
-            - Path=/api/v1/actions,/api/v1/actions/**
+            - Path=/api/v1/business-timeline,/api/v1/business-timeline/**
         - id: data-analytics
           uri: ${DATA_ANALYTICS_URL:http://localhost:8091}
           predicates:
@@ -107,6 +107,7 @@ triobase:
     gateway-auth-secret: ${OPENAPI_GATEWAY_AUTH_SECRET:}
     runtime:
       enabled: ${OPENAPI_RUNTIME_ROUTE_ENABLED:false}
+      service-url: ${API_RUNTIME_SERVICE_URL:http://localhost:8095}
 
 ai:
   services:

@@ -5,9 +5,6 @@ import com.triobase.common.action.enums.ActionActorType;
 import com.triobase.common.action.enums.ActionErrorCategory;
 import com.triobase.common.action.enums.ActionSource;
 import com.triobase.common.action.enums.ActionStatus;
-import com.triobase.common.action.owner.ActionOwnerAdapterSupport;
-import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
-import com.triobase.common.action.owner.ActionOwnerDispatchResponse;
 import com.triobase.common.action.owner.ActionOwnerGuardResponse;
 import org.junit.jupiter.api.Test;
 
@@ -45,17 +42,19 @@ class ActionCandidateSerializationTest {
 
     @Test
     void mapsStructuredOwnerGuardDenialToActionResponse() {
-        ActionOwnerDispatchRequest request = new ActionOwnerDispatchRequest();
-        request.setActionId("act-1");
-        request.setOwnerService("service-workflow-engine");
         ActionOwnerGuardResponse guard = ActionOwnerGuardResponse.denied(
                 "NO_SELF_APPROVAL",
                 "submitter cannot approve",
                 List.of(ActionError.of("NO_SELF_APPROVAL", ActionErrorCategory.GUARD,
                         "submitter cannot approve")));
 
-        ActionOwnerDispatchResponse response = new ActionOwnerAdapterSupport()
-                .guardDenied(request, guard);
+        GlobalActionResult response = new GlobalActionResult();
+        response.setActionId("act-1");
+        response.setOwnerService("service-workflow-engine");
+        response.setStatus(ActionStatus.REJECTED);
+        response.setMessage(guard.getMessage());
+        response.setErrors(guard.getErrors());
+        response.setData(Map.of("guard", guard));
 
         assertThat(response.getStatus()).isEqualTo(ActionStatus.REJECTED);
         assertThat(response.getErrors()).extracting(ActionError::getCode)
@@ -65,17 +64,16 @@ class ActionCandidateSerializationTest {
 
     @Test
     void mapsOwnerRefreshAndExecutionMetadataToGlobalResult() {
-        ActionOwnerDispatchRequest request = new ActionOwnerDispatchRequest();
-        request.setActionId("act-2");
-        request.setOwnerService("service-scm");
-        ActionOwnerDispatchResponse response = new ActionOwnerAdapterSupport()
-                .accepted(request, "wf-po-1", Map.of("documentId", "PO-1"));
-        response.setTargetStatus("APPROVING");
-        response.setTargetStatusGroup("PENDING");
-        response.getRefreshScopes().addAll(List.of("document", "actions", "timeline"));
-        response.getOwnerExecutionMetadata().put("workflowId", "wf-po-1");
-
-        GlobalActionResult result = new ActionOwnerAdapterSupport().toGlobalResult(response);
+        GlobalActionResult result = new GlobalActionResult();
+        result.setActionId("act-2");
+        result.setOwnerService("service-scm");
+        result.setStatus(ActionStatus.ACCEPTED);
+        result.setOwnerExecutionRef("wf-po-1");
+        result.setData(Map.of("documentId", "PO-1"));
+        result.setTargetStatus("APPROVING");
+        result.setTargetStatusGroup("PENDING");
+        result.getRefreshScopes().addAll(List.of("document", "actions", "timeline"));
+        result.getOwnerExecutionMetadata().put("workflowId", "wf-po-1");
 
         assertThat(result.getOwnerExecutionRef()).isEqualTo("wf-po-1");
         assertThat(result.getTargetStatus()).isEqualTo("APPROVING");

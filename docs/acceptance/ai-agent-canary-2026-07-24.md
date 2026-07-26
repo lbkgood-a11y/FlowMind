@@ -5,7 +5,7 @@
 - 环境：本地生产模式基线，默认租户 `default`
 - 统一入口：`platform-gateway /api/v1/agent/**`
 - Agent：LangGraph 1.x + PostgreSQL checkpoint，当前灰度模型模式 `AGENT_LLM_MODE=mock`
-- 业务链路：`ai-agent-orchestrator -> service-action -> service-lowcode -> service-workflow-engine -> Temporal`
+- 业务链路：`ai-agent-orchestrator -> owner-hosted Global Action -> service-lowcode -> service-workflow-engine -> Temporal`
 - 灰度原则：所有首期业务写动作必须停在候选确认点；只有携带可信用户确认信息的 ActionCandidate 才允许进入 Global Action
 
 ## 验收结论

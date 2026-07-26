@@ -1,5 +1,7 @@
 package com.triobase.service.auth.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -303,11 +305,11 @@ public class AuthorizationRegistryService {
             grant.setActionCode(actionCode);
             grant.setEffect(effect);
             grant.setStatus((short) 1);
-            grant.setDescription(normalizeBlank(request.getDescription()));
+            grant.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
             grantMapper.insert(grant);
         } else {
             grant.setStatus(toStatus(request.getStatus()));
-            grant.setDescription(normalizeBlank(request.getDescription()));
+            grant.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
             grantMapper.updateById(grant);
         }
         versionService.bump(AuthorizationVersionService.GRANT);
@@ -341,13 +343,13 @@ public class AuthorizationRegistryService {
         }
         resource.setResourceType(normalize(required(request.getResourceType(), "AUTHZ_RESOURCE_TYPE_REQUIRED")));
         resource.setOwnerService(ownerService);
-        resource.setBusinessObjectId(normalizeBlank(request.getBusinessObjectId()));
+        resource.setBusinessObjectId(StringHelpers.normalizeBlank(request.getBusinessObjectId()));
         resource.setDisplayName(StringUtils.hasText(request.getDisplayName())
                 ? request.getDisplayName().trim() : resourceCode);
         resource.setLifecycleStatus(StringUtils.hasText(request.getLifecycleStatus())
                 ? normalize(request.getLifecycleStatus()) : ACTIVE);
         resource.setGlobalFlag(Boolean.TRUE.equals(request.getGlobalResource()) ? (short) 1 : (short) 0);
-        resource.setMetadataJson(normalizeBlank(request.getMetadataJson()));
+        resource.setMetadataJson(StringHelpers.normalizeBlank(request.getMetadataJson()));
         resource.setLastSyncedAt(LocalDateTime.now());
         if (resource.getCreatedAt() == null && resourceMapper.selectById(resource.getId()) == null) {
             resourceMapper.insert(resource);
@@ -374,7 +376,7 @@ public class AuthorizationRegistryService {
         }
         action.setActionCategory(StringUtils.hasText(request.getActionCategory())
                 ? normalize(request.getActionCategory()) : "BUSINESS");
-        action.setDescription(normalizeBlank(request.getDescription()));
+        action.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         action.setGuardCodes(joinCodes(request.getGuardCodes()));
         action.setStatus(toStatus(request.getStatus()));
         if (action.getCreatedAt() == null && actionMapper.selectById(action.getId()) == null) {
@@ -400,10 +402,10 @@ public class AuthorizationRegistryService {
             field.setResourceCode(resourceCode);
             field.setFieldKey(fieldKey);
         }
-        field.setFieldLabel(normalizeBlank(request.getFieldLabel()));
-        field.setFieldType(normalizeBlank(request.getFieldType()));
-        field.setSensitivityClassification(normalizeBlank(request.getSensitivityClassification()));
-        field.setDefaultMaskStrategy(normalizeBlank(request.getDefaultMaskStrategy()));
+        field.setFieldLabel(StringHelpers.normalizeBlank(request.getFieldLabel()));
+        field.setFieldType(StringHelpers.normalizeBlank(request.getFieldType()));
+        field.setSensitivityClassification(StringHelpers.normalizeBlank(request.getSensitivityClassification()));
+        field.setDefaultMaskStrategy(StringHelpers.normalizeBlank(request.getDefaultMaskStrategy()));
         field.setStatus(toStatus(request.getStatus()));
         if (field.getCreatedAt() == null && fieldMapper.selectById(field.getId()) == null) {
             fieldMapper.insert(field);
@@ -428,9 +430,9 @@ public class AuthorizationRegistryService {
         }
         guard.setOwnerService(StringUtils.hasText(request.getOwnerService())
                 ? request.getOwnerService().trim() : ownerService);
-        guard.setSupportedResourceTypes(normalizeBlank(request.getSupportedResourceTypes()));
-        guard.setConfigSchemaJson(normalizeBlank(request.getConfigSchemaJson()));
-        guard.setDescription(normalizeBlank(request.getDescription()));
+        guard.setSupportedResourceTypes(StringHelpers.normalizeBlank(request.getSupportedResourceTypes()));
+        guard.setConfigSchemaJson(StringHelpers.normalizeBlank(request.getConfigSchemaJson()));
+        guard.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         guard.setStatus(toStatus(request.getStatus()));
         if (guard.getCreatedAt() == null && guardTemplateMapper.selectById(guard.getId()) == null) {
             guardTemplateMapper.insert(guard);
@@ -572,9 +574,6 @@ public class AuthorizationRegistryService {
         return value != null ? value.trim().toUpperCase(Locale.ROOT) : null;
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 
     private Short toStatus(Integer status) {
         return status != null && status == 0 ? (short) 0 : (short) 1;
@@ -604,7 +603,7 @@ public class AuthorizationRegistryService {
         String resourceCode = normalizeResource(required(request.getResourceCode(), "AUTHZ_RESOURCE_CODE_REQUIRED"));
         String fieldKey = required(request.getFieldKey(), "AUTHZ_FIELD_KEY_REQUIRED");
         String subjectType = normalize(request.getSubjectType());
-        String subjectId = normalizeBlank(request.getSubjectId());
+        String subjectId = StringHelpers.normalizeBlank(request.getSubjectId());
 
         SysAuthFieldPolicy policy = fieldPolicyMapper.selectOne(new LambdaQueryWrapper<SysAuthFieldPolicy>()
                 .eq(SysAuthFieldPolicy::getTenantId, tenantId)
@@ -622,12 +621,12 @@ public class AuthorizationRegistryService {
             policy.setSubjectType(subjectType);
             policy.setSubjectId(subjectId);
         }
-        policy.setReadMode(normalizeBlank(request.getReadMode()));
-        policy.setWriteMode(normalizeBlank(request.getWriteMode()));
-        policy.setMaskStrategy(normalizeBlank(request.getMaskStrategy()));
-        policy.setEffect(normalizeBlank(request.getEffect()));
+        policy.setReadMode(StringHelpers.normalizeBlank(request.getReadMode()));
+        policy.setWriteMode(StringHelpers.normalizeBlank(request.getWriteMode()));
+        policy.setMaskStrategy(StringHelpers.normalizeBlank(request.getMaskStrategy()));
+        policy.setEffect(StringHelpers.normalizeBlank(request.getEffect()));
         policy.setStatus(toStatus(request.getStatus()));
-        policy.setDescription(normalizeBlank(request.getDescription()));
+        policy.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         if (policy.getCreatedAt() == null && fieldPolicyMapper.selectById(policy.getId()) == null) {
             fieldPolicyMapper.insert(policy);
         } else {
@@ -678,9 +677,9 @@ public class AuthorizationRegistryService {
         }
         guard.setOwnerService(StringUtils.hasText(request.getOwnerService())
                 ? request.getOwnerService().trim() : DEFAULT_TENANT);
-        guard.setSupportedResourceTypes(normalizeBlank(request.getSupportedResourceTypes()));
-        guard.setConfigSchemaJson(normalizeBlank(request.getConfigSchemaJson()));
-        guard.setDescription(normalizeBlank(request.getDescription()));
+        guard.setSupportedResourceTypes(StringHelpers.normalizeBlank(request.getSupportedResourceTypes()));
+        guard.setConfigSchemaJson(StringHelpers.normalizeBlank(request.getConfigSchemaJson()));
+        guard.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         guard.setStatus(toStatus(request.getStatus()));
         if (guard.getCreatedAt() == null && guardTemplateMapper.selectById(guard.getId()) == null) {
             guardTemplateMapper.insert(guard);

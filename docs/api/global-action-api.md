@@ -1,12 +1,20 @@
 # Global Action API 契约
 
-Base path 通过平台网关暴露为 `/api/v1/actions`。所有响应继续使用 TrioBase `R<T>` 包装；下文只描述 `data` 内容。
+Global Action 仍使用 `common-action` 的 `GlobalActionRequest`、`GlobalActionResult`、`ActionCandidate` 和 `ActionDefinition` 模型，但执行入口由 owning service 自托管，不再通过中央 `/api/v1/actions` facade。
 
-## Submit Action
+## Owner-Hosted Base Paths
 
-`POST /api/v1/actions`
+当前 owner-hosted Action Runtime 入口：
 
-提交业务变更动作。
+- Lowcode: `/api/v1/lowcode-runtime/actions`
+- Workflow: `/api/v1/workflow-actions`
+- OpenAPI: `/api/v1/openapi/management/actions`
+
+Action Client 必须根据 `target.ownerService`、ActionDefinition owner 或受控 resolver 选择 owner base path。未知 owner 或未注册 action 必须拒绝。
+
+## Dispatch Action
+
+`POST {owner-base-path}/dispatch`
 
 Request body: `GlobalActionRequest`
 
@@ -42,123 +50,39 @@ Request body: `GlobalActionRequest`
 
 Response data: `GlobalActionResult`
 
-```json
-{
-  "actionId": "act_001",
-  "actionType": "process.task.approve",
-  "status": "SUCCEEDED",
-  "ownerService": "service-workflow-engine",
-  "ownerExecutionRef": "TASK001",
-  "retryable": false,
-  "message": "OK",
-  "data": {
-    "task": {}
-  },
-  "errors": []
-}
-```
+## Candidate Validation And Dispatch
 
-Duplicate submissions with the same tenant, action type, and idempotency key return the existing action result instead of dispatching another side effect.
+- `POST {owner-base-path}/candidates/validate`
+- `POST {owner-base-path}/candidates/batch-validate`
+- `POST {owner-base-path}/candidates/dispatch`
 
-## Get Action Detail
+LUI/Agent 只能生成 `ActionCandidate`。候选动作必须经过 owner-hosted definition、schema、authorization、guard 和 confirmation 校验；确认后才允许 dispatch。
 
-`GET /api/v1/actions/{actionId}`
+## Definitions
 
-Returns the persisted action execution detail, including actor, source, target, status, trace id, correlation id, idempotency key, bounded result summary, bounded error summary, owner service, and owner execution reference.
+`GET {owner-base-path}/definitions`
 
-## Get Action Events
+返回 owner 服务当前注册的 `ActionDefinition` 列表，用于诊断和受控发现。
 
-`GET /api/v1/actions/{actionId}/events`
+## Audit And Timeline
 
-Returns ordered lifecycle events. Clients use this for polling fallback when SSE is unavailable.
-
-Event fields:
+Owner runtime 必须发出或持久化 bounded action audit event，包含：
 
 - `actionId`
-- `sequence`
-- `eventType`
-- `status`
-- `message`
-- `payload`
-- `createdAt`
-
-## Subscribe Action Events
-
-`GET /api/v1/actions/{actionId}/stream`
-
-Server-Sent Events endpoint for action lifecycle updates. The frontend Action Client parses `data:` frames into `ActionEvent`.
-
-The stream ends after a terminal status:
-
-- `SUCCEEDED`
-- `FAILED`
-- `REJECTED`
-- `CANCELLED`
-- `COMPENSATED`
-
-## Query Actions
-
-`GET /api/v1/actions`
-
-Admin/audit query endpoint. Supported filters:
-
-- `tenantId`
 - `actionType`
-- `actorId`
 - `source`
-- `targetType`
-- `targetId`
+- `actor`
+- `target`
 - `status`
 - `traceId`
 - `correlationId`
 - `idempotencyKey`
-- `page`
-- `size`
+- `ownerExecutionRef`
+- redacted payload/result/error summary
 
-Results are ordered by creation time descending.
+文档时间线由 `service-business-catalog` 提供：
 
-## Validate Action Candidate
+- `GET /api/v1/business-timeline`
+- `POST /internal/v1/business-timeline/events`
 
-`POST /api/v1/actions/candidates/validate`
-
-Validates an LUI/Agent proposed `ActionCandidate` against registered action definitions and payload schemas. The result reports whether it is valid, dispatchable, and requires confirmation.
-
-## Dispatch Action Candidate
-
-`POST /api/v1/actions/candidates/dispatch`
-
-Dispatches a previously validated candidate. The bridge rejects unregistered actions, schema-invalid payloads, and sensitive/critical actions without confirmation metadata.
-
-## Owner Adapter
-
-Owner services expose internal adapter endpoints:
-
-`POST /internal/v1/actions/execute`
-
-This endpoint is not public. `service-action` calls it with `ActionOwnerDispatchRequest`; owner services return `ActionOwnerDispatchResponse`.
-
-Owner adapters must propagate:
-
-- action id/type/source
-- actor
-- target
-- context trace/correlation
-- idempotency key
-- structured guard errors
-- owner execution reference
-
-## Audit Fields
-
-Platform operation audit logs expose Action metadata:
-
-- `actionId`
-- `actionType`
-- `actionSource`
-- `actionStatus`
-- `actionTargetType`
-- `actionTargetId`
-- `actionCorrelationId`
-- `actionIdempotencyKey`
-- `actionSummary`
-
-Audit summaries must be redacted and bounded.
+`service-business-catalog` 只查询自己的 `bc_document_timeline_event` 投影表。Owner 服务必须通过 bounded timeline event 投递 action/domain/workflow/audit 事件，不得让 timeline 查询跨库读取 owner 表或历史 `act_*` 表。

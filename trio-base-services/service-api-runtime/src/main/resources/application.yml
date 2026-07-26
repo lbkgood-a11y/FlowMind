@@ -1,0 +1,61 @@
+server:
+  port: ${API_RUNTIME_SERVICE_PORT:8095}
+
+spring:
+  application:
+    name: service-api-runtime
+  config:
+    import: optional:nacos:${spring.application.name}.yml
+  datasource:
+    url: ${API_RUNTIME_DB_URL:jdbc:postgresql://localhost:5433/triobase}
+    username: ${API_RUNTIME_DB_USERNAME:triobase}
+    password: ${API_RUNTIME_DB_PASSWORD:triobase123}
+    driver-class-name: org.postgresql.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+  flyway:
+    enabled: false
+  cloud:
+    nacos:
+      discovery:
+        enabled: ${NACOS_ENABLED:false}
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+      config:
+        enabled: ${NACOS_ENABLED:false}
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        file-extension: yml
+  temporal:
+    namespace: ${TEMPORAL_NAMESPACE:default}
+    start-workers: ${TEMPORAL_WORKERS_ENABLED:false}
+    connection:
+      target: ${TEMPORAL_TARGET:127.0.0.1:7233}
+    workers-auto-discovery:
+      packages:
+        - com.triobase.service.apiruntime
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+triobase:
+  internal:
+    token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-openapi,service-workflow-engine,service-lowcode,service-auth,platform-gateway}
+  openapi:
+    gateway-auth-secret: ${OPENAPI_GATEWAY_AUTH_SECRET:}
+    temporal:
+      task-queue: ${spring.application.name}
+      max-concurrent-activities: ${API_RUNTIME_TEMPORAL_MAX_CONCURRENT_ACTIVITIES:100}
+      max-concurrent-workflow-tasks: ${API_RUNTIME_TEMPORAL_MAX_CONCURRENT_WORKFLOW_TASKS:50}
+    credentials:
+      provider: ${OPENAPI_CREDENTIAL_PROVIDER:local}
+      local:
+        secrets: {}
+      vault:
+        address: ${VAULT_ADDR:http://localhost:8200}
+        token: ${VAULT_TOKEN:}
+
+logging:
+  level:
+    root: INFO
+    com.triobase: DEBUG

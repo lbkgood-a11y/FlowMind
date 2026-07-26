@@ -1,5 +1,6 @@
 package com.triobase.service.openapi.domain.model;
 
+import com.triobase.common.openapi.entity.VersionedEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 

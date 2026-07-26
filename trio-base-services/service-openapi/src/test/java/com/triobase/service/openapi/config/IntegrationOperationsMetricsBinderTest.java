@@ -1,12 +1,21 @@
 package com.triobase.service.openapi.config;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.triobase.common.openapi.entity.CallbackInbox;
+import com.triobase.common.openapi.entity.ExecutionStepAttempt;
+import com.triobase.common.openapi.entity.IntegrationExecution;
+import com.triobase.service.openapi.domain.entity.AuditEvent;
+import com.triobase.service.openapi.domain.entity.PolicyEnforcementState;
 import com.triobase.service.openapi.infrastructure.mapper.AuditEventMapper;
 import com.triobase.service.openapi.infrastructure.mapper.CallbackInboxMapper;
 import com.triobase.service.openapi.infrastructure.mapper.ExecutionStepAttemptMapper;
 import com.triobase.service.openapi.infrastructure.mapper.IntegrationExecutionMapper;
 import com.triobase.service.openapi.infrastructure.mapper.PolicyEnforcementStateMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.ibatis.session.Configuration;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -25,6 +34,15 @@ class IntegrationOperationsMetricsBinderTest {
     @Mock private CallbackInboxMapper callbackMapper;
     @Mock private PolicyEnforcementStateMapper enforcementMapper;
 
+    @BeforeAll
+    static void initMybatisPlusTableInfo() {
+        initTableInfo(AuditEventMapper.class.getName(), AuditEvent.class);
+        initTableInfo(IntegrationExecutionMapper.class.getName(), IntegrationExecution.class);
+        initTableInfo(ExecutionStepAttemptMapper.class.getName(), ExecutionStepAttempt.class);
+        initTableInfo(CallbackInboxMapper.class.getName(), CallbackInbox.class);
+        initTableInfo(PolicyEnforcementStateMapper.class.getName(), PolicyEnforcementState.class);
+    }
+
     @Test
     void exposesOperationalMetricsRequiredByAlertRules() {
         when(auditMapper.selectCount(any(Wrapper.class))).thenReturn(1L);
@@ -34,8 +52,9 @@ class IntegrationOperationsMetricsBinderTest {
         when(enforcementMapper.selectCount(any(Wrapper.class))).thenReturn(5L);
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
-        new IntegrationOperationsMetricsBinder(auditMapper, executionMapper, attemptMapper,
-                callbackMapper, enforcementMapper).bindTo(registry);
+        IntegrationOperationsMetricsBinder binder = new IntegrationOperationsMetricsBinder(
+                auditMapper, executionMapper, attemptMapper, callbackMapper, enforcementMapper);
+        binder.bindTo(registry);
 
         assertThat(registry.get("triobase.openapi.application.denials").gauge().value()).isEqualTo(1);
         assertThat(registry.get("triobase.openapi.route.active").gauge().value()).isEqualTo(2);
@@ -43,5 +62,11 @@ class IntegrationOperationsMetricsBinderTest {
         assertThat(registry.get("triobase.openapi.callback.quarantine").gauge().value()).isEqualTo(4);
         assertThat(registry.get("triobase.openapi.compensation.failures").gauge().value()).isEqualTo(3);
         assertThat(registry.getMeters()).hasSizeGreaterThanOrEqualTo(13);
+    }
+
+    private static void initTableInfo(String namespace, Class<?> entityType) {
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(new Configuration(), "");
+        assistant.setCurrentNamespace(namespace);
+        TableInfoHelper.initTableInfo(assistant, entityType);
     }
 }

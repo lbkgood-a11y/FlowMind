@@ -7,7 +7,7 @@ import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.service.openapi.domain.entity.OrchestrationDefinition;
 import com.triobase.service.openapi.domain.entity.OrchestrationVersion;
-import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
+import com.triobase.common.openapi.enums.VersionLifecycleState;
 import com.triobase.service.openapi.dto.CreateOrchestrationRequest;
 import com.triobase.service.openapi.infrastructure.mapper.OrchestrationDefinitionMapper;
 import com.triobase.service.openapi.infrastructure.mapper.OrchestrationVersionMapper;

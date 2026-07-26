@@ -1,6 +1,6 @@
 package com.triobase.service.openapi.service;
-import com.triobase.service.openapi.integration.credential.CredentialMaterial;
-import com.triobase.service.openapi.integration.credential.CredentialProvider;
+import com.triobase.common.openapi.credential.CredentialMaterial;
+import com.triobase.common.openapi.credential.CredentialProvider;
 import org.junit.jupiter.api.Test;
 import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;

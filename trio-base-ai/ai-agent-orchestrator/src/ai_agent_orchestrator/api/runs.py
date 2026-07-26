@@ -26,12 +26,17 @@ async def create_run(
     if not request.app.state.settings.enabled:
         raise HTTPException(status_code=503, detail="AGENT_RUNTIME_DISABLED")
     service = run_service(request)
-    return await service.create(
-        body,
-        context,
-        authorization_header(request),
-        idempotency_key or f"agent-run:{uuid4()}",
-    )
+    try:
+        return await service.create(
+            body,
+            context,
+            authorization_header(request),
+            idempotency_key or f"agent-run:{uuid4()}",
+        )
+    except RuntimeError as exception:
+        if str(exception) == "AGENT_RUN_CREATE_FAILED":
+            raise HTTPException(status_code=503, detail="AGENT_RUN_CREATE_FAILED") from exception
+        raise
 
 
 @router.get("/runs/{run_id}", response_model=AgentRunResponse)

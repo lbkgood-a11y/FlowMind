@@ -1,6 +1,6 @@
 package com.triobase.service.openapi.domain.entity;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.triobase.service.openapi.domain.enums.Environment;
+import com.triobase.common.openapi.enums.Environment;
 import lombok.Data;
 import java.time.LocalDateTime;
 @Data @TableName("oa_policy_enforcement_state")

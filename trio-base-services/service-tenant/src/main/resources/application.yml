@@ -37,7 +37,7 @@ mybatis-plus:
 triobase:
   internal:
     token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
-    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:platform-gateway,service-auth,service-org,service-lowcode,service-action,service-workflow-engine,service-openapi,service-billing}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:platform-gateway,service-auth,service-org,service-lowcode,service-workflow-engine,service-openapi,service-billing}
 
 logging:
   level:

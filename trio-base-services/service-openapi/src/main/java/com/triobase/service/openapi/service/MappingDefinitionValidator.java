@@ -5,8 +5,9 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.triobase.common.core.exception.BizException;
-import com.triobase.service.openapi.domain.enums.MappingOperation;
-import com.triobase.service.openapi.dto.MappingRuleRequest;
+import com.triobase.common.openapi.mapping.MappingOperation;
+import com.triobase.common.openapi.mapping.MappingRuleRequest;
+import com.triobase.common.openapi.mapping.MappingSecurityValidator;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 

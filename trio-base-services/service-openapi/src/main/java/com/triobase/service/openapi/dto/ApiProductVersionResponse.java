@@ -3,7 +3,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.triobase.service.openapi.domain.enums.ProductChangeClassification;
 import com.triobase.service.openapi.domain.enums.ProductVisibility;
 import com.triobase.service.openapi.domain.enums.RiskLevel;
-import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
+import com.triobase.common.openapi.enums.VersionLifecycleState;
 import java.util.List;
 public record ApiProductVersionResponse(String productId, String productVersionId, String tenantId, String productKey,
         String displayName, String ownerId, RiskLevel riskLevel, ProductVisibility visibility,

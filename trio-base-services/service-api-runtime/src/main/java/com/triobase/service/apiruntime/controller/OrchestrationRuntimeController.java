@@ -1,0 +1,67 @@
+package com.triobase.service.apiruntime.controller;
+
+import com.triobase.common.core.result.R;
+import com.triobase.common.openapi.dto.CancelOrchestrationRequest;
+import com.triobase.common.openapi.enums.Environment;
+import com.triobase.common.openapi.dto.OrchestrationExecutionResponse;
+import com.triobase.common.openapi.dto.RuntimeAdmissionContext;
+import com.triobase.common.openapi.dto.StartOrchestrationRequest;
+import com.triobase.service.apiruntime.action.OpenApiActionDispatchService;
+import com.triobase.service.apiruntime.service.RuntimeAdmissionContextResolver;
+import com.triobase.service.apiruntime.service.OrchestrationRuntimeService;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/openapi/runtime")
+@RequiredArgsConstructor
+public class OrchestrationRuntimeController {
+
+    private final OrchestrationRuntimeService service;
+    private final RuntimeAdmissionContextResolver admissionContextResolver;
+    private final OpenApiActionDispatchService actionDispatchService;
+
+    @PostMapping("/{routeKey}/orchestrations")
+    public R<OrchestrationExecutionResponse> start(
+            @PathVariable String routeKey,
+            @RequestHeader("X-Environment") Environment environment,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @RequestBody StartOrchestrationRequest body,
+            HttpServletRequest request) {
+        RuntimeAdmissionContext admission = admissionContextResolver.resolve(
+                request, routeKey, environment, request.getMethod());
+        return R.ok(actionDispatchService.startOrchestration(routeKey, environment, admission,
+                request.getMethod(), idempotencyKey, body == null ? null : body.payload()));
+    }
+
+    @GetMapping("/orchestrations/{executionId}")
+    public R<OrchestrationExecutionResponse> status(
+            @PathVariable String executionId,
+            @RequestHeader("X-Application-Client-Id") String clientId) {
+        return R.ok(service.status(executionId, clientId));
+    }
+
+    @GetMapping("/orchestrations/{executionId}/result")
+    public R<OrchestrationExecutionResponse> result(
+            @PathVariable String executionId,
+            @RequestHeader("X-Application-Client-Id") String clientId) {
+        return R.ok(service.result(executionId, clientId));
+    }
+
+    @PostMapping("/orchestrations/{executionId}/cancel")
+    public R<OrchestrationExecutionResponse> cancel(
+            @PathVariable String executionId,
+            @RequestHeader("X-Application-Client-Id") String clientId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestBody CancelOrchestrationRequest request) {
+        return R.ok(actionDispatchService.cancelOrchestration(
+                executionId, clientId, idempotencyKey, request == null ? null : request.reason()));
+    }
+}

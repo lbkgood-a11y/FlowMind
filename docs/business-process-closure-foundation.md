@@ -1,8 +1,9 @@
 # Business Process Closure Foundation
 
-本说明记录流程平台的业务对象闭环第一版约定：目录放在
+本说明记录流程平台的业务对象闭环第一版约定：业务对象目录放在
 `service-workflow-engine` 内，数据库注册可选项，代码注册执行器，设计器用
-业务对象优先的选择式配置生成不可编辑的流程定义。
+业务对象优先的选择式配置生成不可编辑的流程定义。`service-business-catalog`
+不再存储业务对象目录，它只承载文档时间线投影读模型。
 
 ## Core Model
 

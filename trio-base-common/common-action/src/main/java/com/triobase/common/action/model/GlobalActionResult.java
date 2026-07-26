@@ -31,4 +31,16 @@ public class GlobalActionResult {
     public boolean terminal() {
         return status != null && status.terminal();
     }
+
+    public static GlobalActionResult from(GlobalActionRequest request) {
+        GlobalActionResult response = new GlobalActionResult();
+        if (request != null) {
+            response.setActionId(request.getActionId());
+            response.setActionType(request.getActionType());
+            response.setTarget(request.getTarget());
+            response.setOwnerService(
+                    request.getTarget() != null ? request.getTarget().getOwnerService() : null);
+        }
+        return response;
+    }
 }

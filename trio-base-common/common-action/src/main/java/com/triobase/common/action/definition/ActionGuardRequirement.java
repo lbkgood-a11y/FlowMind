@@ -9,4 +9,12 @@ public class ActionGuardRequirement {
     private String description;
     private String configSchemaJson;
     private boolean mandatory = true;
+
+    public static ActionGuardRequirement of(String ownerService, String code, String description) {
+        ActionGuardRequirement guard = new ActionGuardRequirement();
+        guard.setGuardCode(code);
+        guard.setOwnerService(ownerService);
+        guard.setDescription(description);
+        return guard;
+    }
 }

@@ -37,15 +37,6 @@ spring:
         enabled: ${NACOS_ENABLED:false}
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
         file-extension: yml
-  temporal:
-    namespace: ${TEMPORAL_NAMESPACE:default}
-    start-workers: ${TEMPORAL_WORKERS_ENABLED:false}
-    connection:
-      target: ${TEMPORAL_TARGET:127.0.0.1:7233}
-    workers-auto-discovery:
-      packages:
-        - com.triobase.service.openapi
-
 management:
   endpoints:
     web:
@@ -68,14 +59,12 @@ mybatis-plus:
 triobase:
   internal:
     token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
-    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-openapi,service-action}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-openapi}
   integrations:
     auth:
       base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
     workflow:
       base-url: ${WORKFLOW_SERVICE_URL:http://localhost:8086}
-    action:
-      base-url: ${ACTION_SERVICE_URL:http://localhost:8089}
   openapi:
     gateway-auth-secret: ${OPENAPI_GATEWAY_AUTH_SECRET:}
     runtime:
@@ -83,10 +72,6 @@ triobase:
     retention:
       execution-days: ${OPENAPI_EXECUTION_RETENTION_DAYS:180}
       diagnostic-body-days: ${OPENAPI_DIAGNOSTIC_BODY_RETENTION_DAYS:7}
-    temporal:
-      task-queue: ${spring.application.name}
-      max-concurrent-activities: ${OPENAPI_TEMPORAL_MAX_CONCURRENT_ACTIVITIES:100}
-      max-concurrent-workflow-tasks: ${OPENAPI_TEMPORAL_MAX_CONCURRENT_WORKFLOW_TASKS:50}
     credentials:
       provider: ${OPENAPI_CREDENTIAL_PROVIDER:local}
       local:
@@ -102,4 +87,3 @@ logging:
   level:
     root: INFO
     com.triobase.service.openapi: DEBUG
-    io.temporal: INFO

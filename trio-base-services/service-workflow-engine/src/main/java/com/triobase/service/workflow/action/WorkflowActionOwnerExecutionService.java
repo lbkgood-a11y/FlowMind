@@ -3,10 +3,12 @@ package com.triobase.service.workflow.action;
 import com.triobase.common.action.enums.ActionErrorCategory;
 import com.triobase.common.action.enums.ActionStatus;
 import com.triobase.common.action.model.ActionError;
-import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
-import com.triobase.common.action.owner.ActionOwnerDispatchResponse;
+import com.triobase.common.action.model.GlobalActionRequest;
+import com.triobase.common.action.model.GlobalActionResult;
 import com.triobase.common.action.owner.ActionOwnerExecutor;
 import com.triobase.common.action.owner.ActionOwnerGuardResponse;
+import com.triobase.common.action.runtime.ActionStatusMachine;
+import com.triobase.common.action.util.ActionHelpers;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.service.workflow.dto.AddSignRequest;
 import com.triobase.service.workflow.dto.ApproveTaskRequest;
@@ -16,22 +18,25 @@ import com.triobase.service.workflow.dto.RejectTaskRequest;
 import com.triobase.service.workflow.dto.StartProcessRequest;
 import com.triobase.service.workflow.dto.TaskResponse;
 import com.triobase.service.workflow.dto.TransferTaskRequest;
-import com.triobase.service.workflow.exception.FormDataValidationException;
+import com.triobase.common.dto.form.FormDataValidationException;
 import com.triobase.service.workflow.exception.ProcessVersionConflictException;
 import com.triobase.service.workflow.service.ClosureEffectOperationService;
 import com.triobase.service.workflow.service.ProcessInstanceService;
 import com.triobase.service.workflow.service.TaskService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class WorkflowActionOwnerExecutionService implements ActionOwnerExecutor {
+
+    private static final Set<String> TERMINAL_STATUSES =
+            Set.of("COMPLETED", "APPROVED", "REJECTED", "HANDLED");
 
     private static final String PROCESS_INSTANCE_START = "process.instance.start";
     private static final String TASK_APPROVE = "process.task.approve";
@@ -51,7 +56,7 @@ public class WorkflowActionOwnerExecutionService implements ActionOwnerExecutor 
     }
 
     @Override
-    public ActionOwnerDispatchResponse execute(ActionOwnerDispatchRequest request) {
+    public GlobalActionResult execute(GlobalActionRequest request) {
         try {
             return switch (request.getActionType()) {
                 case PROCESS_INSTANCE_START -> startProcess(request);
@@ -72,7 +77,7 @@ public class WorkflowActionOwnerExecutionService implements ActionOwnerExecutor 
         }
     }
 
-    public ActionOwnerGuardResponse guard(ActionOwnerDispatchRequest request) {
+    public ActionOwnerGuardResponse guard(GlobalActionRequest request) {
         if (request == null || !supported(request.getActionType())) {
             return ActionOwnerGuardResponse.denied(
                     "WORKFLOW_ACTION_UNSUPPORTED",
@@ -85,104 +90,105 @@ public class WorkflowActionOwnerExecutionService implements ActionOwnerExecutor 
         return ActionOwnerGuardResponse.allowed("WORKFLOW_ACTION_SUPPORTED");
     }
 
-    private ActionOwnerDispatchResponse startProcess(ActionOwnerDispatchRequest ownerRequest) {
-        StartProcessRequest request = new StartProcessRequest();
-        request.setProcessPackageId(string(ownerRequest, "processPackageId"));
-        request.setVersion(integer(ownerRequest, "version"));
-        request.setProcessKey(string(ownerRequest, "processKey"));
-        request.setTitle(string(ownerRequest, "title"));
-        request.setFormData(map(ownerRequest.getPayload().get("formData")));
-        request.setLaunchMode(string(ownerRequest, "launchMode"));
-        request.setBusinessType(string(ownerRequest, "businessType"));
-        request.setBusinessId(string(ownerRequest, "businessId"));
-        request.setIdempotencyKey(firstNonBlank(string(ownerRequest, "idempotencyKey"),
-                ownerRequest.getIdempotencyKey()));
-        ProcessInstanceResponse processInstance = processInstanceService.startProcess(request);
-        return success(ownerRequest, processInstance.getId(), Map.of(
+    private GlobalActionResult startProcess(GlobalActionRequest request) {
+        StartProcessRequest startRequest = new StartProcessRequest();
+        startRequest.setProcessPackageId(request.string("processPackageId"));
+        startRequest.setVersion(request.integer("version"));
+        startRequest.setProcessKey(request.string("processKey"));
+        startRequest.setTitle(request.string("title"));
+        startRequest.setFormData(map(request.getPayload().get("formData")));
+        startRequest.setLaunchMode(request.string("launchMode"));
+        startRequest.setBusinessType(request.string("businessType"));
+        startRequest.setBusinessId(request.string("businessId"));
+        startRequest.setIdempotencyKey(ActionHelpers.firstNonBlank(
+                request.string("idempotencyKey"), request.getIdempotencyKey()));
+        ProcessInstanceResponse processInstance = processInstanceService.startProcess(startRequest);
+        return success(request, processInstance.getId(), Map.of(
                 "runtimeStatus", processInstance.getStatus(),
                 "processInstance", processInstance));
     }
 
-    private ActionOwnerDispatchResponse approveTask(ActionOwnerDispatchRequest ownerRequest) {
-        ApproveTaskRequest request = new ApproveTaskRequest();
-        request.setOperationId(operationId(ownerRequest));
-        request.setAction(firstNonBlank(string(ownerRequest, "action"), "APPROVE"));
-        request.setComment(string(ownerRequest, "comment"));
-        TaskResponse task = taskService.approve(taskId(ownerRequest), request);
-        return taskSuccess(ownerRequest, task);
+    private GlobalActionResult approveTask(GlobalActionRequest request) {
+        ApproveTaskRequest approveRequest = new ApproveTaskRequest();
+        approveRequest.setOperationId(operationId(request));
+        approveRequest.setAction(ActionHelpers.firstNonBlank(request.string("action"), "APPROVE"));
+        approveRequest.setComment(request.string("comment"));
+        TaskResponse task = taskService.approve(taskId(request), approveRequest);
+        return taskSuccess(request, task);
     }
 
-    private ActionOwnerDispatchResponse rejectTask(ActionOwnerDispatchRequest ownerRequest) {
-        RejectTaskRequest request = new RejectTaskRequest();
-        request.setOperationId(operationId(ownerRequest));
-        request.setTargetNodeId(string(ownerRequest, "targetNodeId"));
-        request.setComment(string(ownerRequest, "comment"));
-        TaskResponse task = taskService.reject(taskId(ownerRequest), request);
-        return taskSuccess(ownerRequest, task);
+    private GlobalActionResult rejectTask(GlobalActionRequest request) {
+        RejectTaskRequest rejectRequest = new RejectTaskRequest();
+        rejectRequest.setOperationId(operationId(request));
+        rejectRequest.setTargetNodeId(request.string("targetNodeId"));
+        rejectRequest.setComment(request.string("comment"));
+        TaskResponse task = taskService.reject(taskId(request), rejectRequest);
+        return taskSuccess(request, task);
     }
 
-    private ActionOwnerDispatchResponse transferTask(ActionOwnerDispatchRequest ownerRequest) {
-        TransferTaskRequest request = new TransferTaskRequest();
-        request.setOperationId(operationId(ownerRequest));
-        request.setNewAssigneeId(string(ownerRequest, "newAssigneeId"));
-        request.setNewAssigneeName(string(ownerRequest, "newAssigneeName"));
-        TaskResponse task = taskService.transfer(taskId(ownerRequest), request);
-        return taskSuccess(ownerRequest, task);
+    private GlobalActionResult transferTask(GlobalActionRequest request) {
+        TransferTaskRequest transferRequest = new TransferTaskRequest();
+        transferRequest.setOperationId(operationId(request));
+        transferRequest.setNewAssigneeId(request.string("newAssigneeId"));
+        transferRequest.setNewAssigneeName(request.string("newAssigneeName"));
+        TaskResponse task = taskService.transfer(taskId(request), transferRequest);
+        return taskSuccess(request, task);
     }
 
-    private ActionOwnerDispatchResponse addSignTask(ActionOwnerDispatchRequest ownerRequest) {
-        AddSignRequest request = new AddSignRequest();
-        request.setOperationId(operationId(ownerRequest));
-        request.setAssigneeId(string(ownerRequest, "assigneeId"));
-        request.setAssigneeName(string(ownerRequest, "assigneeName"));
-        TaskResponse task = taskService.addSign(taskId(ownerRequest), request);
-        return taskSuccess(ownerRequest, task);
+    private GlobalActionResult addSignTask(GlobalActionRequest request) {
+        AddSignRequest addSignRequest = new AddSignRequest();
+        addSignRequest.setOperationId(operationId(request));
+        addSignRequest.setAssigneeId(request.string("assigneeId"));
+        addSignRequest.setAssigneeName(request.string("assigneeName"));
+        TaskResponse task = taskService.addSign(taskId(request), addSignRequest);
+        return taskSuccess(request, task);
     }
 
-    private ActionOwnerDispatchResponse retryClosureEffect(ActionOwnerDispatchRequest ownerRequest) {
+    private GlobalActionResult retryClosureEffect(GlobalActionRequest request) {
         ProcessClosureDetailResponse.EffectItem effect =
-                closureEffectOperationService.retry(effectId(ownerRequest));
-        return effectSuccess(ownerRequest, effect);
+                closureEffectOperationService.retry(effectId(request));
+        return effectSuccess(request, effect);
     }
 
-    private ActionOwnerDispatchResponse markClosureEffectHandled(ActionOwnerDispatchRequest ownerRequest) {
+    private GlobalActionResult markClosureEffectHandled(GlobalActionRequest request) {
         ProcessClosureDetailResponse.EffectItem effect =
-                closureEffectOperationService.markHandled(effectId(ownerRequest), string(ownerRequest, "reason"));
-        return effectSuccess(ownerRequest, effect);
+                closureEffectOperationService.markHandled(effectId(request), request.string("reason"));
+        return effectSuccess(request, effect);
     }
 
-    private ActionOwnerDispatchResponse taskSuccess(ActionOwnerDispatchRequest ownerRequest, TaskResponse task) {
-        return success(ownerRequest, task.getId(), Map.of(
+    private GlobalActionResult taskSuccess(GlobalActionRequest request, TaskResponse task) {
+        return success(request, task.getId(), Map.of(
                 "runtimeStatus", task.getStatus(),
                 "task", task));
     }
 
-    private ActionOwnerDispatchResponse effectSuccess(ActionOwnerDispatchRequest ownerRequest,
-                                                      ProcessClosureDetailResponse.EffectItem effect) {
-        return success(ownerRequest, effect.getId(), Map.of(
+    private GlobalActionResult effectSuccess(GlobalActionRequest request,
+                                             ProcessClosureDetailResponse.EffectItem effect) {
+        return success(request, effect.getId(), Map.of(
                 "runtimeStatus", effect.getStatus(),
                 "effect", effect));
     }
 
-    private ActionOwnerDispatchResponse success(ActionOwnerDispatchRequest ownerRequest,
-                                                String ownerExecutionRef,
-                                                Map<String, Object> data) {
-        ActionOwnerDispatchResponse response = base(ownerRequest);
+    private GlobalActionResult success(GlobalActionRequest request,
+                                       String ownerExecutionRef,
+                                       Map<String, Object> data) {
+        GlobalActionResult response = GlobalActionResult.from(request);
         response.setStatus(ActionStatus.SUCCEEDED);
         response.setOwnerExecutionRef(ownerExecutionRef);
         response.setData(new LinkedHashMap<>(data));
         Object runtimeStatus = data.get("runtimeStatus");
         if (runtimeStatus != null) {
             response.setTargetStatus(String.valueOf(runtimeStatus));
-            response.setTargetStatusGroup(statusGroup(String.valueOf(runtimeStatus)));
+            response.setTargetStatusGroup(
+                    ActionStatusMachine.classifyStatusGroup(String.valueOf(runtimeStatus), TERMINAL_STATUSES));
             response.getOwnerExecutionMetadata().put("runtimeStatus", runtimeStatus);
         }
         response.getRefreshScopes().addAll(List.of("document", "actions", "timeline", "workflow"));
         return response;
     }
 
-    private ActionOwnerDispatchResponse unsupported(ActionOwnerDispatchRequest ownerRequest) {
-        ActionOwnerDispatchResponse response = base(ownerRequest);
+    private GlobalActionResult unsupported(GlobalActionRequest request) {
+        GlobalActionResult response = GlobalActionResult.from(request);
         response.setStatus(ActionStatus.REJECTED);
         response.setMessage("WORKFLOW_ACTION_UNSUPPORTED");
         response.getErrors().add(ActionError.of(
@@ -200,25 +206,9 @@ public class WorkflowActionOwnerExecutionService implements ActionOwnerExecutor 
         };
     }
 
-    private String statusGroup(String status) {
-        if (!StringUtils.hasText(status)) {
-            return null;
-        }
-        String normalized = status.toUpperCase();
-        if (normalized.contains("COMPLETED") || normalized.contains("APPROVED")
-                || normalized.contains("REJECTED") || normalized.contains("HANDLED")) {
-            return "TERMINAL";
-        }
-        if (normalized.contains("RUNNING") || normalized.contains("PENDING")
-                || normalized.contains("ACTIVE")) {
-            return "IN_PROGRESS";
-        }
-        return "BUSINESS";
-    }
-
-    private ActionOwnerDispatchResponse formValidationFailure(ActionOwnerDispatchRequest ownerRequest,
-                                                              FormDataValidationException exception) {
-        ActionOwnerDispatchResponse response = base(ownerRequest);
+    private GlobalActionResult formValidationFailure(GlobalActionRequest request,
+                                                     FormDataValidationException exception) {
+        GlobalActionResult response = GlobalActionResult.from(request);
         response.setStatus(ActionStatus.REJECTED);
         response.setMessage(exception.getMessage());
         response.getErrors().add(ActionError.of(
@@ -229,9 +219,9 @@ public class WorkflowActionOwnerExecutionService implements ActionOwnerExecutor 
         return response;
     }
 
-    private ActionOwnerDispatchResponse versionConflictFailure(ActionOwnerDispatchRequest ownerRequest,
-                                                               ProcessVersionConflictException exception) {
-        ActionOwnerDispatchResponse response = base(ownerRequest);
+    private GlobalActionResult versionConflictFailure(GlobalActionRequest request,
+                                                      ProcessVersionConflictException exception) {
+        GlobalActionResult response = GlobalActionResult.from(request);
         response.setStatus(ActionStatus.REJECTED);
         response.setMessage(exception.getMessage());
         response.getErrors().add(ActionError.of(
@@ -242,9 +232,9 @@ public class WorkflowActionOwnerExecutionService implements ActionOwnerExecutor 
         return response;
     }
 
-    private ActionOwnerDispatchResponse businessFailure(ActionOwnerDispatchRequest ownerRequest, BizException exception) {
-        ActionOwnerDispatchResponse response = base(ownerRequest);
-        boolean serverError = isServerError(exception.getCode());
+    private GlobalActionResult businessFailure(GlobalActionRequest request, BizException exception) {
+        GlobalActionResult response = GlobalActionResult.from(request);
+        boolean serverError = ActionHelpers.isServerError(exception.getCode());
         response.setStatus(serverError ? ActionStatus.FAILED : ActionStatus.REJECTED);
         response.setMessage(exception.getMessage());
         response.getErrors().add(ActionError.of(
@@ -254,53 +244,28 @@ public class WorkflowActionOwnerExecutionService implements ActionOwnerExecutor 
         return response;
     }
 
-    private boolean isServerError(int code) {
-        return code >= 50_000 || (code >= 500 && code < 600);
-    }
-
-    private ActionOwnerDispatchResponse base(ActionOwnerDispatchRequest ownerRequest) {
-        ActionOwnerDispatchResponse response = new ActionOwnerDispatchResponse();
-        response.setActionId(ownerRequest.getActionId());
-        response.setOwnerService(ownerRequest.getOwnerService());
-        return response;
-    }
-
-    private String taskId(ActionOwnerDispatchRequest request) {
+    private String taskId(GlobalActionRequest request) {
         return required(request, "taskId");
     }
 
-    private String effectId(ActionOwnerDispatchRequest request) {
+    private String effectId(GlobalActionRequest request) {
         return required(request, "effectId");
     }
 
-    private String operationId(ActionOwnerDispatchRequest request) {
-        return firstNonBlank(string(request, "operationId"), request.getIdempotencyKey(), request.getActionId());
+    private String operationId(GlobalActionRequest request) {
+        return ActionHelpers.firstNonBlank(
+                request.string("operationId"), request.getIdempotencyKey(), request.getActionId());
     }
 
-    private String required(ActionOwnerDispatchRequest request, String key) {
-        String value = string(request, key);
-        if (!StringUtils.hasText(value)) {
+    private String required(GlobalActionRequest request, String key) {
+        String value = request.string(key);
+        if (value == null || value.isBlank()) {
             throw new BizException(40000, "ACTION_PAYLOAD_" + key.toUpperCase() + "_REQUIRED");
         }
         return value;
     }
 
-    private String string(ActionOwnerDispatchRequest request, String key) {
-        Object value = request.getPayload().get(key);
-        return value != null ? String.valueOf(value) : null;
-    }
-
-    private Integer integer(ActionOwnerDispatchRequest request, String key) {
-        Object value = request.getPayload().get(key);
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value != null && !String.valueOf(value).isBlank()) {
-            return Integer.parseInt(String.valueOf(value));
-        }
-        return null;
-    }
-
+    @SuppressWarnings("unchecked")
     private Map<String, Object> map(Object value) {
         if (!(value instanceof Map<?, ?> source)) {
             return null;
@@ -308,17 +273,5 @@ public class WorkflowActionOwnerExecutionService implements ActionOwnerExecutor 
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, item) -> result.put(String.valueOf(key), item));
         return result;
-    }
-
-    private String firstNonBlank(String... values) {
-        if (values == null) {
-            return null;
-        }
-        for (String value : values) {
-            if (StringUtils.hasText(value)) {
-                return value.trim();
-            }
-        }
-        return null;
     }
 }

@@ -1,4 +1,4 @@
-# TrioBase CI quality gate. Build/runtime baseline: Java 21 and Node 22.18+.
+# TrioBase CI quality gate. Build/runtime baseline: Java 25 and Node 22.18+.
 pipeline:
   name: TrioBase CI Gate
   identifier: triobase_ci_gate

@@ -1,9 +1,10 @@
 package com.triobase.service.openapi.action;
 
+import com.triobase.common.action.runtime.ActionExecutionContext;
 import com.triobase.service.openapi.domain.entity.AuditEvent;
-import com.triobase.service.openapi.domain.entity.CallbackInbox;
-import com.triobase.service.openapi.domain.entity.ExecutionStepAttempt;
-import com.triobase.service.openapi.domain.entity.IntegrationExecution;
+import com.triobase.common.openapi.entity.CallbackInbox;
+import com.triobase.common.openapi.entity.ExecutionStepAttempt;
+import com.triobase.common.openapi.entity.IntegrationExecution;
 
 public final class OpenApiActionMetadata {
 
@@ -11,7 +12,7 @@ public final class OpenApiActionMetadata {
     }
 
     public static void apply(IntegrationExecution execution) {
-        OpenApiActionExecutionContext.Snapshot snapshot = OpenApiActionExecutionContext.current();
+        ActionExecutionContext.Snapshot snapshot = ActionExecutionContext.current();
         if (execution == null || snapshot == null) {
             return;
         }
@@ -26,7 +27,7 @@ public final class OpenApiActionMetadata {
     }
 
     public static void apply(ExecutionStepAttempt attempt) {
-        OpenApiActionExecutionContext.Snapshot snapshot = OpenApiActionExecutionContext.current();
+        ActionExecutionContext.Snapshot snapshot = ActionExecutionContext.current();
         if (attempt == null || snapshot == null) {
             return;
         }
@@ -41,7 +42,7 @@ public final class OpenApiActionMetadata {
     }
 
     public static void apply(CallbackInbox inbox) {
-        OpenApiActionExecutionContext.Snapshot snapshot = OpenApiActionExecutionContext.current();
+        ActionExecutionContext.Snapshot snapshot = ActionExecutionContext.current();
         if (inbox == null || snapshot == null) {
             return;
         }
@@ -56,7 +57,7 @@ public final class OpenApiActionMetadata {
     }
 
     public static void apply(AuditEvent event) {
-        OpenApiActionExecutionContext.Snapshot snapshot = OpenApiActionExecutionContext.current();
+        ActionExecutionContext.Snapshot snapshot = ActionExecutionContext.current();
         if (event == null || snapshot == null) {
             return;
         }

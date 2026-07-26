@@ -4,10 +4,10 @@ import com.triobase.common.action.enums.ActionExecutionMode;
 import com.triobase.common.action.enums.ActionErrorCategory;
 import com.triobase.common.action.enums.ActionSource;
 import com.triobase.common.action.enums.ActionStatus;
+import com.triobase.common.action.model.GlobalActionRequest;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.service.workflow.dto.AddSignRequest;
-import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
-import com.triobase.service.workflow.dto.FormFieldValidationError;
+import com.triobase.common.dto.form.FormFieldValidationError;
 import com.triobase.service.workflow.dto.ApproveTaskRequest;
 import com.triobase.service.workflow.dto.ProcessClosureDetailResponse;
 import com.triobase.service.workflow.dto.ProcessInstanceResponse;
@@ -15,7 +15,7 @@ import com.triobase.service.workflow.dto.RejectTaskRequest;
 import com.triobase.service.workflow.dto.StartProcessRequest;
 import com.triobase.service.workflow.dto.TaskResponse;
 import com.triobase.service.workflow.dto.TransferTaskRequest;
-import com.triobase.service.workflow.exception.FormDataValidationException;
+import com.triobase.common.dto.form.FormDataValidationException;
 import com.triobase.service.workflow.service.ClosureEffectOperationService;
 import com.triobase.service.workflow.service.ProcessInstanceService;
 import com.triobase.service.workflow.service.TaskService;
@@ -91,7 +91,7 @@ class WorkflowActionOwnerExecutionServiceTest {
         task.setId("TASK001");
         task.setStatus("APPROVED");
         when(taskService.approve(eq("TASK001"), org.mockito.Mockito.any())).thenReturn(task);
-        ActionOwnerDispatchRequest request = taskRequest("process.task.approve");
+        GlobalActionRequest request = taskRequest("process.task.approve");
         request.setIdempotencyKey(null);
 
         executionService.execute(request);
@@ -206,8 +206,8 @@ class WorkflowActionOwnerExecutionServiceTest {
         assertEquals("WORKFLOW_ACTION_UNSUPPORTED", response.getMessage());
     }
 
-    private ActionOwnerDispatchRequest startRequest() {
-        ActionOwnerDispatchRequest request = base("process.instance.start");
+    private GlobalActionRequest startRequest() {
+        GlobalActionRequest request = base("process.instance.start");
         request.setTarget(null);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("processKey", "expense_report");
@@ -217,27 +217,27 @@ class WorkflowActionOwnerExecutionServiceTest {
         return request;
     }
 
-    private ActionOwnerDispatchRequest taskRequest(String actionType) {
+    private GlobalActionRequest taskRequest(String actionType) {
         return taskRequest(actionType, Map.of("taskId", "TASK001", "comment", "ok"));
     }
 
-    private ActionOwnerDispatchRequest taskRequest(String actionType, Map<String, Object> payload) {
-        ActionOwnerDispatchRequest request = base(actionType);
+    private GlobalActionRequest taskRequest(String actionType, Map<String, Object> payload) {
+        GlobalActionRequest request = base(actionType);
         request.setPayload(payload);
         return request;
     }
 
-    private ActionOwnerDispatchRequest closureRequest(String actionType) {
-        ActionOwnerDispatchRequest request = base(actionType);
+    private GlobalActionRequest closureRequest(String actionType) {
+        GlobalActionRequest request = base(actionType);
         request.setPayload(Map.of("effectId", "EFF001", "reason", "handled offline"));
         return request;
     }
 
-    private ActionOwnerDispatchRequest base(String actionType) {
-        ActionOwnerDispatchRequest request = new ActionOwnerDispatchRequest();
+    private GlobalActionRequest base(String actionType) {
+        GlobalActionRequest request = new GlobalActionRequest();
         request.setActionId("act_001");
         request.setActionType(actionType);
-        request.setOwnerService("service-workflow-engine");
+        request.getTarget().setOwnerService("service-workflow-engine");
         request.setSource(ActionSource.GUI);
         request.setExecutionMode(ActionExecutionMode.SYNC);
         request.setIdempotencyKey("idem-001");

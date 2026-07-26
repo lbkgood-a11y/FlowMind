@@ -16,7 +16,7 @@ import com.triobase.service.lowcode.dto.BindFormProcessRequest;
 import com.triobase.service.lowcode.dto.SubmitFormInstanceRequest;
 import com.triobase.service.lowcode.dto.UpdateFormInstanceRequest;
 import com.triobase.service.lowcode.dto.UpdateWorkflowStatusRequest;
-import com.triobase.service.lowcode.action.LowcodeActionExecutionContext;
+import com.triobase.common.action.runtime.ActionExecutionContext;
 import com.triobase.service.lowcode.entity.LcFormDefinition;
 import com.triobase.service.lowcode.entity.LcFormInstance;
 import com.triobase.service.lowcode.entity.LcFormInstanceWorkflowAudit;
@@ -384,7 +384,7 @@ public class FormInstanceService {
     }
 
     private void applyActionMetadata(LcFormInstance instance) {
-        LowcodeActionExecutionContext.Snapshot snapshot = LowcodeActionExecutionContext.current();
+        ActionExecutionContext.Snapshot snapshot = ActionExecutionContext.current();
         if (snapshot == null) {
             return;
         }

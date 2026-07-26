@@ -2,8 +2,8 @@ package com.triobase.service.openapi.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.service.openapi.domain.entity.MappingVersion;
-import com.triobase.service.openapi.domain.enums.MappingOperation;
-import com.triobase.service.openapi.dto.MappingRuleRequest;
+import com.triobase.common.openapi.mapping.MappingOperation;
+import com.triobase.common.openapi.mapping.MappingRuleRequest;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

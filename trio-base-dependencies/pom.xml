@@ -17,7 +17,7 @@
         <spring-cloud.version>2024.0.1</spring-cloud.version>
         <spring-cloud-alibaba.version>2023.0.3.2</spring-cloud-alibaba.version>
         <temporal.version>1.28.1</temporal.version>
-        <mybatis-plus.version>3.5.10</mybatis-plus.version>
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <druid.version>1.2.24</druid.version>
         <skywalking.version>9.4.0</skywalking.version>
         <archunit.version>1.4.0</archunit.version>
@@ -189,6 +189,11 @@
             <dependency>
                 <groupId>com.triobase</groupId>
                 <artifactId>common-archunit</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.triobase</groupId>
+                <artifactId>openapi-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

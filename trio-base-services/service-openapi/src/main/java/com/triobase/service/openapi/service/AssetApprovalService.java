@@ -8,7 +8,7 @@ import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.openapi.domain.entity.AssetApproval;
 import com.triobase.service.openapi.domain.enums.ApprovalDecision;
-import com.triobase.service.openapi.domain.enums.Environment;
+import com.triobase.common.openapi.enums.Environment;
 import com.triobase.service.openapi.infrastructure.mapper.AssetApprovalMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

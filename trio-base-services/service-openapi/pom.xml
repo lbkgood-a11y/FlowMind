@@ -25,7 +25,7 @@
         </dependency>
         <dependency>
             <groupId>com.triobase</groupId>
-            <artifactId>common-temporal</artifactId>
+            <artifactId>openapi-common</artifactId>
         </dependency>
         <dependency>
             <groupId>com.triobase</groupId>
@@ -66,11 +66,6 @@
             <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.temporal</groupId>
-            <artifactId>temporal-spring-boot-starter</artifactId>
-        </dependency>
-
-        <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
         </dependency>
@@ -104,11 +99,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.temporal</groupId>
-            <artifactId>temporal-testing</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

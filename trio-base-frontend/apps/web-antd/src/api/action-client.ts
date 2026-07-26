@@ -225,6 +225,7 @@ export namespace ActionApi {
     actorType?: string;
     correlationId?: string;
     idempotencyKey?: string;
+    ownerService?: string;
     page?: number;
     size?: number;
     source?: string;
@@ -242,10 +243,19 @@ export namespace ActionApi {
   }
 
   export interface SubscribeActionEventsOptions {
+    actionType?: string;
     onEnd?: () => void;
     onEvent?: (event: ActionEvent) => void;
     onRawMessage?: (message: string) => void;
+    ownerService?: string;
     signal?: AbortSignal;
+    target?: ActionTarget;
+  }
+
+  export interface ActionRouteHint {
+    actionType?: string;
+    ownerService?: string;
+    target?: ActionTarget;
   }
 }
 
@@ -275,22 +285,79 @@ export const ACTION_TARGET_TYPES = {
   processTask: 'PROCESS_TASK',
 } as const;
 
+const OWNER_ACTION_BASE_PATHS: Record<string, string> = {
+  'service-lowcode': '/lowcode-runtime/actions',
+  'service-openapi': '/openapi/management/actions',
+  'service-workflow-engine': '/workflow-actions',
+};
+
+type ActionRouteSource = {
+  actionType?: string;
+  ownerService?: string;
+  target?: ActionApi.ActionTarget;
+};
+
+function resolveOwnerService(data: ActionRouteSource) {
+  const owner = data.ownerService ?? data.target?.ownerService;
+  if (owner && OWNER_ACTION_BASE_PATHS[owner]) {
+    return owner;
+  }
+  const actionType = data.actionType;
+  if (!actionType) {
+    return undefined;
+  }
+  if (actionType.startsWith('lowcode.')) {
+    return 'service-lowcode';
+  }
+  if (actionType.startsWith('process.')) {
+    return 'service-workflow-engine';
+  }
+  if (actionType.startsWith('integration.')) {
+    return 'service-openapi';
+  }
+  return undefined;
+}
+
+function actionBasePath(data: ActionRouteSource) {
+  const owner = resolveOwnerService(data);
+  return owner ? (OWNER_ACTION_BASE_PATHS[owner] ?? '/actions') : '/actions';
+}
+
+function actionReadBasePath(options?: ActionApi.ActionRouteHint) {
+  return options ? actionBasePath(options) : '/actions';
+}
+
+function actionSubmitPath(data: ActionApi.GlobalActionRequest) {
+  const basePath = actionBasePath(data);
+  return basePath === '/actions' ? '/actions' : `${basePath}/dispatch`;
+}
+
 async function submitAction<TData = Record<string, unknown>>(
   data: ActionApi.GlobalActionRequest,
 ) {
-  return requestClient.post<ActionApi.GlobalActionResult<TData>>(
-    '/actions',
+  const result = await requestClient.post<ActionApi.GlobalActionResult<TData>>(
+    actionSubmitPath(data),
     data,
   );
+  rememberActionOwner(result, data);
+  return result;
 }
 
-async function getActionDetail(actionId: string) {
-  return requestClient.get<ActionApi.ActionExecution>(`/actions/${actionId}`);
+async function getActionDetail(
+  actionId: string,
+  options?: ActionApi.ActionRouteHint,
+) {
+  const basePath = actionReadBasePath(options);
+  return requestClient.get<ActionApi.ActionExecution>(`${basePath}/${actionId}`);
 }
 
-async function getActionEvents(actionId: string) {
+async function getActionEvents(
+  actionId: string,
+  options?: ActionApi.ActionRouteHint,
+) {
+  const basePath = actionReadBasePath(options);
   return requestClient.get<ActionApi.ActionEvent[]>(
-    `/actions/${actionId}/events`,
+    `${basePath}/${actionId}/events`,
   );
 }
 
@@ -303,26 +370,51 @@ async function queryActions(params: ActionApi.ActionQueryParams) {
 
 async function validateActionCandidate(data: ActionApi.ActionCandidate) {
   return requestClient.post<ActionApi.ActionCandidateValidationResult>(
-    '/actions/candidates/validate',
+    `${actionBasePath(data)}/candidates/validate`,
     data,
   );
 }
 
 async function validateActionCandidates(data: ActionApi.ActionCandidate[]) {
-  const result = await requestClient.post<ActionApi.ActionCandidateBatchValidationResult>(
-    '/actions/candidates/batch-validate',
-    { candidates: data },
+  const groups = new Map<
+    string,
+    Array<{ candidate: ActionApi.ActionCandidate; index: number }>
+  >();
+  data.forEach((candidate, index) => {
+    const basePath = actionBasePath(candidate);
+    const group = groups.get(basePath) ?? [];
+    group.push({ candidate, index });
+    groups.set(basePath, group);
+  });
+  const ordered: ActionApi.ActionCandidateValidationResult[] = [];
+  await Promise.all(
+    Array.from(groups.entries()).map(async ([basePath, group]) => {
+      const result = await requestClient.post<ActionApi.ActionCandidateBatchValidationResult>(
+        `${basePath}/candidates/batch-validate`,
+        { candidates: group.map((item) => item.candidate) },
+      );
+      const results = result.results ?? [];
+      group.forEach((item, groupIndex) => {
+        ordered[item.index] = results[groupIndex] ?? {
+          actionType: item.candidate.actionType,
+          enabled: false,
+          visible: false,
+        };
+      });
+    }),
   );
-  return result.results ?? [];
+  return ordered;
 }
 
 async function dispatchActionCandidate<TData = Record<string, unknown>>(
   data: ActionApi.ActionCandidate,
 ) {
-  return requestClient.post<ActionApi.GlobalActionResult<TData>>(
-    '/actions/candidates/dispatch',
+  const result = await requestClient.post<ActionApi.GlobalActionResult<TData>>(
+    `${actionBasePath(data)}/candidates/dispatch`,
     data,
   );
+  rememberActionOwner(result, data);
+  return result;
 }
 
 async function subscribeActionEvents(
@@ -330,7 +422,8 @@ async function subscribeActionEvents(
   options: ActionApi.SubscribeActionEventsOptions = {},
 ) {
   let buffer = '';
-  await requestClient.requestSSE(`/actions/${actionId}/stream`, undefined, {
+  const basePath = actionReadBasePath(options);
+  await requestClient.requestSSE(`${basePath}/${actionId}/stream`, undefined, {
     method: 'GET',
     onEnd: options.onEnd,
     onMessage(message: string) {
@@ -347,6 +440,21 @@ async function subscribeActionEvents(
     },
     signal: options.signal,
   });
+}
+
+const actionOwnerById = new Map<string, string>();
+
+function rememberActionOwner<TData>(
+  result: ActionApi.GlobalActionResult<TData> | undefined,
+  source: ActionApi.ActionCandidate | ActionApi.GlobalActionRequest,
+) {
+  if (!result?.actionId) {
+    return;
+  }
+  const owner = result.ownerService ?? resolveOwnerService(source);
+  if (owner) {
+    actionOwnerById.set(result.actionId, owner);
+  }
 }
 
 function parseSseActionEvent(chunk: string) {
@@ -383,8 +491,8 @@ export {
   getActionDetail,
   getActionEvents,
   queryActions,
-  subscribeActionEvents,
   submitAction,
+  subscribeActionEvents,
   validateActionCandidate,
   validateActionCandidates,
 };

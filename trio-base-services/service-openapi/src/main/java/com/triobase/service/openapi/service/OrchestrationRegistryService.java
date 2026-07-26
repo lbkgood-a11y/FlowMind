@@ -9,7 +9,7 @@ import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.openapi.domain.entity.OrchestrationDefinition;
 import com.triobase.service.openapi.domain.entity.OrchestrationVersion;
 import com.triobase.service.openapi.domain.enums.AssetLifecycleState;
-import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
+import com.triobase.common.openapi.enums.VersionLifecycleState;
 import com.triobase.service.openapi.dto.CreateOrchestrationRequest;
 import com.triobase.service.openapi.dto.OrchestrationVersionMutationRequest;
 import com.triobase.service.openapi.dto.OrchestrationVersionResponse;
@@ -225,7 +225,7 @@ public class OrchestrationRegistryService {
         }
     }
 
-    private void initialize(com.triobase.service.openapi.domain.model.VersionedEntity entity,
+    private void initialize(com.triobase.common.openapi.entity.VersionedEntity entity,
                             LocalDateTime now) {
         entity.setRowVersion(0L);
         entity.setCreatedBy(operator());

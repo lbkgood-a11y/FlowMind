@@ -4,11 +4,12 @@ import com.triobase.common.action.enums.ActionActorType;
 import com.triobase.common.action.enums.ActionSource;
 import com.triobase.common.action.model.ActionActor;
 import com.triobase.common.action.model.ActionContext;
-import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
+import com.triobase.common.action.model.GlobalActionRequest;
+import com.triobase.common.action.runtime.ActionExecutionContext;
 import com.triobase.service.openapi.domain.entity.AuditEvent;
-import com.triobase.service.openapi.domain.entity.CallbackInbox;
-import com.triobase.service.openapi.domain.entity.ExecutionStepAttempt;
-import com.triobase.service.openapi.domain.entity.IntegrationExecution;
+import com.triobase.common.openapi.entity.CallbackInbox;
+import com.triobase.common.openapi.entity.ExecutionStepAttempt;
+import com.triobase.common.openapi.entity.IntegrationExecution;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -18,12 +19,12 @@ class OpenApiActionMetadataTest {
 
     @AfterEach
     void tearDown() {
-        OpenApiActionExecutionContext.clear();
+        ActionExecutionContext.clear();
     }
 
     @Test
     void appliesCurrentActionMetadataToRuntimeRecords() {
-        OpenApiActionExecutionContext.set(request());
+        ActionExecutionContext.set(request());
 
         IntegrationExecution execution = new IntegrationExecution();
         ExecutionStepAttempt attempt = new ExecutionStepAttempt();
@@ -40,8 +41,8 @@ class OpenApiActionMetadataTest {
         assertThat(event.getActionCorrelationId()).isEqualTo("corr-001");
     }
 
-    private ActionOwnerDispatchRequest request() {
-        ActionOwnerDispatchRequest request = new ActionOwnerDispatchRequest();
+    private GlobalActionRequest request() {
+        GlobalActionRequest request = new GlobalActionRequest();
         request.setActionId("act_001");
         request.setActionType("integration.orchestration.start");
         request.setSource(ActionSource.API);

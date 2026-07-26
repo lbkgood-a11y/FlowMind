@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.triobase.service.openapi.domain.entity.MappingVersion;
-import com.triobase.service.openapi.dto.MappingRuleRequest;
+import com.triobase.common.openapi.mapping.MappingRuleRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 

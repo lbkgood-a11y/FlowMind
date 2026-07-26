@@ -2,7 +2,7 @@ package com.triobase.service.openapi.controller;
 
 import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.R;
-import com.triobase.service.openapi.domain.entity.CallbackInbox;
+import com.triobase.common.openapi.entity.CallbackInbox;
 import com.triobase.service.openapi.dto.ResolveCallbackQuarantineRequest;
 import com.triobase.service.openapi.service.CallbackQuarantineService;
 import jakarta.validation.Valid;

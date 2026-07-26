@@ -1,5 +1,7 @@
 package com.triobase.service.lowcode.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -78,7 +80,7 @@ public class LowcodeAuthorizationService {
         request.setResourceCode(resourceCode);
         request.setActionCode(normalizeAction(actionCode));
         request.setOwnerService(OWNER_SERVICE);
-        request.setBusinessObjectId(normalizeBlank(businessObjectId));
+        request.setBusinessObjectId(StringHelpers.normalizeBlank(businessObjectId));
         request.setFieldKeys(normalizeFieldKeys(fieldKeys));
         request.setEnforcementMode(true);
         return request;
@@ -293,7 +295,7 @@ public class LowcodeAuthorizationService {
             return List.of();
         }
         return fieldKeys.stream()
-                .map(this::normalizeBlank)
+                .map(StringHelpers::normalizeBlank)
                 .filter(StringUtils::hasText)
                 .distinct()
                 .toList();
@@ -303,9 +305,6 @@ public class LowcodeAuthorizationService {
         return StringUtils.hasText(value) ? value.trim().toUpperCase(Locale.ROOT) : "";
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 
     public enum DataAccessMode {
         ALL,

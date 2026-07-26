@@ -1,5 +1,7 @@
 package com.triobase.service.auth.service;
 
+import com.triobase.common.core.util.StringHelpers;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
@@ -58,7 +60,7 @@ public class MenuService {
 
     public List<SysMenu> list(String keyword, String menuGroup, String menuType, Integer status) {
         LambdaQueryWrapper<SysMenu> wrapper = new LambdaQueryWrapper<SysMenu>();
-        String normalizedKeyword = normalizeBlank(keyword);
+        String normalizedKeyword = StringHelpers.normalizeBlank(keyword);
         if (normalizedKeyword != null) {
             wrapper.and(query -> query
                     .like(SysMenu::getMenuKey, normalizedKeyword)
@@ -71,11 +73,11 @@ public class MenuService {
                     .or()
                     .like(SysMenu::getPermissionCode, normalizedKeyword));
         }
-        String normalizedGroup = normalizeBlank(menuGroup);
+        String normalizedGroup = StringHelpers.normalizeBlank(menuGroup);
         if (normalizedGroup != null) {
             wrapper.eq(SysMenu::getMenuGroup, normalizedGroup);
         }
-        String normalizedType = normalizeBlank(menuType);
+        String normalizedType = StringHelpers.normalizeBlank(menuType);
         if (normalizedType != null) {
             wrapper.eq(SysMenu::getMenuType, normalizedType);
         }
@@ -125,7 +127,7 @@ public class MenuService {
     }
 
     public boolean existsMenuKey(String menuKey, String excludeId) {
-        String normalizedKey = normalizeBlank(menuKey);
+        String normalizedKey = StringHelpers.normalizeBlank(menuKey);
         if (normalizedKey == null) {
             return false;
         }
@@ -133,7 +135,7 @@ public class MenuService {
     }
 
     public boolean existsPath(String path, String excludeId) {
-        String normalizedPath = normalizeBlank(path);
+        String normalizedPath = StringHelpers.normalizeBlank(path);
         if (normalizedPath == null) {
             return false;
         }
@@ -206,14 +208,14 @@ public class MenuService {
 
     private void applyCreateRequest(SysMenu menu, CreateMenuRequest request) {
         String menuType = normalizeMenuType(request.getMenuType());
-        menu.setParentId(normalizeBlank(request.getParentId()));
+        menu.setParentId(StringHelpers.normalizeBlank(request.getParentId()));
         menu.setMenuKey(request.getMenuKey().trim());
         menu.setMenuName(request.getMenuName().trim());
         menu.setPath(normalizePathForType(request.getPath(), menuType));
         menu.setComponent(normalizeComponentForType(request.getComponent(), menuType));
-        menu.setIcon(normalizeBlank(request.getIcon()));
-        menu.setActiveIcon(normalizeBlank(request.getActiveIcon()));
-        menu.setActivePath(normalizeBlank(request.getActivePath()));
+        menu.setIcon(StringHelpers.normalizeBlank(request.getIcon()));
+        menu.setActiveIcon(StringHelpers.normalizeBlank(request.getActiveIcon()));
+        menu.setActivePath(StringHelpers.normalizeBlank(request.getActivePath()));
         menu.setMenuType(menuType);
         menu.setMenuGroup(StringUtils.hasText(request.getMenuGroup()) ? request.getMenuGroup().trim() : DEFAULT_GROUP);
         menu.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 100);
@@ -225,23 +227,23 @@ public class MenuService {
         menu.setHideChildrenInMenu(toShort(request.getHideChildrenInMenu()));
         menu.setHideInBreadcrumb(toShort(request.getHideInBreadcrumb()));
         menu.setHideInTab(toShort(request.getHideInTab()));
-        menu.setBadge(normalizeBlank(request.getBadge()));
-        menu.setBadgeType(normalizeBlank(request.getBadgeType()));
-        menu.setBadgeVariant(normalizeBlank(request.getBadgeVariant()));
-        menu.setPermissionCode(normalizeBlank(request.getPermissionCode()));
-        menu.setDescription(normalizeBlank(request.getDescription()));
+        menu.setBadge(StringHelpers.normalizeBlank(request.getBadge()));
+        menu.setBadgeType(StringHelpers.normalizeBlank(request.getBadgeType()));
+        menu.setBadgeVariant(StringHelpers.normalizeBlank(request.getBadgeVariant()));
+        menu.setPermissionCode(StringHelpers.normalizeBlank(request.getPermissionCode()));
+        menu.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
     }
 
     private void applyUpdateRequest(SysMenu menu, UpdateMenuRequest request) {
         String menuType = normalizeMenuType(request.getMenuType());
-        menu.setParentId(normalizeBlank(request.getParentId()));
+        menu.setParentId(StringHelpers.normalizeBlank(request.getParentId()));
         menu.setMenuKey(request.getMenuKey().trim());
         menu.setMenuName(request.getMenuName().trim());
         menu.setPath(normalizePathForType(request.getPath(), menuType));
         menu.setComponent(normalizeComponentForType(request.getComponent(), menuType));
-        menu.setIcon(normalizeBlank(request.getIcon()));
-        menu.setActiveIcon(normalizeBlank(request.getActiveIcon()));
-        menu.setActivePath(normalizeBlank(request.getActivePath()));
+        menu.setIcon(StringHelpers.normalizeBlank(request.getIcon()));
+        menu.setActiveIcon(StringHelpers.normalizeBlank(request.getActiveIcon()));
+        menu.setActivePath(StringHelpers.normalizeBlank(request.getActivePath()));
         menu.setMenuType(menuType);
         menu.setMenuGroup(StringUtils.hasText(request.getMenuGroup()) ? request.getMenuGroup().trim() : DEFAULT_GROUP);
         menu.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 100);
@@ -253,11 +255,11 @@ public class MenuService {
         menu.setHideChildrenInMenu(toShort(request.getHideChildrenInMenu()));
         menu.setHideInBreadcrumb(toShort(request.getHideInBreadcrumb()));
         menu.setHideInTab(toShort(request.getHideInTab()));
-        menu.setBadge(normalizeBlank(request.getBadge()));
-        menu.setBadgeType(normalizeBlank(request.getBadgeType()));
-        menu.setBadgeVariant(normalizeBlank(request.getBadgeVariant()));
-        menu.setPermissionCode(normalizeBlank(request.getPermissionCode()));
-        menu.setDescription(normalizeBlank(request.getDescription()));
+        menu.setBadge(StringHelpers.normalizeBlank(request.getBadge()));
+        menu.setBadgeType(StringHelpers.normalizeBlank(request.getBadgeType()));
+        menu.setBadgeVariant(StringHelpers.normalizeBlank(request.getBadgeVariant()));
+        menu.setPermissionCode(StringHelpers.normalizeBlank(request.getPermissionCode()));
+        menu.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
     }
 
     private void validateRequired(String menuKey, String menuName, String path,
@@ -329,14 +331,14 @@ public class MenuService {
     }
 
     private void validateUniqueMenuKey(String menuKey, String currentId) {
-        String normalizedKey = normalizeBlank(menuKey);
+        String normalizedKey = StringHelpers.normalizeBlank(menuKey);
         if (normalizedKey != null && countMenuKey(normalizedKey, currentId) > 0) {
             throw new BizException(40032, "MENU_KEY_ALREADY_EXISTS");
         }
     }
 
     private void validateUniquePath(String path, String currentId) {
-        String normalizedPath = normalizeBlank(path);
+        String normalizedPath = StringHelpers.normalizeBlank(path);
         if (normalizedPath != null && countPath(normalizedPath, currentId) > 0) {
             throw new BizException(40033, "MENU_PATH_ALREADY_EXISTS");
         }
@@ -368,9 +370,6 @@ public class MenuService {
         return value != null && value == 0 ? (short) 0 : (short) 1;
     }
 
-    private String normalizeBlank(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
 
     private List<MenuRouteResponse> buildRouteTree(List<SysMenu> menus) {
         Set<String> menuIds = menus.stream()
@@ -392,7 +391,7 @@ public class MenuService {
         route.setName(normalizeRouteName(menu));
         route.setPath(resolveRoutePath(menu, menuType));
         route.setType(menuType);
-        route.setAuthCode(normalizeBlank(menu.getPermissionCode()));
+        route.setAuthCode(StringHelpers.normalizeBlank(menu.getPermissionCode()));
         route.setComponent(resolveRouteComponent(menu, menuType));
         route.setMeta(buildRouteMeta(menu, menuType));
 
@@ -426,7 +425,7 @@ public class MenuService {
         putTrue(meta, "hideInBreadcrumb", menu.getHideInBreadcrumb());
         putTrue(meta, "hideInTab", menu.getHideInTab());
 
-        String target = normalizeBlank(menu.getComponent());
+        String target = StringHelpers.normalizeBlank(menu.getComponent());
         if (TYPE_EMBEDDED.equals(menuType) && isExternalUrl(target)) {
             meta.put("iframeSrc", target);
         }
@@ -467,7 +466,7 @@ public class MenuService {
     }
 
     private PermissionKey resolvePermissionKey(SysMenu menu) {
-        String permissionCode = normalizeBlank(menu.getPermissionCode());
+        String permissionCode = StringHelpers.normalizeBlank(menu.getPermissionCode());
         if (permissionCode != null) {
             return parsePermissionCode(permissionCode);
         }
@@ -479,8 +478,8 @@ public class MenuService {
         if (separator <= 0 || separator >= permissionCode.length() - 1) {
             return null;
         }
-        String resourceCode = normalizeBlank(permissionCode.substring(0, separator));
-        String actionCode = normalizeBlank(permissionCode.substring(separator + 1));
+        String resourceCode = StringHelpers.normalizeBlank(permissionCode.substring(0, separator));
+        String actionCode = StringHelpers.normalizeBlank(permissionCode.substring(separator + 1));
         return resourceCode != null && actionCode != null
                 ? new PermissionKey(resourceCode, actionCode)
                 : null;
@@ -502,7 +501,7 @@ public class MenuService {
     }
 
     private String normalizePathForType(String path, String menuType) {
-        return TYPE_BUTTON.equals(menuType) || TYPE_LINK.equals(menuType) ? null : normalizeBlank(path);
+        return TYPE_BUTTON.equals(menuType) || TYPE_LINK.equals(menuType) ? null : StringHelpers.normalizeBlank(path);
     }
 
     private void includeAncestorMenus(List<SysMenu> menus, Set<String> menuIds) {
@@ -525,7 +524,7 @@ public class MenuService {
         if (TYPE_BUTTON.equals(menuType) || TYPE_CATALOG.equals(menuType)) {
             return null;
         }
-        return normalizeBlank(component);
+        return StringHelpers.normalizeBlank(component);
     }
 
     private String normalizeRouteName(SysMenu menu) {
@@ -539,11 +538,11 @@ public class MenuService {
         if (ROUTE_COMPONENT_TYPES.contains(menuType)) {
             return "IFrameView";
         }
-        return normalizeBlank(menu.getComponent());
+        return StringHelpers.normalizeBlank(menu.getComponent());
     }
 
     private String resolveRoutePath(SysMenu menu, String menuType) {
-        String path = normalizeBlank(menu.getPath());
+        String path = StringHelpers.normalizeBlank(menu.getPath());
         if (StringUtils.hasText(path)) {
             return path;
         }
@@ -555,7 +554,7 @@ public class MenuService {
     }
 
     private String toRoutePathSegment(String value) {
-        String normalized = normalizeBlank(value);
+        String normalized = StringHelpers.normalizeBlank(value);
         if (normalized == null) {
             return "link";
         }
@@ -579,7 +578,7 @@ public class MenuService {
     }
 
     private void putText(Map<String, Object> meta, String key, String value) {
-        String normalized = normalizeBlank(value);
+        String normalized = StringHelpers.normalizeBlank(value);
         if (normalized != null) {
             meta.put(key, normalized);
         }
@@ -592,7 +591,7 @@ public class MenuService {
     }
 
     private boolean isExternalUrl(String value) {
-        String normalized = normalizeBlank(value);
+        String normalized = StringHelpers.normalizeBlank(value);
         return normalized != null
                 && (normalized.startsWith("http://") || normalized.startsWith("https://"));
     }

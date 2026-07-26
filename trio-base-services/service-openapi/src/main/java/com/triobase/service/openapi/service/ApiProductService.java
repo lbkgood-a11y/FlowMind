@@ -15,10 +15,10 @@ import com.triobase.service.openapi.domain.entity.ApiProductAccessGrant;
 import com.triobase.service.openapi.domain.entity.ReleaseSnapshot;
 import com.triobase.service.openapi.domain.entity.RouteDefinition;
 import com.triobase.service.openapi.domain.enums.AssetLifecycleState;
-import com.triobase.service.openapi.domain.enums.Environment;
+import com.triobase.common.openapi.enums.Environment;
 import com.triobase.service.openapi.domain.enums.ProductChangeClassification;
 import com.triobase.service.openapi.domain.enums.ProductVisibility;
-import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
+import com.triobase.common.openapi.enums.VersionLifecycleState;
 import com.triobase.service.openapi.dto.ApiProductVersionMutationRequest;
 import com.triobase.service.openapi.dto.ApiProductVersionResponse;
 import com.triobase.service.openapi.dto.CreateApiProductRequest;
@@ -164,7 +164,7 @@ public class ApiProductService {
     private ApiProductVersion requireVersion(String id){ApiProductVersion v=versionMapper.selectById(id);if(v==null)throw new BizException(40461,"OPENAPI_PRODUCT_VERSION_NOT_FOUND");requireProduct(v.getApiProductId());return v;}
     private ArrayNode copyArray(JsonNode n){return n!=null&&n.isArray()?(ArrayNode)n.deepCopy():objectMapper.createArrayNode();} private JsonNode copyObject(JsonNode n){return n!=null&&n.isObject()?n.deepCopy():objectMapper.createObjectNode();}
     private String targetTenant(String r){String c=SecurityContextHolder.getTenantId();if(c==null)return StringUtils.hasText(r)?r.trim():null;if(StringUtils.hasText(r)&&!c.equals(r.trim()))throw new BizException(40310,"OPENAPI_CROSS_TENANT_ACCESS_DENIED");return c;}
-    private void initialize(com.triobase.common.core.entity.BaseEntity e){LocalDateTime n=LocalDateTime.now();e.setCreatedBy(operator());e.setCreatedAt(n);e.setUpdatedBy(operator());e.setUpdatedAt(n);if(e instanceof com.triobase.service.openapi.domain.model.VersionedEntity v)v.setRowVersion(0L);}
+    private void initialize(com.triobase.common.core.entity.BaseEntity e){LocalDateTime n=LocalDateTime.now();e.setCreatedBy(operator());e.setCreatedAt(n);e.setUpdatedBy(operator());e.setUpdatedAt(n);if(e instanceof com.triobase.common.openapi.entity.VersionedEntity v)v.setRowVersion(0L);}
     private void touch(com.triobase.common.core.entity.BaseEntity e){e.setUpdatedBy(operator());e.setUpdatedAt(LocalDateTime.now());}
     private String operator(){return StringUtils.hasText(SecurityContextHolder.getUserId())?SecurityContextHolder.getUserId():"SYSTEM";}
     private record ParsedVersion(String text,int major,int minor,int patch){}

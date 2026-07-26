@@ -1,8 +1,8 @@
 package com.triobase.service.openapi.domain.entity;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.triobase.service.openapi.domain.enums.AuthenticationType;
+import com.triobase.common.openapi.enums.AuthenticationType;
 import com.triobase.service.openapi.domain.enums.CredentialBindingState;
-import com.triobase.service.openapi.domain.model.VersionedEntity;
+import com.triobase.common.openapi.entity.VersionedEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;

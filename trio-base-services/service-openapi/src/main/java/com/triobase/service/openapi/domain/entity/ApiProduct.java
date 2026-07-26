@@ -6,7 +6,7 @@ import com.triobase.service.openapi.domain.enums.AssetLifecycleState;
 import com.triobase.service.openapi.domain.enums.ProductVisibility;
 import com.triobase.service.openapi.domain.enums.RiskLevel;
 import com.triobase.service.openapi.domain.model.TenantEntity;
-import com.triobase.service.openapi.infrastructure.persistence.PostgresJsonbTypeHandler;
+import com.triobase.common.openapi.PostgresJsonbTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 @Data @EqualsAndHashCode(callSuper = true) @TableName(value="oa_api_product", autoResultMap=true)

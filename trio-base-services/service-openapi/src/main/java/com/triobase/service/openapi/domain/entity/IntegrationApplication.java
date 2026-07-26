@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.triobase.service.openapi.domain.enums.ApplicationLifecycleState;
 import com.triobase.service.openapi.domain.enums.RiskLevel;
 import com.triobase.service.openapi.domain.model.TenantEntity;
-import com.triobase.service.openapi.infrastructure.persistence.PostgresJsonbTypeHandler;
+import com.triobase.common.openapi.PostgresJsonbTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 @Data @EqualsAndHashCode(callSuper=true) @TableName(value="oa_application", autoResultMap=true)

@@ -5,7 +5,7 @@ import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.service.openapi.domain.enums.AssetLifecycleState;
 import com.triobase.service.openapi.domain.enums.StructureDirection;
 import com.triobase.service.openapi.domain.enums.StructureKind;
-import com.triobase.service.openapi.domain.enums.VersionLifecycleState;
+import com.triobase.common.openapi.enums.VersionLifecycleState;
 import com.triobase.service.openapi.dto.StructureResponse;
 import com.triobase.service.openapi.service.OpenApiExportService;
 import com.triobase.service.openapi.service.OpenApiImportService;

@@ -5,10 +5,9 @@ import com.triobase.common.action.enums.ActionStatus;
 import com.triobase.common.action.model.ActionError;
 import com.triobase.common.action.model.GlobalActionRequest;
 import com.triobase.common.action.model.GlobalActionResult;
-import com.triobase.common.action.owner.ActionOwnerDispatchRequest;
-import com.triobase.common.action.owner.ActionOwnerDispatchResponse;
 import com.triobase.common.action.owner.ActionOwnerExecutor;
 import com.triobase.common.action.owner.ActionOwnerGuardResponse;
+import com.triobase.common.action.util.ActionHelpers;
 import com.triobase.service.lowcode.dto.RuntimeRetryWorkflowRequest;
 import com.triobase.service.lowcode.service.ApplicationRuntimeService;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +33,7 @@ public class LowcodeActionOwnerExecutionService implements ActionOwnerExecutor {
     }
 
     @Override
-    public ActionOwnerDispatchResponse execute(ActionOwnerDispatchRequest request) {
+    public GlobalActionResult execute(GlobalActionRequest request) {
         return switch (request.getActionType()) {
             case LOWCODE_FORM_CREATE, LOWCODE_FORM_SAVE, LOWCODE_FORM_SUBMIT -> executeFormAction(request);
             case LOWCODE_WORKFLOW_RETRY -> executeWorkflowRetry(request);
@@ -42,7 +41,7 @@ public class LowcodeActionOwnerExecutionService implements ActionOwnerExecutor {
         };
     }
 
-    public ActionOwnerGuardResponse guard(ActionOwnerDispatchRequest request) {
+    public ActionOwnerGuardResponse guard(GlobalActionRequest request) {
         if (request == null || !supported(request.getActionType())) {
             return ActionOwnerGuardResponse.denied(
                     "LOWCODE_ACTION_UNSUPPORTED",
@@ -55,66 +54,47 @@ public class LowcodeActionOwnerExecutionService implements ActionOwnerExecutor {
         return ActionOwnerGuardResponse.allowed("LOWCODE_ACTION_SUPPORTED");
     }
 
-    private ActionOwnerDispatchResponse executeFormAction(ActionOwnerDispatchRequest ownerRequest) {
+    private GlobalActionResult executeFormAction(GlobalActionRequest request) {
         GlobalActionResult result = applicationRuntimeService.executeLocalAction(
-                string(ownerRequest, "appKey"),
-                integer(ownerRequest, "version"),
-                string(ownerRequest, "actionCode"),
-                globalActionRequest(ownerRequest));
-        return toOwnerResponse(ownerRequest, result);
+                request.string("appKey"),
+                request.integer("version"),
+                request.string("actionCode"),
+                request);
+        return ownerResult(request, result);
     }
 
-    private ActionOwnerDispatchResponse executeWorkflowRetry(ActionOwnerDispatchRequest ownerRequest) {
+    private GlobalActionResult executeWorkflowRetry(GlobalActionRequest request) {
         RuntimeRetryWorkflowRequest retryRequest = new RuntimeRetryWorkflowRequest();
-        retryRequest.setActionCode(string(ownerRequest, "actionCode"));
-        retryRequest.setIdempotencyKey(firstNonBlank(string(ownerRequest, "idempotencyKey"),
-                ownerRequest.getIdempotencyKey()));
+        retryRequest.setActionCode(request.string("actionCode"));
+        retryRequest.setIdempotencyKey(ActionHelpers.firstNonBlank(
+                request.string("idempotencyKey"), request.getIdempotencyKey()));
         GlobalActionResult result = applicationRuntimeService.executeLocalWorkflowRetry(
-                string(ownerRequest, "appKey"),
-                integer(ownerRequest, "version"),
-                string(ownerRequest, "instanceId"),
+                request.string("appKey"),
+                request.integer("version"),
+                request.string("instanceId"),
                 retryRequest,
-                globalActionRequest(ownerRequest));
-        return toOwnerResponse(ownerRequest, result);
+                request);
+        return ownerResult(request, result);
     }
 
-    private GlobalActionRequest globalActionRequest(ActionOwnerDispatchRequest ownerRequest) {
-        GlobalActionRequest request = new GlobalActionRequest();
-        request.setActionId(ownerRequest.getActionId());
-        request.setActionType(ownerRequest.getActionType());
-        request.setSource(ownerRequest.getSource());
-        request.setExecutionMode(ownerRequest.getExecutionMode());
-        request.setIdempotencyKey(ownerRequest.getIdempotencyKey());
-        request.setPayload(ownerRequest.getPayload() != null ? ownerRequest.getPayload() : Map.of());
-        return request;
-    }
-
-    private ActionOwnerDispatchResponse toOwnerResponse(ActionOwnerDispatchRequest ownerRequest,
-                                                        GlobalActionResult result) {
-        ActionOwnerDispatchResponse response = new ActionOwnerDispatchResponse();
-        response.setActionId(ownerRequest.getActionId());
-        response.setOwnerService(ownerRequest.getOwnerService());
-        response.setStatus(result.getStatus());
-        response.setRetryable(result.isRetryable());
-        response.setMessage(result.getMessage());
-        response.setOwnerExecutionRef(result.getOwnerExecutionRef());
-        response.setOwnerExecutionMetadata(result.getOwnerExecutionMetadata());
-        response.setTargetStatus(result.getTargetStatus());
-        response.setTargetStatusGroup(result.getTargetStatusGroup());
-        response.setRefreshScopes(result.getRefreshScopes() != null && !result.getRefreshScopes().isEmpty()
-                ? result.getRefreshScopes()
-                : List.of("document", "actions", "timeline"));
-        response.setData(result.getData() != null ? result.getData() : Map.of());
-        if (result.getErrors() != null) {
-            response.getErrors().addAll(result.getErrors());
+    private GlobalActionResult ownerResult(GlobalActionRequest request, GlobalActionResult result) {
+        GlobalActionResult response = result != null ? result : new GlobalActionResult();
+        response.setActionId(request.getActionId());
+        response.setActionType(request.getActionType());
+        response.setTarget(request.getTarget());
+        if (response.getOwnerService() == null) {
+            response.setOwnerService(request.getTarget() != null ? request.getTarget().getOwnerService() : null);
         }
-        if (response.getStatus() == ActionStatus.FAILED || response.getStatus() == ActionStatus.REJECTED) {
-            if (response.getErrors().isEmpty()) {
-                response.getErrors().add(ActionError.of(
-                        "LOWCODE_ACTION_FAILED",
-                        ActionErrorCategory.EXECUTION,
-                        firstNonBlank(result.getMessage(), "LOWCODE_ACTION_FAILED")));
-            }
+        response.setRefreshScopes(response.getRefreshScopes() != null && !response.getRefreshScopes().isEmpty()
+                ? response.getRefreshScopes()
+                : List.of("document", "actions", "timeline"));
+        response.setData(response.getData() != null ? response.getData() : Map.of());
+        if ((response.getStatus() == ActionStatus.FAILED || response.getStatus() == ActionStatus.REJECTED)
+                && response.getErrors().isEmpty()) {
+            response.getErrors().add(ActionError.of(
+                    "LOWCODE_ACTION_FAILED",
+                    ActionErrorCategory.EXECUTION,
+                    ActionHelpers.firstNonBlank(response.getMessage(), "LOWCODE_ACTION_FAILED")));
         }
         return response;
     }
@@ -126,35 +106,13 @@ public class LowcodeActionOwnerExecutionService implements ActionOwnerExecutor {
         };
     }
 
-    private ActionOwnerDispatchResponse unsupported(ActionOwnerDispatchRequest ownerRequest) {
-        ActionOwnerDispatchResponse response = new ActionOwnerDispatchResponse();
-        response.setActionId(ownerRequest.getActionId());
-        response.setOwnerService(ownerRequest.getOwnerService());
+    private GlobalActionResult unsupported(GlobalActionRequest request) {
+        GlobalActionResult response = GlobalActionResult.from(request);
         response.setStatus(ActionStatus.REJECTED);
         response.setMessage("LOWCODE_ACTION_UNSUPPORTED");
         response.getErrors().add(ActionError.of("LOWCODE_ACTION_UNSUPPORTED",
                 ActionErrorCategory.VALIDATION,
                 "LOWCODE_ACTION_UNSUPPORTED"));
         return response;
-    }
-
-    private String string(ActionOwnerDispatchRequest request, String key) {
-        Object value = request.getPayload().get(key);
-        return value != null ? String.valueOf(value) : null;
-    }
-
-    private Integer integer(ActionOwnerDispatchRequest request, String key) {
-        Object value = request.getPayload().get(key);
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value != null && !String.valueOf(value).isBlank()) {
-            return Integer.parseInt(String.valueOf(value));
-        }
-        return null;
-    }
-
-    private String firstNonBlank(String first, String fallback) {
-        return first != null && !first.isBlank() ? first : fallback;
     }
 }

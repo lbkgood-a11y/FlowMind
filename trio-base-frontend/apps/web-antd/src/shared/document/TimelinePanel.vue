@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { BusinessCatalogApi } from '../business/business-catalog-client';
+import type { BusinessTimelineEntry } from '../business/types';
 
 import { Timeline, TimelineItem } from 'ant-design-vue';
 
 defineProps<{
-  entries?: BusinessCatalogApi.BusinessTimelineEntry[];
+  entries?: BusinessTimelineEntry[];
   title?: string;
 }>();
 </script>
