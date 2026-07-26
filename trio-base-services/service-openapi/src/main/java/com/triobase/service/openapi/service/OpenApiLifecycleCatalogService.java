@@ -99,15 +99,18 @@ public class OpenApiLifecycleCatalogService {
         counts.put("connectors", connectorMapper.selectCount(null));
         counts.put("routes", routeMapper.selectCount(null));
         counts.put("releases", releaseMapper.selectCount(null));
+        counts.put("orchestrations", orchestrationMapper.selectCount(null));
         counts.put("products", productMapper.selectCount(null));
         counts.put("applications", applicationMapper.selectCount(null));
         counts.put("subscriptions", subscriptionMapper.selectCount(null));
         counts.put("policies", policySnapshotMapper.selectCount(null));
+        boolean implementationReady = positive(counts, "routes") && positive(counts, "releases")
+                && (positive(counts, "connectors") || positive(counts, "orchestrations"));
         List<LifecycleReadinessResponse.ReadinessStage> stages = List.of(
-                stage("design", "API 设计", counts.get("structures") > 0 && counts.get("mappings") > 0, "/openapi-operations/structures"),
-                stage("implementation", "API 实现", counts.get("connectors") > 0 && counts.get("routes") > 0 && counts.get("releases") > 0, "/openapi-operations/routes"),
-                stage("exposure", "API 开放", counts.get("products") > 0 && counts.get("applications") > 0 && counts.get("subscriptions") > 0, "/openapi-operations/applications"),
-                stage("policy", "策略生效", counts.get("policies") > 0, "/openapi-operations/policies"));
+                stage("design", "API 设计", positive(counts, "structures") && positive(counts, "mappings"), "/openapi-operations/structures"),
+                stage("implementation", "API 实现", implementationReady, "/openapi-operations/routes"),
+                stage("exposure", "API 开放", positive(counts, "products") && positive(counts, "applications") && positive(counts, "subscriptions"), "/openapi-operations/applications"),
+                stage("policy", "策略生效", positive(counts, "policies"), "/openapi-operations/policies"));
         List<String> blockers = new ArrayList<>();
         stages.stream().filter(item -> !item.ready()).forEach(item -> blockers.add(item.title() + "尚未就绪"));
         if (!publicRuntimeEnabled) blockers.add("公共运行时仍处于关闭状态");
@@ -117,6 +120,11 @@ public class OpenApiLifecycleCatalogService {
 
     private LifecycleReadinessResponse.ReadinessStage stage(String key, String title, boolean ready, String route) {
         return new LifecycleReadinessResponse.ReadinessStage(key, title, ready, route);
+    }
+
+    private boolean positive(Map<String, Long> counts, String key) {
+        Long value = counts.get(key);
+        return value != null && value > 0;
     }
 
     private <T> PageResult<LifecycleAssetItem> query(LifecycleAssetType type, BaseMapper<T> mapper,

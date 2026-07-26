@@ -15,6 +15,10 @@ The system SHALL support a governed `OWNER_ACTION` orchestration step that dispa
 - **WHEN** an `OWNER_ACTION` step is executed
 - **THEN** OpenAPI runtime records orchestration attempt evidence while the owner service performs action schema validation, guard evaluation, idempotency enforcement, audit emission, and business state mutation
 
+#### Scenario: Lifecycle readiness accepts owner action implementation
+- **WHEN** a route is implemented by a published `OWNER_ACTION` orchestration and an active release without an external connector
+- **THEN** OpenAPI lifecycle readiness treats the implementation stage as complete because the route is bound to an owner-hosted action runtime
+
 #### Scenario: Owner action failure follows orchestration policy
 - **WHEN** the owner service returns a rejected or failed Global Action result for an `OWNER_ACTION` step
 - **THEN** the orchestration marks the step attempt failed with sanitized owner evidence and applies the step failure policy, including compensation when configured

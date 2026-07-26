@@ -34,7 +34,7 @@ The system SHALL provide functional internal pages that invoke typed management 
 - **THEN** the console displays the resulting lifecycle state while revealing generated secret material only in the one-time response
 
 ### Requirement: Guide lifecycle readiness
-The system SHALL show prerequisite readiness from contracts through runtime and SHALL identify missing structures, mappings, connectors, active releases, products, applications, subscriptions, and current policies.
+The system SHALL show prerequisite readiness from contracts through runtime and SHALL identify missing structures, mappings, implementation bindings, active releases, products, applications, subscriptions, and current policies.
 
 #### Scenario: Product has no active subscription
 - **WHEN** a published API product exists but no active application subscription is present
@@ -43,6 +43,10 @@ The system SHALL show prerequisite readiness from contracts through runtime and 
 #### Scenario: Runtime adapter not enabled
 - **WHEN** structures, mappings, connectors, routes, products, subscriptions, and policies are complete but no governed runtime adapter or gateway route is enabled
 - **THEN** the overview reports management readiness separately from runtime exposure and does not imply that public invocation is available
+
+#### Scenario: Owner-action routes do not require an external connector
+- **WHEN** an OpenAPI route is implemented by a published owner-action orchestration and active release without any external connector
+- **THEN** the implementation readiness stage is considered complete because the implementation binding is the owner-hosted action runtime, not a connector
 
 ### Requirement: Preserve governance in operations UI
 The system MUST enforce existing permissions, tenant isolation, approval rules, secret redaction, policy fail-closed behavior, and disabled-by-default public runtime regardless of UI actions.

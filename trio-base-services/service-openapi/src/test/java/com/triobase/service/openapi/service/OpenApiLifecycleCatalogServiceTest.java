@@ -111,7 +111,8 @@ class OpenApiLifecycleCatalogServiceTest {
     void reportsLifecycleReadyButNeverAutoEnablesPublicRuntime() {
         when(structures.selectCount(null)).thenReturn(1L); when(mappings.selectCount(null)).thenReturn(1L);
         when(connectors.selectCount(null)).thenReturn(1L); when(routes.selectCount(null)).thenReturn(1L);
-        when(releases.selectCount(null)).thenReturn(1L); when(products.selectCount(null)).thenReturn(1L);
+        when(releases.selectCount(null)).thenReturn(1L); when(orchestrations.selectCount(null)).thenReturn(0L);
+        when(products.selectCount(null)).thenReturn(1L);
         when(applications.selectCount(null)).thenReturn(1L); when(subscriptions.selectCount(null)).thenReturn(1L);
         when(snapshots.selectCount(null)).thenReturn(1L);
         var service = service(); ReflectionTestUtils.setField(service, "publicRuntimeEnabled", false);
@@ -121,6 +122,24 @@ class OpenApiLifecycleCatalogServiceTest {
         assertThat(result.ready()).isTrue();
         assertThat(result.publicRuntimeEnabled()).isFalse();
         assertThat(result.blockers()).contains("公共运行时仍处于关闭状态");
+    }
+
+    @Test
+    void treatsOwnerActionOrchestrationAsImplementationReadinessWithoutConnector() {
+        when(structures.selectCount(null)).thenReturn(1L); when(mappings.selectCount(null)).thenReturn(1L);
+        when(connectors.selectCount(null)).thenReturn(0L); when(routes.selectCount(null)).thenReturn(1L);
+        when(releases.selectCount(null)).thenReturn(1L); when(orchestrations.selectCount(null)).thenReturn(1L);
+        when(products.selectCount(null)).thenReturn(1L); when(applications.selectCount(null)).thenReturn(1L);
+        when(subscriptions.selectCount(null)).thenReturn(1L); when(snapshots.selectCount(null)).thenReturn(1L);
+
+        var result = service().readiness();
+
+        assertThat(result.assetCounts()).containsEntry("orchestrations", 1L);
+        assertThat(result.stages()).anySatisfy(stage -> {
+            assertThat(stage.key()).isEqualTo("implementation");
+            assertThat(stage.ready()).isTrue();
+        });
+        assertThat(result.blockers()).doesNotContain("API 实现尚未就绪");
     }
 
     private OpenApiLifecycleCatalogService service() {

@@ -19,6 +19,7 @@ import {
   FormItem,
   Input,
   message,
+  Pagination,
   Popconfirm,
   Select,
   Space,
@@ -106,6 +107,11 @@ const resourcesLoading = ref(false);
 const formOpen = ref(false);
 const editingPolicy = ref<SystemDataPolicyApi.DataPolicy>();
 const formDataResources = ref<LowcodeApi.FormDataResource[]>([]);
+
+const pagination = reactive({
+  current: 1,
+  pageSize: 20,
+});
 
 const formModel = reactive<PolicyFormModel>({
   actionCode: 'QUERY',
@@ -212,6 +218,24 @@ const policyContextText = computed(() =>
     ? `${selectedRole.value.roleName} 的策略`
     : '全部数据权限策略',
 );
+const policyTotal = computed(() => policies.value.length);
+const pagedPolicies = computed(() => {
+  const start = (pagination.current - 1) * pagination.pageSize;
+  return policies.value.slice(start, start + pagination.pageSize);
+});
+const policyTableBodyHeight = computed(() => {
+  const compactRowHeight = 34;
+  const emptyBodyHeight = 120;
+  const maxVisibleRows = 12;
+  const rowCount = pagedPolicies.value.length;
+  return rowCount === 0
+    ? emptyBodyHeight
+    : Math.min(rowCount, maxVisibleRows) * compactRowHeight;
+});
+const policyTableScroll = computed(() => ({
+  x: 1500,
+  y: policyTableBodyHeight.value,
+}));
 
 const columns = computed<TableProps['columns']>(() => [
   { dataIndex: 'roleId', fixed: 'left', key: 'role', title: '角色', width: 180 },
@@ -250,13 +274,22 @@ async function loadDimensions() {
 async function loadPolicies() {
   if (!canQuery.value) {
     policies.value = [];
+    pagination.current = 1;
     return;
   }
   loading.value = true;
   try {
     policies.value = await getDataPolicies(selectedRoleId.value);
+    normalizePolicyPage();
   } finally {
     loading.value = false;
+  }
+}
+
+function normalizePolicyPage() {
+  const maxPage = Math.max(1, Math.ceil(policyTotal.value / pagination.pageSize));
+  if (pagination.current > maxPage) {
+    pagination.current = maxPage;
   }
 }
 
@@ -410,6 +443,7 @@ async function submitForm() {
   }
   saving.value = true;
   try {
+    const isEditing = !!editingPolicy.value;
     const payload: SystemDataPolicyApi.SaveDataPolicyParams = {
       actionCode: formModel.actionCode,
       combineMode: formModel.combineMode,
@@ -433,6 +467,9 @@ async function submitForm() {
       message.success('数据权限策略已创建');
     }
     formOpen.value = false;
+    if (!isEditing) {
+      pagination.current = 1;
+    }
     await loadPolicies();
   } finally {
     saving.value = false;
@@ -462,7 +499,20 @@ function resourceLabel(resourceCode: string) {
   return resourceLabelMap.value.get(resourceCode) ?? resourceCode;
 }
 
+function onPageChange(page: number, pageSize: number) {
+  pagination.current = page;
+  pagination.pageSize = pageSize;
+  normalizePolicyPage();
+}
+
+function onPageSizeChange(page: number, pageSize: number) {
+  pagination.current = page;
+  pagination.pageSize = pageSize;
+  normalizePolicyPage();
+}
+
 watch(selectedRoleId, () => {
+  pagination.current = 1;
   loadPolicies();
 });
 
@@ -536,65 +586,82 @@ onMounted(async () => {
           </div>
 
           <div class="table-shell">
-            <Table
-              row-key="id"
-              :columns="columns"
-              :data-source="policies"
-              :loading="loading"
-              :pagination="false"
-              :scroll="{ x: 1460 }"
-              size="small"
-              :sticky="{ offsetScroll: 0 }"
-            >
-              <template #bodyCell="{ column, record }">
-                <template v-if="column.key === 'role'">
-                  {{ roleLabel(record.roleId) }}
-                </template>
-                <template v-else-if="column.key === 'resourceCode'">
-                  <div class="resource-cell">
-                    <span>{{ resourceLabel(record.resourceCode) }}</span>
-                    <code>{{ record.resourceCode }}</code>
-                  </div>
-                </template>
-                <template v-else-if="column.key === 'effect'">
-                  <Tag :color="record.effect === 'DENY' ? 'red' : 'green'">
-                    {{ record.effect }}
-                  </Tag>
-                </template>
-                <template v-else-if="column.key === 'dimensions'">
-                  <Space wrap>
-                    <Tag
-                      v-for="item in asPolicy(record).dimensions"
-                      :key="`${asPolicy(record).id}-${item.dimensionCode}`"
-                    >
-                      {{ item.dimensionCode }} / {{ scopeLabel(item.scopeType) }}
+            <div class="policy-table-scroll">
+              <Table
+                row-key="id"
+                :columns="columns"
+                :data-source="pagedPolicies"
+                :loading="loading"
+                :pagination="false"
+                :scroll="policyTableScroll"
+                size="small"
+                table-layout="fixed"
+              >
+                <template #bodyCell="{ column, record }">
+                  <template v-if="column.key === 'role'">
+                    {{ roleLabel(record.roleId) }}
+                  </template>
+                  <template v-else-if="column.key === 'resourceCode'">
+                    <div class="resource-cell">
+                      <span>{{ resourceLabel(record.resourceCode) }}</span>
+                      <code>{{ record.resourceCode }}</code>
+                    </div>
+                  </template>
+                  <template v-else-if="column.key === 'effect'">
+                    <Tag :color="record.effect === 'DENY' ? 'red' : 'green'">
+                      {{ record.effect }}
                     </Tag>
-                  </Space>
+                  </template>
+                  <template v-else-if="column.key === 'dimensions'">
+                    <Space wrap>
+                      <Tag
+                        v-for="item in asPolicy(record).dimensions"
+                        :key="`${asPolicy(record).id}-${item.dimensionCode}`"
+                      >
+                        {{ item.dimensionCode }} / {{ scopeLabel(item.scopeType) }}
+                      </Tag>
+                    </Space>
+                  </template>
+                  <template v-else-if="column.key === 'status'">
+                    <Tag :color="record.status === 0 ? 'default' : 'green'">
+                      {{ record.status === 0 ? '禁用' : '启用' }}
+                    </Tag>
+                  </template>
+                  <template v-else-if="column.key === 'description'">
+                    {{ record.description || '-' }}
+                  </template>
+                  <template v-else-if="column.key === 'action'">
+                    <Space :size="4">
+                      <Button v-if="canUpdate" type="link" size="small" @click="openEdit(asPolicy(record))">
+                        修改
+                      </Button>
+                      <Popconfirm
+                        v-if="canDelete"
+                        title="确认删除该策略？"
+                        @confirm="removePolicy(asPolicy(record))"
+                      >
+                        <Button danger type="link" size="small">删除</Button>
+                      </Popconfirm>
+                    </Space>
+                  </template>
                 </template>
-                <template v-else-if="column.key === 'status'">
-                  <Tag :color="record.status === 0 ? 'default' : 'green'">
-                    {{ record.status === 0 ? '禁用' : '启用' }}
-                  </Tag>
-                </template>
-                <template v-else-if="column.key === 'description'">
-                  {{ record.description || '-' }}
-                </template>
-                <template v-else-if="column.key === 'action'">
-                  <Space :size="4">
-                    <Button v-if="canUpdate" type="link" size="small" @click="openEdit(asPolicy(record))">
-                      修改
-                    </Button>
-                    <Popconfirm
-                      v-if="canDelete"
-                      title="确认删除该策略？"
-                      @confirm="removePolicy(asPolicy(record))"
-                    >
-                      <Button danger type="link" size="small">删除</Button>
-                    </Popconfirm>
-                  </Space>
-                </template>
-              </template>
-            </Table>
+              </Table>
+            </div>
+            <div class="policy-table-footer">
+              <div class="table-total">共 {{ policyTotal }} 条记录</div>
+              <Pagination
+                v-model:current="pagination.current"
+                v-model:page-size="pagination.pageSize"
+                :disabled="loading"
+                :page-size-options="['10', '20', '50', '100']"
+                :total="policyTotal"
+                show-less-items
+                show-size-changer
+                size="small"
+                @change="onPageChange"
+                @show-size-change="onPageSizeChange"
+              />
+            </div>
           </div>
         </section>
       </section>
@@ -783,6 +850,7 @@ onMounted(async () => {
 }
 
 .policy-table-panel {
+  align-self: flex-start;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -813,9 +881,72 @@ onMounted(async () => {
 }
 
 .table-shell {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+.policy-table-scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.policy-table-scroll :deep(.ant-table-wrapper),
+.policy-table-scroll :deep(.ant-spin-nested-loading),
+.policy-table-scroll :deep(.ant-spin-container),
+.policy-table-scroll :deep(.ant-table),
+.policy-table-scroll :deep(.ant-table-container) {
+  display: block !important;
+  height: auto !important;
+}
+
+.policy-table-scroll :deep(.ant-table-content) {
+  overflow: auto !important;
+}
+
+.policy-table-scroll :deep(.ant-table-header) {
+  overflow: hidden !important;
+}
+
+.policy-table-scroll :deep(.ant-table-body) {
+  overflow: auto !important;
+  scrollbar-gutter: stable;
+}
+
+.policy-table-footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 2px 0;
+}
+
+.table-total {
+  font-size: 12px;
+  line-height: 20px;
+  color: #6b7280;
+}
+
+.policy-table-footer :deep(.ant-pagination) {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .policy-table-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.table-shell :deep(.ant-table-wrapper) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .resource-cell {
