@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.triobase.common.action.enums.ActionExecutionMode;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.service.openapi.domain.enums.OrchestrationStepType;
 import org.springframework.stereotype.Component;
@@ -28,10 +29,14 @@ public class OrchestrationDefinitionValidator {
             "key", "type", "next", "connectorVersionId", "mappingVersionId",
             "inputPointer", "outputPointer", "branches", "defaultNext", "children",
             "durationSeconds", "signalName", "timeoutSeconds", "loopTo", "maxIterations", "compensationStep",
-            "retryPreset", "failurePolicy");
+            "retryPreset", "failurePolicy", "ownerService", "actionType", "targetType",
+            "targetId", "targetIdPointer", "targetVersion", "payloadPointer", "payload",
+            "idempotencyKey", "idempotencyKeyPointer", "executionMode");
     private static final Set<String> BRANCH_FIELDS = Set.of("pointer", "equals", "exists", "next");
     private static final Set<String> RETRY_PRESETS = Set.of("STANDARD", "IDEMPOTENT", "NONE");
     private static final Set<String> FAILURE_POLICIES = Set.of("FAIL", "COMPENSATE", "CONTINUE");
+    private static final Set<String> OWNER_ACTION_SERVICES = Set.of(
+            "service-lowcode", "service-workflow-engine", "service-api-runtime");
     private static final Set<String> FORBIDDEN_FIELD_PARTS = Set.of(
             "script", "expression", "class", "url", "secret", "credential", "authorization");
 
@@ -125,6 +130,7 @@ public class OrchestrationDefinitionValidator {
         }
         switch (type) {
             case INVOKE -> requireText(step, "connectorVersionId", key, errors);
+            case OWNER_ACTION -> validateOwnerAction(step, key, errors);
             case TRANSFORM -> requireText(step, "mappingVersionId", key, errors);
             case BRANCH -> validateBranches(step, key, errors);
             case PARALLEL -> {
@@ -188,6 +194,41 @@ public class OrchestrationDefinitionValidator {
         }
     }
 
+    private void validateOwnerAction(JsonNode step, String key, List<String> errors) {
+        requireText(step, "ownerService", key, errors);
+        requireText(step, "actionType", key, errors);
+        requireText(step, "targetType", key, errors);
+        String ownerService = step.path("ownerService").asText();
+        if (StringUtils.hasText(ownerService) && !OWNER_ACTION_SERVICES.contains(ownerService)) {
+            errors.add("OWNER_ACTION_SERVICE_UNSUPPORTED:" + key + ':' + ownerService);
+        }
+        if (!StringUtils.hasText(step.path("targetId").asText())
+                && !StringUtils.hasText(step.path("targetIdPointer").asText())) {
+            errors.add("OWNER_ACTION_TARGET_REQUIRED:" + key);
+        }
+        if (step.has("targetIdPointer")) {
+            validatePointer(step.path("targetIdPointer").asText(), key, errors);
+        }
+        if (step.has("payloadPointer")) {
+            validatePointer(step.path("payloadPointer").asText(), key, errors);
+        }
+        if (step.has("idempotencyKeyPointer")) {
+            validatePointer(step.path("idempotencyKeyPointer").asText(), key, errors);
+        }
+        if (step.has("payload") && !step.path("payload").isObject()) {
+            errors.add("OWNER_ACTION_PAYLOAD_MUST_BE_OBJECT:" + key);
+        }
+        String executionMode = step.path("executionMode").asText(ActionExecutionMode.SYNC.name());
+        try {
+            ActionExecutionMode mode = ActionExecutionMode.valueOf(executionMode);
+            if (mode != ActionExecutionMode.SYNC) {
+                errors.add("OWNER_ACTION_EXECUTION_MODE_UNSUPPORTED:" + key + ':' + executionMode);
+            }
+        } catch (Exception exception) {
+            errors.add("OWNER_ACTION_EXECUTION_MODE_INVALID:" + key + ':' + executionMode);
+        }
+    }
+
     private void validateReferences(Map<String, JsonNode> steps, List<String> errors) {
         Set<String> compensationTargets = new HashSet<>();
         for (Map.Entry<String, JsonNode> entry : steps.entrySet()) {
@@ -203,6 +244,7 @@ public class OrchestrationDefinitionValidator {
                     JsonNode child = steps.get(childKey.asText());
                     OrchestrationStepType childType = child == null ? null : safeType(child);
                     if (child != null && childType != OrchestrationStepType.INVOKE
+                            && childType != OrchestrationStepType.OWNER_ACTION
                             && childType != OrchestrationStepType.TRANSFORM
                             && childType != OrchestrationStepType.WAIT) {
                         errors.add("UNSUPPORTED_PARALLEL_CHILD:" + key + "->" + childKey.asText());

@@ -54,6 +54,17 @@ triobase:
       vault:
         address: ${VAULT_ADDR:http://localhost:8200}
         token: ${VAULT_TOKEN:}
+    owner-actions:
+      endpoints:
+        service-lowcode:
+          base-url: ${LOWCODE_ACTION_BASE_URL:http://localhost:8085/api/v1/lowcode-runtime/actions}
+          dispatch-path: /dispatch
+        service-workflow-engine:
+          base-url: ${WORKFLOW_ACTION_BASE_URL:http://localhost:8086/api/v1/workflow-actions}
+          dispatch-path: /dispatch
+        service-api-runtime:
+          base-url: ${API_RUNTIME_ACTION_BASE_URL:http://localhost:8095/api/v1/openapi/management/actions}
+          dispatch-path: /dispatch
 
 logging:
   level:

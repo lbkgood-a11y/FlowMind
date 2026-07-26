@@ -90,4 +90,60 @@ class OrchestrationDefinitionValidatorTest {
 
         assertThat(validator.validate("1", definition).valid()).isTrue();
     }
+
+    @Test
+    void acceptsOwnerActionStepForLowcodeLeaveSubmission() throws Exception {
+        JsonNode definition = objectMapper.readTree("""
+                {"schemaVersion":"1","start":"submitLeave","steps":[
+                  {"key":"submitLeave","type":"OWNER_ACTION",
+                   "ownerService":"service-lowcode",
+                   "actionType":"lowcode.form.submit",
+                   "targetType":"LOWCODE_FORM",
+                   "targetId":"leave",
+                   "payloadPointer":"/actionPayload",
+                   "payload":{"appKey":"leave","actionCode":"submitAndLaunch"},
+                   "idempotencyKeyPointer":"/requestId",
+                   "executionMode":"SYNC",
+                   "outputPointer":"/ownerAction",
+                   "next":"end"},
+                  {"key":"end","type":"END"}
+                ]}
+                """);
+
+        var result = validator.validate("1", definition);
+
+        assertThat(result.valid()).as(result.errors().toString()).isTrue();
+    }
+
+    @Test
+    void rejectsUnsafeOwnerActionDefinition() throws Exception {
+        JsonNode definition = objectMapper.readTree("""
+                {"schemaVersion":"1","start":"submitLeave","steps":[
+                  {"key":"submitLeave","type":"OWNER_ACTION",
+                   "ownerService":"service-unknown",
+                   "actionType":"lowcode.form.submit",
+                   "targetType":"LOWCODE_FORM",
+                   "payloadPointer":"../data",
+                   "executionMode":"ASYNC",
+                   "url":"http://localhost:8085/api/v1/lowcode-runtime/actions/dispatch",
+                   "next":"end"},
+                  {"key":"end","type":"END"}
+                ]}
+                """);
+
+        var result = validator.validate("1", definition);
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.errors()).contains("OWNER_ACTION_TARGET_REQUIRED:submitLeave");
+        assertThat(result.errors())
+                .anyMatch(error -> error.startsWith("OWNER_ACTION_SERVICE_UNSUPPORTED:submitLeave"));
+        assertThat(result.errors())
+                .anyMatch(error -> error.startsWith("OWNER_ACTION_EXECUTION_MODE_UNSUPPORTED:submitLeave"));
+        assertThat(result.errors())
+                .anyMatch(error -> error.startsWith("INVALID_JSON_POINTER:submitLeave"));
+        assertThat(result.errors())
+                .anyMatch(error -> error.contains("UNKNOWN_FIELD:step.url"));
+        assertThat(result.errors())
+                .anyMatch(error -> error.contains("FORBIDDEN_CONFIGURATION"));
+    }
 }

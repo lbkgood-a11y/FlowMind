@@ -16,6 +16,9 @@ public interface IntegrationOrchestrationActivities {
     String invokeConnector(String stepCommandJson);
 
     @ActivityMethod
+    String invokeOwnerAction(String stepCommandJson);
+
+    @ActivityMethod
     String persistExecution(String stateCommandJson);
 
     @ActivityMethod

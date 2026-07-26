@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import type { OpenApiOperationsApi } from '#/api';
+import type { UserInfo } from '@vben/types';
 import type { TableProps } from 'ant-design-vue';
 
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
+import { useUserStore } from '@vben/stores';
 
 import {
+  Alert,
   Button,
   Card,
   Col,
+  Descriptions,
+  DescriptionsItem,
   FormItem,
   Input,
   InputNumber,
@@ -19,6 +24,7 @@ import {
   Modal,
   Row,
   Select,
+  Space,
   Table,
   Tabs,
   Tag,
@@ -30,6 +36,7 @@ import {
   createActionIdempotencyKey,
   getCallbackQuarantine,
   getOpenApiExecutions,
+  getUserInfoApi,
   resolveCallbackQuarantine,
 } from '#/api';
 import { useActionDispatch } from '#/composables/useActionDispatch';
@@ -51,19 +58,21 @@ const PERMISSIONS = {
 } as const;
 
 const assetGroups = [
-  ['标准结构', '结构注册、版本、兼容性与 OpenAPI 导入导出'],
-  ['字段映射', '映射规则、值映射、预览与契约测试'],
-  ['路由发布', '路由条件、发布快照、激活与回滚'],
-  ['流程编排', 'Temporal DSL、等待、补偿与执行策略'],
-  ['回调配置', '验签、关联、去重、应答与 Signal'],
-  ['API 产品', '产品版本、可见性、范围与默认策略'],
-  ['接入应用', '环境客户端、凭证轮换与安全状态'],
-  ['订阅审批', '产品订阅、双重审批与版本升级'],
-  ['流控策略', '限流、配额、并发、策略快照与漂移'],
+  { description: '结构注册、版本、兼容性与 OpenAPI 导入导出', route: '/openapi-operations/structures', title: '标准结构' },
+  { description: '映射规则、值映射、预览与契约测试', route: '/openapi-operations/mappings', title: '字段映射' },
+  { description: '路由条件、发布快照、激活与回滚', route: '/openapi-operations/routes', title: '路由发布' },
+  { description: 'Temporal DSL、等待、补偿与执行策略', route: '/openapi-operations/orchestrations', title: '流程编排' },
+  { description: '验签、关联、去重、应答与 Signal', route: '/openapi-operations/callbacks', title: '回调配置' },
+  { description: '产品版本、可见性、范围与默认策略', route: '/openapi-operations/products', title: 'API 产品' },
+  { description: '环境客户端、凭证轮换与安全状态', route: '/openapi-operations/applications', title: '接入应用' },
+  { description: '产品订阅、双重审批与版本升级', route: '/openapi-operations/subscriptions', title: '订阅审批' },
+  { description: '限流、配额、并发、策略快照与漂移', route: '/openapi-operations/policies', title: '流控策略' },
 ] as const;
 
 const { hasAccessByCodes } = useAccess();
 const route = useRoute();
+const router = useRouter();
+const userStore = useUserStore();
 const { dispatchAction } = useActionDispatch();
 const canReadExecutions = computed(() => hasAccessByCodes([PERMISSIONS.executionRead]));
 const canReadQuarantine = computed(() => hasAccessByCodes([PERMISSIONS.quarantineRead]));
@@ -76,8 +85,11 @@ function syncRouteTab() {
 watch(() => route.path, syncRouteTab, { immediate: true });
 const executionLoading = ref(false);
 const quarantineLoading = ref(false);
+const userLoading = ref(false);
+const userLoadError = ref('');
 const executions = ref<OpenApiOperationsApi.Execution[]>([]);
 const quarantine = ref<OpenApiOperationsApi.CallbackInbox[]>([]);
+const openApiUser = ref<UserInfo | null>((userStore.userInfo as UserInfo | null) ?? null);
 const resolutionOpen = ref(false);
 const resolving = ref(false);
 const selectedInbox = ref<OpenApiOperationsApi.CallbackInbox>();
@@ -111,6 +123,13 @@ const executionPagination = reactive({
   total: 0,
 });
 const resolution = reactive({ action: 'LINK' as 'DISCARD' | 'LINK' | 'RETRY', executionId: '', note: '' });
+
+const currentUser = computed(() => openApiUser.value ?? (userStore.userInfo as UserInfo | null));
+const currentTenantId = computed(() => userTenantId(currentUser.value));
+const currentUserName = computed(() =>
+  currentUser.value?.realName || currentUser.value?.username || '未加载',
+);
+const currentUserRoles = computed(() => currentUser.value?.roles ?? []);
 
 const executionColumns: TableProps['columns'] = [
   { dataIndex: 'id', fixed: 'left', key: 'id', title: '执行 ID', width: 220 },
@@ -162,6 +181,33 @@ async function loadQuarantine() {
   }
 }
 
+async function loadUserContext() {
+  userLoading.value = true;
+  userLoadError.value = '';
+  try {
+    const userInfo = await getUserInfoApi();
+    openApiUser.value = userInfo;
+    userStore.setUserInfo(userInfo);
+    applyUserDefaults(userInfo);
+  } catch {
+    userLoadError.value = '用户上下文加载失败，请确认登录态仍然有效';
+  } finally {
+    userLoading.value = false;
+  }
+}
+
+function applyUserDefaults(userInfo?: UserInfo | null) {
+  const tenantId = userTenantId(userInfo);
+  if (tenantId && !startForm.tenantId) {
+    startForm.tenantId = tenantId;
+  }
+}
+
+function userTenantId(userInfo?: UserInfo | null) {
+  const candidate = userInfo as (UserInfo & { tenant?: string; tenantId?: string }) | null | undefined;
+  return candidate?.tenantId || candidate?.tenant || '';
+}
+
 function openResolution(record: OpenApiOperationsApi.CallbackInbox) {
   selectedInbox.value = record;
   resolution.action = 'LINK';
@@ -183,7 +229,7 @@ function openStartDialog() {
   startForm.policyVersion = undefined;
   startForm.routeKey = '';
   startForm.subscriptionId = '';
-  startForm.tenantId = '';
+  startForm.tenantId = currentTenantId.value;
   startPayloadJson.value = '{}';
   startOpen.value = true;
 }
@@ -214,6 +260,17 @@ async function submitStart() {
   try {
     await dispatchAction<{ orchestration: OpenApiOperationsApi.OrchestrationExecution }>({
       actionType: ACTION_TYPES.integrationOrchestrationStart,
+      actor: {
+        displayName: currentUser.value?.realName || currentUser.value?.username,
+        id: currentUser.value?.userId,
+        tenantId,
+        type: 'USER',
+      },
+      context: {
+        correlationId: idempotencyKey,
+        requestId: idempotencyKey,
+        tenantId,
+      },
       executionMode: 'WORKFLOW',
       idempotencyKey,
       payload: {
@@ -298,20 +355,46 @@ function handleExecutionTableChange(next: TableProps['pagination']) {
 }
 
 onMounted(() => {
+  loadUserContext();
   loadExecutions();
   loadQuarantine();
 });
 </script>
 
 <template>
-  <Page auto-content-height>
+  <Page auto-content-height title="OpenAPI 工作台">
     <BusinessPageScaffold pattern="multi-table">
+      <template #toolbar>
+        <CompactToolbar title="OpenAPI 工作台" subtitle="当前用户上下文驱动资产治理、执行查询、隔离处理与 Action 编排">
+          <Button :loading="userLoading" @click="loadUserContext">刷新用户</Button>
+          <Button @click="router.push('/openapi-operations/overview')">生命周期总览</Button>
+          <Button @click="activeTab = 'executions'">执行中心</Button>
+          <Button @click="activeTab = 'quarantine'">回调隔离区</Button>
+        </CompactToolbar>
+      </template>
+      <Alert v-if="userLoadError" class="user-alert" type="warning" show-icon :message="userLoadError" />
+      <Card class="user-context" size="small">
+        <Descriptions size="small" :column="{ xs: 1, md: 3, xl: 4 }">
+          <DescriptionsItem label="当前用户">{{ currentUserName }}</DescriptionsItem>
+          <DescriptionsItem label="用户 ID">{{ currentUser?.userId || '-' }}</DescriptionsItem>
+          <DescriptionsItem label="租户 ID">{{ currentTenantId || '由网关上下文或表单指定' }}</DescriptionsItem>
+          <DescriptionsItem label="角色">
+            <Space wrap>
+              <Tag v-for="role in currentUserRoles" :key="role">{{ role }}</Tag>
+              <Tag v-if="currentUserRoles.length === 0">未加载</Tag>
+            </Space>
+          </DescriptionsItem>
+        </Descriptions>
+      </Card>
       <Tabs v-model:active-key="activeTab" size="small">
         <TabPane key="assets" tab="资产治理">
           <MultiTableLayout :columns="3">
-            <Card v-for="asset in assetGroups" :key="asset[0]" size="small" :title="asset[0]">
-              <p class="asset-description">{{ asset[1] }}</p>
-              <Tag color="blue">管理 API 已接入</Tag>
+            <Card v-for="asset in assetGroups" :key="asset.title" size="small" :title="asset.title">
+              <p class="asset-description">{{ asset.description }}</p>
+              <Space>
+                <Tag color="blue">管理 API 已接入</Tag>
+                <Button size="small" type="link" @click="router.push(asset.route)">进入</Button>
+              </Space>
             </Card>
           </MultiTableLayout>
         </TabPane>
@@ -444,4 +527,6 @@ onMounted(() => {
 .toolbar :deep(.ant-input), .toolbar :deep(.ant-select) { width: 190px; }
 .asset-description { min-height: 44px; color: rgb(100 116 139); }
 .number-input { width: 100%; }
+.user-alert { margin-bottom: 12px; }
+.user-context { margin-bottom: 12px; }
 </style>

@@ -11,6 +11,19 @@ const routes: RouteRecordRaw[] = [
     },
     children: [
       {
+        path: '',
+        redirect: '/openapi-operations/workbench',
+      },
+      {
+        path: 'workbench',
+        name: 'OpenApiWorkbench',
+        meta: {
+          icon: 'mdi:view-dashboard-edit',
+          title: 'OpenAPI 工作台',
+        },
+        component: () => import('#/views/openapi/workbench/index.vue'),
+      },
+      {
         path: 'overview',
         name: 'OpenApiLifecycleOverview',
         meta: {

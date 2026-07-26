@@ -122,6 +122,9 @@ public class IntegrationOrchestrationWorkflowImpl implements IntegrationOrchestr
             case "INVOKE" -> new StepOutcome(
                     executeActivity(idempotentActivities::invokeConnector, step, payload, context),
                     text(step, "next"));
+            case "OWNER_ACTION" -> new StepOutcome(
+                    executeActivity(idempotentActivities::invokeOwnerAction, step, payload, context),
+                    text(step, "next"));
             case "TRANSFORM" -> new StepOutcome(
                     executeActivity(standardActivities::transform, step, payload, context),
                     text(step, "next"));
@@ -157,6 +160,7 @@ public class IntegrationOrchestrationWorkflowImpl implements IntegrationOrchestr
     private JsonNode executeAtomic(JsonNode step, JsonNode payload, JsonNode context) {
         return switch (step.path("type").asText()) {
             case "INVOKE" -> executeActivity(idempotentActivities::invokeConnector, step, payload, context);
+            case "OWNER_ACTION" -> executeActivity(idempotentActivities::invokeOwnerAction, step, payload, context);
             case "TRANSFORM" -> executeActivity(standardActivities::transform, step, payload, context);
             case "WAIT" -> executeWait(step, payload, context).payload();
             default -> throw new IllegalStateException(

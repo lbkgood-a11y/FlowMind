@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.triobase.common.action.enums.ActionStatus;
+import com.triobase.common.action.model.ActionError;
+import com.triobase.common.action.model.GlobalActionRequest;
+import com.triobase.common.action.model.GlobalActionResult;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.openapi.entity.ConnectorVersion;
@@ -25,6 +29,9 @@ import com.triobase.service.apiruntime.infrastructure.mapper.ReleaseSnapshotMapp
 import com.triobase.service.apiruntime.infrastructure.mapper.RouteVersionMapper;
 import com.triobase.common.openapi.credential.CredentialMaterial;
 import com.triobase.common.openapi.credential.CredentialProvider;
+import com.triobase.service.apiruntime.action.OwnerActionDispatchException;
+import com.triobase.service.apiruntime.action.OwnerActionStepRequestFactory;
+import com.triobase.service.apiruntime.action.OwnerHostedActionDispatchClient;
 import com.triobase.service.apiruntime.integration.OutboundIntegrationClient;
 import com.triobase.common.openapi.integration.SensitiveDataRedactor;
 import com.triobase.service.apiruntime.service.CompiledMappingExecutor;
@@ -58,6 +65,8 @@ public class IntegrationOrchestrationActivitiesImpl implements IntegrationOrches
     private final CompiledMappingExecutor mappingExecutor;
     private final CredentialProvider credentialProvider;
     private final OutboundIntegrationClient outboundClient;
+    private final OwnerHostedActionDispatchClient ownerActionClient;
+    private final OwnerActionStepRequestFactory ownerActionRequestFactory;
     private final SensitiveDataRedactor redactor;
     private final RuntimeBudgetService runtimeBudgetService;
     private final ObjectMapper objectMapper;
@@ -168,6 +177,54 @@ public class IntegrationOrchestrationActivitiesImpl implements IntegrationOrches
 
     @Override
     @Transactional
+    public String invokeOwnerAction(String stepCommandJson) {
+        JsonNode command = read(stepCommandJson);
+        LocalDateTime started = LocalDateTime.now();
+        GlobalActionRequest request = null;
+        try {
+            request = ownerActionRequestFactory.from(command);
+            GlobalActionResult result = ownerActionClient.dispatch(request);
+            boolean success = result != null && result.getStatus() == ActionStatus.SUCCEEDED;
+            String errorCode = success ? null : ownerErrorCode(result);
+            record(command, "OWNER_ACTION", success ? "SUCCEEDED" : "FAILED", started,
+                    200, errorCode, ownerEvidence(request, result, false, null));
+            if (!success) {
+                boolean retryable = result != null && result.isRetryable();
+                if (retryable) {
+                    throw ApplicationFailure.newFailure(
+                            "OPENAPI_OWNER_ACTION_TRANSIENT_FAILURE", "OWNER_ACTION_TRANSIENT");
+                }
+                throw nonRetryable("OPENAPI_OWNER_ACTION_FAILED:" + sanitize(errorCode));
+            }
+            return objectMapper.createObjectNode()
+                    .set("payload", objectMapper.valueToTree(result)).toString();
+        } catch (ApplicationFailure failure) {
+            throw failure;
+        } catch (OwnerActionDispatchException exception) {
+            record(command, "OWNER_ACTION", "FAILED", started, exception.getExternalStatus(),
+                    exception.getMessage(), ownerEvidence(request, null,
+                            exception.isRetryable(), exception.getMessage()));
+            if (exception.isRetryable()) {
+                throw ApplicationFailure.newFailure(
+                        "OPENAPI_OWNER_ACTION_TRANSPORT_FAILURE", "OWNER_ACTION_TRANSIENT");
+            }
+            throw nonRetryable(sanitize(exception.getMessage()));
+        } catch (BizException exception) {
+            record(command, "OWNER_ACTION", "FAILED", started, null,
+                    String.valueOf(exception.getCode()), ownerEvidence(request, null,
+                            false, exception.getMessage()));
+            throw nonRetryable(sanitize(exception.getMessage()));
+        } catch (Exception exception) {
+            record(command, "OWNER_ACTION", "FAILED", started, null,
+                    "OWNER_ACTION_DISPATCH", ownerEvidence(request, null,
+                            true, exception.getMessage()));
+            throw ApplicationFailure.newFailure(
+                    "OPENAPI_OWNER_ACTION_DISPATCH_FAILURE", "OWNER_ACTION_TRANSIENT");
+        }
+    }
+
+    @Override
+    @Transactional
     public String persistExecution(String stateCommandJson) {
         JsonNode command = read(stateCommandJson);
         IntegrationExecution execution = executionMapper.selectById(command.path("executionId").asText());
@@ -243,6 +300,7 @@ public class IntegrationOrchestrationActivitiesImpl implements IntegrationOrches
                         JsonNode evidence) {
         String executionId = command.path("executionId").asText();
         String stepKey = command.path("step").path("key").asText("workflow");
+        JsonNode action = evidence == null ? JsonNodeFactory.instance.objectNode() : evidence.path("action");
         ExecutionStepAttempt attempt = new ExecutionStepAttempt();
         attempt.setId(UlidGenerator.nextUlid());
         attempt.setExecutionId(executionId);
@@ -257,10 +315,75 @@ public class IntegrationOrchestrationActivitiesImpl implements IntegrationOrches
         attempt.setExternalStatus(externalStatus);
         attempt.setErrorCode(errorCode);
         attempt.setSanitizedError(errorCode == null ? null : sanitize(errorCode));
+        attempt.setActionId(nullableText(action, "actionId"));
+        attempt.setActionType(nullableText(action, "actionType"));
+        attempt.setActionSource(nullableText(action, "source"));
+        attempt.setActionActorType(nullableText(action, "actorType"));
+        attempt.setActionActorId(nullableText(action, "actorId"));
+        attempt.setActionActorName(nullableText(action, "actorName"));
+        attempt.setActionTraceId(nullableText(action, "traceId"));
+        attempt.setActionCorrelationId(nullableText(action, "correlationId"));
         attempt.setEvidence(redactor.payload(evidence == null
                 ? JsonNodeFactory.instance.objectNode() : evidence, null));
         attempt.setCreatedAt(LocalDateTime.now());
         attemptMapper.insert(attempt);
+    }
+
+    private ObjectNode ownerEvidence(GlobalActionRequest request, GlobalActionResult result,
+                                     boolean retryable, String error) {
+        ObjectNode evidence = JsonNodeFactory.instance.objectNode()
+                .put("retryable", retryable || (result != null && result.isRetryable()))
+                .put("temporalAttempt", Activity.getExecutionContext().getInfo().getAttempt());
+        if (error != null) {
+            evidence.put("errorClass", error.contains("TIMEOUT") ? "TIMEOUT" : "SANITIZED");
+        }
+        ObjectNode action = evidence.putObject("action");
+        if (request != null) {
+            action.put("actionId", request.getActionId());
+            action.put("actionType", request.getActionType());
+            action.put("source", request.getSource() != null ? request.getSource().name() : null);
+            if (request.getActor() != null) {
+                action.put("actorType", request.getActor().getType() != null
+                        ? request.getActor().getType().name() : null);
+                action.put("actorId", request.getActor().getId());
+                action.put("actorName", request.getActor().getDisplayName());
+            }
+            if (request.getContext() != null) {
+                action.put("traceId", request.getContext().getTraceId());
+                action.put("correlationId", request.getContext().getCorrelationId());
+            }
+            if (request.getTarget() != null) {
+                action.put("ownerService", request.getTarget().getOwnerService());
+                action.put("targetType", request.getTarget().getType());
+                action.put("targetId", request.getTarget().getId());
+            }
+        }
+        if (result != null) {
+            action.put("ownerExecutionRef", result.getOwnerExecutionRef());
+            action.put("ownerStatus", result.getStatus() != null ? result.getStatus().name() : null);
+            action.put("targetStatus", result.getTargetStatus());
+            action.put("targetStatusGroup", result.getTargetStatusGroup());
+            action.put("refreshScopeCount", result.getRefreshScopes() == null
+                    ? 0 : result.getRefreshScopes().size());
+            action.put("errorCount", result.getErrors() == null ? 0 : result.getErrors().size());
+        }
+        return evidence;
+    }
+
+    private String ownerErrorCode(GlobalActionResult result) {
+        if (result == null) {
+            return "OWNER_ACTION_RESULT_MISSING";
+        }
+        if (result.getErrors() != null && !result.getErrors().isEmpty()) {
+            ActionError error = result.getErrors().get(0);
+            if (StringUtils.hasText(error.getCode())) {
+                return error.getCode();
+            }
+        }
+        if (result.getStatus() != null) {
+            return "OWNER_ACTION_" + result.getStatus().name();
+        }
+        return StringUtils.hasText(result.getMessage()) ? result.getMessage() : "OWNER_ACTION_FAILED";
     }
 
     private int nextAttempt(String executionId, String stepKey) {
@@ -286,6 +409,14 @@ public class IntegrationOrchestrationActivitiesImpl implements IntegrationOrches
             evidence.put("errorClass", error.contains("TIMEOUT") ? "TIMEOUT" : "SANITIZED");
         }
         return evidence;
+    }
+
+    private String nullableText(JsonNode node, String field) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        String value = node.path(field).asText();
+        return StringUtils.hasText(value) ? value : null;
     }
 
     private JsonNode read(String json) {
