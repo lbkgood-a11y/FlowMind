@@ -16,6 +16,7 @@ import com.triobase.service.auth.mapper.OrgScopeMapper;
 import com.triobase.service.auth.mapper.RoleMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -34,6 +35,11 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DataPolicyServiceTest {
+
+    @BeforeAll
+    static void initMybatisPlusMetadata() {
+        MybatisPlusTestMetadata.initialize();
+    }
 
     @Mock
     private DataPolicyMapper dataPolicyMapper;

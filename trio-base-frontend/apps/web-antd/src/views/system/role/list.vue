@@ -47,7 +47,6 @@ import {
   createDataPolicy,
   createRole,
   deleteAuthorizationFieldPolicy,
-  deleteAuthorizationGrant,
   deleteDataPolicy,
   deleteRole,
   getAuthorizationAdminOptions,
@@ -59,9 +58,10 @@ import {
   getRoleDetail,
   getRolePage,
   previewAuthorizationDecision,
+  replaceRoleFunctionGrants,
   roleCodeExists,
   saveAuthorizationFieldPolicy,
-  saveAuthorizationGrant,
+  saveAuthorizationGuardTemplate,
   updateAuthorizationGuardTemplateStatus,
   updateRole,
   updateRoleStatus,
@@ -365,6 +365,15 @@ const previewForm = reactive({
   resourceCode: '',
   userId: '',
 });
+const guardDrawerOpen = ref(false);
+const guardSaving = ref(false);
+const guardForm = reactive({
+  guardCode: '',
+  ownerService: '',
+  supportedResourceTypes: '',
+  description: '',
+  configSchemaJson: '',
+});
 
 const menuTree = computed(() => buildMenuTree(menus.value, true));
 const visibleMenuCount = computed(() => formModel.visibleMenuIds.length);
@@ -428,6 +437,21 @@ const authorizationTreeData = computed<AuthorizationTreeNode[]>(() =>
 );
 const selectedFunctionGrantCount = computed(
   () => selectedFunctionGrantKeys().length,
+);
+const allFunctionGrantsChecked = computed({
+  get: () =>
+    functionActionItems.value.length > 0 &&
+    selectedFunctionGrantCount.value === functionActionItems.value.length,
+  set: (checked: boolean) => {
+    functionGrantCheckedKeys.value = checked
+      ? functionActionItems.value.map((item) => item.key)
+      : [];
+  },
+});
+const someFunctionGrantsChecked = computed(
+  () =>
+    selectedFunctionGrantCount.value > 0 &&
+    selectedFunctionGrantCount.value < functionActionItems.value.length,
 );
 const dataScopeOptions = computed(() =>
   (authorizationOptions.value?.dataScopes ?? []).map(toSelectOption),
@@ -1009,45 +1033,41 @@ function confirmColumnSettings() {
 
 async function syncFunctionGrants(roleId: string) {
   if (!canManageAuthz.value || !canQueryAuthz.value) {
-    return;
+    return true;
   }
   const desiredKeys = new Set(selectedFunctionGrantKeys());
-  const existingIds = originalFunctionGrantIds.value;
-  const additions = [...desiredKeys].filter((key) => !existingIds[key]);
-  const removals = Object.entries(existingIds).filter(([key]) => !desiredKeys.has(key));
-
-  if (additions.length > 0 && !canCreateAuthz.value) {
-    message.warning('当前账号没有新增功能授权的权限');
-    return;
+  if (!canUpdateAuthz.value) {
+    message.warning('当前账号没有更新功能授权的权限');
+    return false;
   }
-  if (removals.length > 0 && !canDeleteAuthz.value) {
-    message.warning('当前账号没有删除功能授权的权限');
-    return;
-  }
-
+  const grants = [...desiredKeys].flatMap((key) => {
+    const item = functionActionByKey.value.get(key);
+    return item
+      ? [{
+          actionCode: item.action.actionCode,
+          description: `${item.resource.displayName || item.resource.resourceCode} / ${actionTitle(item.action)}`,
+          resourceCode: item.resource.resourceCode,
+        }]
+      : [];
+  });
+  const result = await replaceRoleFunctionGrants(roleId, {
+    expectedGrantVersion: authorizationProfile.value?.grantVersion,
+    grants,
+  });
   await Promise.all([
-    ...additions.map((key) => {
-      const item = functionActionByKey.value.get(key);
-      if (!item) return undefined;
-      return saveAuthorizationGrant({
-        actionCode: item.action.actionCode,
-        description: `${item.resource.displayName || item.resource.resourceCode} / ${actionTitle(item.action)}`,
-        effect: 'ALLOW',
-        resourceCode: item.resource.resourceCode,
-        status: 1,
-        subjectId: roleId,
-        subjectType: 'ROLE',
-      });
-    }),
-    ...removals.map(([, id]) => deleteAuthorizationGrant(id)),
-  ].filter(Boolean));
+    refreshAuthorizationProfile(roleId),
+    refreshRoleProjection(roleId),
+  ]);
 
-  if (additions.length > 0 || removals.length > 0) {
-    await Promise.all([
-      refreshAuthorizationProfile(roleId),
-      refreshRoleProjection(roleId),
-    ]);
+  const persistedKeys = new Set(Object.keys(originalFunctionGrantIds.value));
+  const fullyPersisted =
+    persistedKeys.size === desiredKeys.size &&
+    [...desiredKeys].every((key) => persistedKeys.has(key));
+  if (!fullyPersisted || result.persistedCount !== desiredKeys.size) {
+    message.error('功能授权未完整保存，请重试');
+    return false;
   }
+  return true;
 }
 
 async function addDataPolicy() {
@@ -1150,6 +1170,41 @@ async function removeFieldPolicy(policy: SystemAuthorizationApi.FieldPolicy) {
   await refreshAuthorizationProfile();
 }
 
+function openGuardDrawer() {
+  guardForm.guardCode = '';
+  guardForm.ownerService = '';
+  guardForm.supportedResourceTypes = '';
+  guardForm.description = '';
+  guardForm.configSchemaJson = '';
+  guardDrawerOpen.value = true;
+}
+
+async function handleSaveGuard() {
+  if (!guardForm.guardCode || !guardForm.ownerService) {
+    message.warning('请填写守卫代码和所属服务');
+    return;
+  }
+  guardSaving.value = true;
+  try {
+    await saveAuthorizationGuardTemplate({
+      guardCode: guardForm.guardCode,
+      ownerService: guardForm.ownerService,
+      supportedResourceTypes: guardForm.supportedResourceTypes || undefined,
+      description: guardForm.description || undefined,
+      configSchemaJson: guardForm.configSchemaJson || undefined,
+    });
+    message.success('守卫模板已创建');
+    guardDrawerOpen.value = false;
+    if (authorizationOptions.value) {
+      authorizationOptions.value = { ...authorizationOptions.value };
+    }
+  } catch {
+    message.error('创建守卫模板失败');
+  } finally {
+    guardSaving.value = false;
+  }
+}
+
 async function toggleGuardTemplate(
   template: SystemAuthorizationApi.GuardTemplate,
   checked: boolean,
@@ -1231,8 +1286,12 @@ async function submitForm() {
     }
 
     if (editingRole.value) {
-      await updateRole(editingRole.value.id, payload);
-      await syncFunctionGrants(editingRole.value.id);
+      if (!permissionOnly.value) {
+        await updateRole(editingRole.value.id, payload);
+      }
+      if (!(await syncFunctionGrants(editingRole.value.id))) {
+        return;
+      }
       message.success(permissionOnly.value ? '角色授权已更新' : '角色已更新');
     } else {
       await createRole(payload);
@@ -1573,12 +1632,18 @@ onMounted(() => {
 
     <Drawer
       v-model:open="formOpen"
+      :class="{ 'role-authorization-drawer': permissionOnly }"
       :title="permissionOnly ? '角色授权' : editingRole ? '编辑角色' : '新增角色'"
       width="760"
       :destroy-on-close="false"
     >
-      <Form :model="formModel" class="role-form" layout="horizontal">
-        <div class="form-grid">
+      <Form
+        :model="formModel"
+        class="role-form"
+        :class="{ 'is-authorization-only': permissionOnly }"
+        layout="horizontal"
+      >
+        <div v-if="!permissionOnly" class="form-grid">
           <FormItem label="角色编码" :required="!editingRole">
             <Input
               v-model:value="formModel.roleCode"
@@ -1648,7 +1713,18 @@ onMounted(() => {
             <div v-if="editingRole" class="authorization-tab-body">
               <div class="authorization-toolbar">
                 <span>资源动作</span>
-                <Tag color="blue">已选 {{ selectedFunctionGrantCount }}</Tag>
+                <Space :size="8">
+                  <Checkbox
+                    v-model:checked="allFunctionGrantsChecked"
+                    :disabled="!canManageAuthz || functionActionItems.length === 0"
+                    :indeterminate="someFunctionGrantsChecked"
+                  >
+                    全选
+                  </Checkbox>
+                  <Tag color="blue">
+                    已选 {{ selectedFunctionGrantCount }} / {{ functionActionItems.length }}
+                  </Tag>
+                </Space>
               </div>
               <div class="permission-panel">
                 <Tree
@@ -1831,7 +1907,12 @@ onMounted(() => {
 
           <TabPane v-if="canQueryAuthz" key="guard" :disabled="!editingRole" tab="业务规则">
             <div v-if="editingRole" class="authorization-tab-body">
-              <div class="authorization-section-title">模板状态</div>
+              <div class="authorization-section-title">
+                模板状态
+                <Button v-if="canCreateAuthz" size="small" type="link" @click="openGuardDrawer">
+                  <Plus class="size-3.5" />新建守卫
+                </Button>
+              </div>
               <div v-if="guardTemplateRows.length > 0" class="authorization-list">
                 <div
                   v-for="template in guardTemplateRows"
@@ -1999,6 +2080,33 @@ onMounted(() => {
             保存
           </Button>
         </Space>
+      </template>
+    </Drawer>
+
+    <Drawer v-model:open="guardDrawerOpen" title="创建守卫模板" :width="500">
+      <Form layout="vertical">
+        <FormItem label="守卫代码" required>
+          <Input v-model:value="guardForm.guardCode" placeholder="如 NO_SELF_APPROVAL" />
+        </FormItem>
+        <FormItem label="所属服务" required>
+          <Input v-model:value="guardForm.ownerService" placeholder="如 service-workflow-engine" />
+        </FormItem>
+        <FormItem label="支持资源类型">
+          <Input
+            v-model:value="guardForm.supportedResourceTypes"
+            placeholder="如 LOWCODE_FORM,WORKFLOW_TASK"
+          />
+        </FormItem>
+        <FormItem label="描述">
+          <Textarea v-model:value="guardForm.description" :rows="2" />
+        </FormItem>
+        <FormItem label="配置 JSON Schema">
+          <Textarea v-model:value="guardForm.configSchemaJson" :rows="3" placeholder="选填" />
+        </FormItem>
+      </Form>
+      <template #footer>
+        <Button @click="guardDrawerOpen = false">取消</Button>
+        <Button type="primary" :loading="guardSaving" @click="handleSaveGuard">保存</Button>
       </template>
     </Drawer>
 
@@ -2269,11 +2377,42 @@ onMounted(() => {
 
 .permission-panel {
   width: 100%;
-  max-height: 360px;
+  max-height: min(560px, calc(100dvh - 144px));
   padding: 8px 12px;
   overflow: auto;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
+}
+
+.role-authorization-drawer :deep(.ant-drawer-body) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.role-form.is-authorization-only,
+.role-form.is-authorization-only .authorization-tabs,
+.role-form.is-authorization-only :deep(.ant-tabs-content-holder),
+.role-form.is-authorization-only :deep(.ant-tabs-content),
+.role-form.is-authorization-only :deep(.ant-tabs-tabpane-active),
+.role-form.is-authorization-only .authorization-tab-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.role-form.is-authorization-only .permission-panel {
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 8px;
+  max-height: none;
+  scroll-padding-bottom: 12px;
+}
+
+.role-form.is-authorization-only .permission-panel :deep(.ant-tree) {
+  padding-bottom: 12px;
 }
 
 .authorization-tabs {

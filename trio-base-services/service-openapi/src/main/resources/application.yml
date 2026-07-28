@@ -10,9 +10,9 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 30s
   datasource:
-    url: ${OPENAPI_DB_URL:jdbc:postgresql://localhost:5433/triobase}
-    username: ${OPENAPI_DB_USERNAME:triobase}
-    password: ${OPENAPI_DB_PASSWORD:triobase123}
+    url: ${OPENAPI_DB_URL:jdbc:postgresql://10.193.102.2:5432/triobase}
+    username: ${OPENAPI_DB_USERNAME:postgres}
+    password: ${OPENAPI_DB_PASSWORD:pwd123}
     driver-class-name: org.postgresql.Driver
     type: com.alibaba.druid.pool.DruidDataSource
   flyway:
@@ -24,18 +24,20 @@ spring:
     baseline-version: 0
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
+      host: ${REDIS_HOST:10.193.102.2}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD:pwd123}
       timeout: 2s
   cloud:
     nacos:
+      username: nacos
+      password: nacos
       discovery:
-        enabled: ${NACOS_ENABLED:false}
-        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        enabled: ${NACOS_ENABLED:true}
+        server-addr: ${NACOS_SERVER_ADDR:10.193.102.2:8848}
       config:
-        enabled: ${NACOS_ENABLED:false}
-        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        enabled: ${NACOS_ENABLED:true}
+        server-addr: ${NACOS_SERVER_ADDR:10.193.102.2:8848}
         file-extension: yml
 management:
   endpoints:
@@ -78,8 +80,8 @@ triobase:
         secrets:
           policy-signing: '{"signingKey":"local-dev-policy-signing-key-change-me"}'
       vault:
-        address: ${VAULT_ADDR:http://localhost:8200}
-        token: ${VAULT_TOKEN:}
+        address: ${VAULT_ADDR:http://10.193.102.2:8200}
+        token: ${VAULT_TOKEN:triobase-vault-root-token}
     policy:
       signing-secret-reference: ${OPENAPI_POLICY_SIGNING_SECRET_REFERENCE:policy-signing}
 

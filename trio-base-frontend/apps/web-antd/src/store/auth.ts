@@ -29,6 +29,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const loginLoading = ref(false);
   const registerLoading = ref(false);
+  let permissionRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   function resetAccessState() {
     resetStaticRoutes(router, routes);
@@ -39,7 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function completeAuthentication(
-    result: { accessToken: string; refreshToken?: string },
+    result: { accessToken: string; refreshToken?: string; permissions?: string[] },
     onSuccess?: () => Promise<void> | void,
   ) {
     let userInfo: null | UserInfo = null;
@@ -53,11 +54,11 @@ export const useAuthStore = defineStore('auth', () => {
       accessStore.setRefreshToken(result.refreshToken);
     }
 
-    const [fetchUserInfoResult, accessCodes] = await Promise.all([
-      fetchUserInfo(),
-      getAccessCodesApi(),
-    ]);
+    const accessCodes = result.permissions
+      ? result.permissions
+      : await getAccessCodesApi();
 
+    const fetchUserInfoResult = await fetchUserInfo();
     userInfo = fetchUserInfoResult;
     userStore.setUserInfo(userInfo);
     accessStore.setAccessCodes(accessCodes);
@@ -77,6 +78,8 @@ export const useAuthStore = defineStore('auth', () => {
         message: $t('authentication.loginSuccess'),
       });
     }
+
+    startPermissionRefresh();
 
     return { userInfo };
   }
@@ -128,30 +131,39 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout(redirect: boolean = true) {
+    const currentPath = router.currentRoute.value.fullPath;
+    const loginHref = router.resolve({
+      path: LOGIN_PATH,
+      query: redirect
+        ? {
+            redirect: encodeURIComponent(currentPath),
+          }
+        : {},
+    }).href;
+
     try {
       await logoutApi();
     } catch {
       // Ignore logout API failures and clear local state anyway.
+    } finally {
+      stopPermissionRefresh();
+      try {
+        // 显式清空持久化 Token，避免页面刷新后登录守卫再次恢复旧会话。
+        accessStore.setAccessToken(null);
+        accessStore.setRefreshToken(null);
+
+        // 清除 Vue Router 中的旧动态路由和访问状态。
+        resetAccessState();
+        resetAllStores();
+        accessStore.setAccessToken(null);
+        accessStore.setRefreshToken(null);
+        accessStore.setLoginExpired(false);
+        accessStore.setIsAccessChecked(false);
+      } finally {
+        // 即使某个 Store 重置失败，也必须离开受保护页面。
+        window.location.replace(loginHref);
+      }
     }
-
-    // 清除 Vue Router 中的旧动态路由，防止下次登录时残留旧用户的路由和菜单
-    resetAccessState();
-
-    // 重置所有 Pinia store，包括 isAccessChecked，确保下次登录重新生成路由
-    resetAllStores();
-    accessStore.setLoginExpired(false);
-
-    // 强制清除访问检查标记，确保访问守卫重新执行
-    accessStore.setIsAccessChecked(false);
-
-    await router.replace({
-      path: LOGIN_PATH,
-      query: redirect
-        ? {
-            redirect: encodeURIComponent(router.currentRoute.value.fullPath),
-          }
-        : {},
-    });
   }
 
   async function fetchUserInfo() {
@@ -160,9 +172,29 @@ export const useAuthStore = defineStore('auth', () => {
     return userInfo;
   }
 
+  function startPermissionRefresh(intervalMs = 300_000) {
+    stopPermissionRefresh();
+    permissionRefreshTimer = setInterval(async () => {
+      try {
+        const codes = await getAccessCodesApi();
+        accessStore.setAccessCodes(codes);
+      } catch {
+        // Silently skip — token refresh handler will pick up expired sessions
+      }
+    }, intervalMs);
+  }
+
+  function stopPermissionRefresh() {
+    if (permissionRefreshTimer !== null) {
+      clearInterval(permissionRefreshTimer);
+      permissionRefreshTimer = null;
+    }
+  }
+
   function $reset() {
     loginLoading.value = false;
     registerLoading.value = false;
+    stopPermissionRefresh();
   }
 
   return {
@@ -173,5 +205,7 @@ export const useAuthStore = defineStore('auth', () => {
     loginLoading,
     logout,
     registerLoading,
+    startPermissionRefresh,
+    stopPermissionRefresh,
   };
 });

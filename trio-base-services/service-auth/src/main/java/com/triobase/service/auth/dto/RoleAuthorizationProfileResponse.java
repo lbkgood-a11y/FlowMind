@@ -9,6 +9,7 @@ import java.util.List;
 public class RoleAuthorizationProfileResponse {
     private String tenantId;
     private String roleId;
+    private Long grantVersion;
     private List<AuthorizationGrantResponse> functionGrants = new ArrayList<>();
     private List<DataPolicyResponse> dataPolicies = new ArrayList<>();
     private List<FieldPolicyResponse> fieldPolicies = new ArrayList<>();

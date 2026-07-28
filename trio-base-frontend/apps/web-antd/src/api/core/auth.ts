@@ -24,6 +24,7 @@ export namespace AuthApi {
     roles?: string[];
     userId?: string;
     username?: string;
+    permissions?: string[];
   }
 }
 

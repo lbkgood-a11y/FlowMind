@@ -1,5 +1,7 @@
 package com.triobase.service.catalog.controller;
 
+import com.triobase.common.core.annotation.RequireDataScope;
+import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.core.result.R;
 import com.triobase.common.dto.catalog.BusinessTimelineEntry;
@@ -22,6 +24,8 @@ public class BusinessTimelineController {
 
     private final BusinessTimelineService timelineService;
 
+    @RequirePermission("/api/v1/business-timeline:GET")
+    @RequireDataScope(resource = "BUSINESS_TIMELINE", action = "QUERY")
     @GetMapping("/api/v1/business-timeline")
     public R<PageResult<BusinessTimelineEntry>> query(@RequestParam String tenantId,
                                                       @RequestParam(required = false) String targetType,

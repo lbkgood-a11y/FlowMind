@@ -32,6 +32,9 @@ public class AuthService {
 
     private static final String REFRESH_KEY_PREFIX = "refresh:";
     private static final String REVOKED_KEY_PREFIX = "revoked:";
+    private static final String LOGIN_ATTEMPTS_KEY_PREFIX = "login:attempts:";
+    private static final int MAX_LOGIN_ATTEMPTS = 5;
+    private static final Duration LOGIN_LOCK_DURATION = Duration.ofMinutes(15);
     private static final String DEFAULT_ROLE_CODE = "USER";
     private static final String DEFAULT_TENANT_ID = "default";
 
@@ -42,6 +45,7 @@ public class AuthService {
     private final StringRedisTemplate redis;
     private final LoginSessionService loginSessionService;
     private final AuthorizationVersionService authorizationVersionService;
+    private final PermissionCacheService permissionCacheService;
 
     @Value("${auth.jwt.secret}")
     private String jwtSecret;
@@ -80,13 +84,23 @@ public class AuthService {
         userRoleMapper.insert(userRole);
 
         log.info("User registered: {} ({})", username, user.getId());
-        return buildLoginResponse(user, List.of("USER"));
+        return buildLoginResponse(user, List.of("USER"), List.of());
     }
 
     public LoginResponse login(LoginRequest request) {
+        String attemptsKey = LOGIN_ATTEMPTS_KEY_PREFIX + request.getUsername();
+        String attemptsStr = redis.opsForValue().get(attemptsKey);
+        int attempts = attemptsStr != null ? Integer.parseInt(attemptsStr) : 0;
+        if (attempts >= MAX_LOGIN_ATTEMPTS) {
+            loginSessionService.recordLoginFailure(request.getUsername(), "RATE_LIMITED");
+            throw new BizException(AuthErrorCode.TOO_MANY_ATTEMPTS);
+        }
+
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, request.getUsername()));
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            redis.opsForValue().increment(attemptsKey);
+            redis.expire(attemptsKey, LOGIN_LOCK_DURATION);
             loginSessionService.recordLoginFailure(request.getUsername(), "BAD_CREDENTIALS");
             throw new BizException(AuthErrorCode.BAD_CREDENTIALS);
         }
@@ -95,8 +109,10 @@ public class AuthService {
             throw new BizException(AuthErrorCode.ACCOUNT_DISABLED);
         }
         List<String> roles = userMapper.selectRoleCodesByUserId(user.getId());
+        List<String> permissions = userMapper.selectPermissionsByUserId(user.getId());
+        redis.delete(attemptsKey);
         log.info("User logged in: {} ({})", user.getUsername(), user.getId());
-        LoginResponse response = buildLoginResponse(user, roles);
+        LoginResponse response = buildLoginResponse(user, roles, permissions);
         loginSessionService.recordLoginSuccess(user);
         return response;
     }
@@ -125,7 +141,8 @@ public class AuthService {
             throw new BizException(AuthErrorCode.ACCOUNT_DISABLED);
         }
         List<String> roles = userMapper.selectRoleCodesByUserId(user.getId());
-        return buildLoginResponse(user, roles);
+        List<String> permissions = userMapper.selectPermissionsByUserId(user.getId());
+        return buildLoginResponse(user, roles, permissions);
     }
 
     public TokenValidateResult validate(String token) {
@@ -143,9 +160,23 @@ public class AuthService {
         if (user == null || user.getStatus() != 1) {
             return TokenValidateResult.fail("账号不可用");
         }
-        List<String> roles = userMapper.selectRoleCodesByUserId(payload.userId());
-        List<String> permissions = userMapper.selectPermissionsByUserId(payload.userId());
-        List<String> deniedPermissions = userMapper.selectDeniedPermissionsByUserId(payload.userId());
+
+        List<String> roles;
+        List<String> permissions;
+        List<String> deniedPermissions;
+
+        var cached = permissionCacheService.get(payload.userId());
+        if (cached.isPresent()) {
+            roles = cached.get().roles();
+            permissions = cached.get().permissions();
+            deniedPermissions = cached.get().deniedPermissions();
+        } else {
+            roles = userMapper.selectRoleCodesByUserId(payload.userId());
+            permissions = userMapper.selectPermissionsByUserId(payload.userId());
+            deniedPermissions = userMapper.selectDeniedPermissionsByUserId(payload.userId());
+            permissionCacheService.put(payload.userId(), roles, permissions, deniedPermissions);
+        }
+
         TokenValidateResult result = TokenValidateResult.success(payload.userId(), payload.username(), tenantId(user),
                 roles,
                 permissions,
@@ -194,7 +225,7 @@ public class AuthService {
         return defaultRole.getId();
     }
 
-    private LoginResponse buildLoginResponse(SysUser user, List<String> roles) {
+    private LoginResponse buildLoginResponse(SysUser user, List<String> roles, List<String> permissions) {
         String accessToken = JwtUtil.createAccessToken(user.getId(), user.getUsername(), roles, jwtSecret, accessTokenTtl);
         String refreshToken = JwtUtil.createRefreshToken(user.getId(), user.getUsername(), jwtSecret, refreshTokenTtl);
 
@@ -211,6 +242,7 @@ public class AuthService {
         resp.setUserId(user.getId());
         resp.setUsername(user.getUsername());
         resp.setRoles(roles);
+        resp.setPermissions(permissions);
         loginSessionService.recordSession(user, resp, jwtSecret);
         return resp;
     }

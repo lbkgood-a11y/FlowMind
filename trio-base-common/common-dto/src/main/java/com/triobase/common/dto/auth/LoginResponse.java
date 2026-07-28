@@ -12,4 +12,5 @@ public class LoginResponse {
     private String userId;
     private String username;
     private List<String> roles;
+    private List<String> permissions;
 }

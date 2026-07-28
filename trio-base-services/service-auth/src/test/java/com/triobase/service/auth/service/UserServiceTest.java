@@ -13,6 +13,7 @@ import com.triobase.service.auth.dto.CreateUserRequest;
 import com.triobase.service.auth.dto.UpdateProfileRequest;
 import com.triobase.service.auth.dto.UserProfileResponse;
 import com.triobase.service.auth.entity.SysUser;
+import com.triobase.service.auth.entity.SysRole;
 import com.triobase.service.auth.mapper.RoleMapper;
 import com.triobase.service.auth.mapper.UserMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
@@ -53,6 +54,9 @@ class UserServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private PermissionCacheService permissionCacheService;
+
     @InjectMocks
     private UserService userService;
 
@@ -60,6 +64,24 @@ class UserServiceTest {
     void tearDown() {
         DataScopeContextHolder.clear();
         SecurityContextHolder.clear();
+    }
+
+    @Test
+    void assignRoles_shouldEvictEffectivePermissionCache() {
+        SysUser user = new SysUser();
+        user.setId("U001");
+        user.setTenantId("default");
+        user.setStatus(1);
+        SysRole role = new SysRole();
+        role.setId("R002");
+        role.setStatus((short) 1);
+        when(userMapper.selectById("U001")).thenReturn(user);
+        when(roleMapper.selectById("R002")).thenReturn(role);
+        setContext("default", List.of("ADMIN"));
+
+        userService.assignRoles("U001", List.of("R002"));
+
+        verify(permissionCacheService).evict("U001");
     }
 
     @Test

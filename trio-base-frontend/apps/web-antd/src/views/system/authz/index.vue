@@ -37,6 +37,7 @@ import {
   saveAuthorizationGuardTemplate,
   updateAuthorizationGuardTemplateStatus,
 } from '#/api';
+import { getRoleList } from '#/api/system/role';
 import {
   BusinessPageScaffold,
   CompactTableFrame,
@@ -44,6 +45,10 @@ import {
 } from '#/shared';
 
 const TabPane = Tabs.TabPane;
+
+const ROLE_PERMISSIONS = {
+  query: '/api/v1/roles:GET',
+} as const;
 
 const AUTHZ_PERMISSIONS = {
   delete: '/api/v1/authz/**:DELETE',
@@ -53,6 +58,7 @@ const AUTHZ_PERMISSIONS = {
 } as const;
 
 const { hasAccessByCodes } = useAccess();
+const canQueryRoles = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.query]));
 const canQuery = computed(() => hasAccessByCodes([AUTHZ_PERMISSIONS.query]));
 const canCreate = computed(() => hasAccessByCodes([AUTHZ_PERMISSIONS.post]));
 const canUpdate = computed(() => hasAccessByCodes([AUTHZ_PERMISSIONS.put]));
@@ -63,6 +69,8 @@ const loading = ref(false);
 const saving = ref(false);
 const resourceTree = ref<SystemAuthorizationApi.ResourceTree>();
 const adminOptions = ref<SystemAuthorizationApi.AdminOptions>();
+const roleList = ref<{ id: string; roleName: string; roleCode: string }[]>([]);
+const selectedRoleId = ref<string>('');
 
 const resourceGroups = computed(() => resourceTree.value?.groups ?? []);
 const resourceList = computed(() =>
@@ -117,6 +125,22 @@ const fieldResourceOptions = computed(() =>
     })),
 );
 
+const roleOptions = computed(() =>
+  roleList.value.map((r) => ({
+    label: `${r.roleName} (${r.roleCode})`,
+    value: r.id,
+  })),
+);
+
+async function loadRoles() {
+  if (!canQueryRoles.value) return;
+  try {
+    roleList.value = await getRoleList();
+  } catch {
+    roleList.value = [];
+  }
+}
+
 async function loadResources() {
   if (!canQuery.value) return;
   loading.value = true;
@@ -136,6 +160,7 @@ async function loadResources() {
 
 onMounted(() => {
   loadResources();
+  loadRoles();
 });
 
 // ─── Tab 1: Function permissions (grants) ───
@@ -168,7 +193,7 @@ function openGrantDrawer() {
   grantForm.resourceCode = resourceOptions.value[0]?.value ?? '';
   grantForm.actionCode = '';
   grantForm.subjectType = 'ROLE';
-  grantForm.subjectId = '';
+  grantForm.subjectId = selectedRoleId.value || '';
   grantForm.effect = 'ALLOW';
   grantForm.description = '';
   grantDrawerOpen.value = true;
@@ -221,10 +246,9 @@ async function handleDeleteGrant(record: SystemAuthorizationApi.AuthorizationGra
 
 async function loadGrants() {
   if (!canQuery.value) return;
-  const firstResource = resourceList.value[0];
-  if (!firstResource) return;
+  if (!selectedRoleId.value) return;
   try {
-    const profile = await getRoleAuthorizationProfile('R001');
+    const profile = await getRoleAuthorizationProfile(selectedRoleId.value);
     grantRows.value = profile.functionGrants ?? [];
   } catch {
     grantRows.value = [];
@@ -285,7 +309,7 @@ function openFieldDrawer() {
   fieldForm.resourceCode = first?.value ?? '';
   fieldForm.fieldKey = '';
   fieldForm.subjectType = 'ROLE';
-  fieldForm.subjectId = '';
+  fieldForm.subjectId = selectedRoleId.value || '';
   fieldForm.readMode = adminOptions.value?.fieldReadModes?.[0]?.code ?? 'VISIBLE';
   fieldForm.writeMode = adminOptions.value?.fieldWriteModes?.[0]?.code ?? 'EDITABLE';
   fieldForm.maskStrategy = '';
@@ -333,8 +357,9 @@ async function handleDeleteField(record: SystemAuthorizationApi.FieldPolicy) {
 
 async function loadFieldPolicies() {
   if (!canQuery.value) return;
+  if (!selectedRoleId.value) return;
   try {
-    const profile = await getRoleAuthorizationProfile('R001');
+    const profile = await getRoleAuthorizationProfile(selectedRoleId.value);
     fieldRows.value = profile.fieldPolicies ?? [];
   } catch {
     fieldRows.value = [];
@@ -498,6 +523,11 @@ function onTabChange(key: number | string) {
   if (nextKey === 'field') loadFieldPolicies();
   if (nextKey === 'guard') loadGuards();
 }
+
+function onRoleChange() {
+  grantRows.value = [];
+  fieldRows.value = [];
+}
 </script>
 
 <template>
@@ -506,6 +536,18 @@ function onTabChange(key: number | string) {
       <template #toolbar>
         <CompactToolbar title="企业授权" subtitle="统一管理功能授权、字段策略、守卫模板和决策预览" />
       </template>
+
+      <div v-if="canQueryRoles" class="flex items-center gap-3 mb-3">
+        <span class="text-sm font-medium text-gray-700">管理角色：</span>
+        <Select
+          v-model:value="selectedRoleId"
+          :options="roleOptions"
+          placeholder="选择角色以查看其授权配置"
+          style="width: 260px"
+          allow-clear
+          @change="onRoleChange"
+        />
+      </div>
       <Tabs default-active-key="function" @change="onTabChange">
         <!-- Tab 1: 功能权限 -->
         <TabPane key="function" tab="功能权限">

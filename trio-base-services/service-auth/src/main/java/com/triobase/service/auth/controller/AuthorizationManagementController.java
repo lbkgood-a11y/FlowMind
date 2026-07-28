@@ -17,6 +17,8 @@ import com.triobase.service.auth.dto.DecisionLogResponse;
 import com.triobase.service.auth.dto.FieldPolicyResponse;
 import com.triobase.service.auth.dto.GuardTemplateResponse;
 import com.triobase.service.auth.dto.RoleAuthorizationProfileResponse;
+import com.triobase.service.auth.dto.ReplaceRoleFunctionGrantsRequest;
+import com.triobase.service.auth.dto.ReplaceRoleFunctionGrantsResponse;
 import com.triobase.service.auth.dto.SaveAuthorizationGrantRequest;
 import com.triobase.service.auth.dto.SaveFieldPolicyRequest;
 import com.triobase.service.auth.dto.SaveGuardTemplateRequest;
@@ -81,10 +83,19 @@ public class AuthorizationManagementController {
         RoleAuthorizationProfileResponse response = new RoleAuthorizationProfileResponse();
         response.setTenantId(registryService.effectiveTenant(tenantId));
         response.setRoleId(roleId);
+        response.setGrantVersion(registryService.currentGrantVersion());
         response.setFunctionGrants(registryService.listGrants(tenantId, "ROLE", roleId, null));
         response.setDataPolicies(dataPolicyService.listByRole(roleId));
         response.setFieldPolicies(registryService.listFieldPolicies(tenantId, null, "ROLE", roleId));
         return R.ok(response);
+    }
+
+    @PutMapping("/roles/{roleId}/function-grants")
+    @RequirePermission("/api/v1/authz/**:PUT")
+    public R<ReplaceRoleFunctionGrantsResponse> replaceRoleFunctionGrants(
+            @PathVariable String roleId,
+            @RequestBody ReplaceRoleFunctionGrantsRequest request) {
+        return R.ok(registryService.replaceRoleFunctionGrants(roleId, request));
     }
 
     @GetMapping("/resources/stale")

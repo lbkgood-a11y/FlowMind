@@ -25,7 +25,9 @@ function isAccessible(
   const values = Array.isArray(value) ? value : [value];
 
   if (!authMethod(values)) {
-    el?.remove();
+    (el as HTMLElement).style.display = 'none';
+  } else {
+    (el as HTMLElement).style.display = '';
   }
 }
 
@@ -33,8 +35,13 @@ const mounted = (el: Element, binding: DirectiveBinding<string | string[]>) => {
   isAccessible(el, binding);
 };
 
+const updated = (el: Element, binding: DirectiveBinding<string | string[]>) => {
+  isAccessible(el, binding);
+};
+
 const authDirective: Directive = {
   mounted,
+  updated,
 };
 
 export function registerAccessDirective(app: App) {

@@ -1,9 +1,13 @@
 package com.triobase.service.auth.service;
 
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.triobase.common.core.exception.BizException;
+import com.triobase.service.auth.dto.ReplaceRoleFunctionGrantsRequest;
 import com.triobase.service.auth.entity.SysAuthAction;
 import com.triobase.service.auth.entity.SysAuthField;
 import com.triobase.service.auth.entity.SysAuthGuardTemplate;
 import com.triobase.service.auth.entity.SysAuthResource;
+import com.triobase.service.auth.entity.SysAuthGrant;
 import com.triobase.service.auth.mapper.AuthActionMapper;
 import com.triobase.service.auth.mapper.AuthDecisionLogMapper;
 import com.triobase.service.auth.mapper.AuthFieldMapper;
@@ -11,6 +15,9 @@ import com.triobase.service.auth.mapper.AuthFieldPolicyMapper;
 import com.triobase.service.auth.mapper.AuthGrantMapper;
 import com.triobase.service.auth.mapper.AuthGuardTemplateMapper;
 import com.triobase.service.auth.mapper.AuthResourceMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.ibatis.session.Configuration;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -20,11 +27,23 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class AuthorizationRegistryServiceTest {
+
+    @BeforeAll
+    static void initMybatisPlusMetadata() {
+        initTableInfo(AuthResourceMapper.class, SysAuthResource.class);
+        initTableInfo(AuthActionMapper.class, SysAuthAction.class);
+        initTableInfo(AuthFieldMapper.class, SysAuthField.class);
+        initTableInfo(AuthGuardTemplateMapper.class, SysAuthGuardTemplate.class);
+        initTableInfo(AuthGrantMapper.class, SysAuthGrant.class);
+    }
 
     @Mock private AuthResourceMapper resourceMapper;
     @Mock private AuthActionMapper actionMapper;
@@ -92,6 +111,47 @@ class AuthorizationRegistryServiceTest {
         assertThat(options.getFieldReadModes()).extracting("code").containsExactly("VISIBLE", "MASKED", "HIDDEN");
         assertThat(options.getFieldWriteModes()).extracting("code").contains("EDITABLE", "READ_ONLY", "DENIED");
         assertThat(options.getGuardTemplates()).extracting("guardCode").containsExactly("NO_SELF_APPROVAL");
+    }
+
+    @Test
+    void replaceRoleFunctionGrantsRejectsStaleVersionWithoutMutation() {
+        when(versionService.current(AuthorizationVersionService.GRANT)).thenReturn(8L);
+        ReplaceRoleFunctionGrantsRequest request = replacementRequest(7L, "LOWCODE_FORM:EXPENSE", "VIEW");
+
+        assertThrows(BizException.class, () -> service.replaceRoleFunctionGrants("R001", request));
+
+        verify(grantMapper, never()).delete(any());
+        verify(grantMapper, never()).insert(any(SysAuthGrant.class));
+    }
+
+    @Test
+    void replaceRoleFunctionGrantsValidatesAllActionsBeforeMutation() {
+        when(versionService.current(AuthorizationVersionService.GRANT)).thenReturn(8L);
+        when(resourceMapper.selectCount(any())).thenReturn(0L);
+        ReplaceRoleFunctionGrantsRequest request = replacementRequest(8L, "UNKNOWN", "VIEW");
+
+        assertThrows(BizException.class, () -> service.replaceRoleFunctionGrants("R001", request));
+
+        verify(grantMapper, never()).delete(any());
+        verify(grantMapper, never()).insert(any(SysAuthGrant.class));
+    }
+
+    private ReplaceRoleFunctionGrantsRequest replacementRequest(
+            Long version, String resourceCode, String actionCode) {
+        ReplaceRoleFunctionGrantsRequest.GrantItem item = new ReplaceRoleFunctionGrantsRequest.GrantItem();
+        item.setResourceCode(resourceCode);
+        item.setActionCode(actionCode);
+        ReplaceRoleFunctionGrantsRequest request = new ReplaceRoleFunctionGrantsRequest();
+        request.setTenantId("tenant-a");
+        request.setExpectedGrantVersion(version);
+        request.setGrants(List.of(item));
+        return request;
+    }
+
+    private static void initTableInfo(Class<?> mapperType, Class<?> entityType) {
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(new Configuration(), "");
+        assistant.setCurrentNamespace(mapperType.getName());
+        TableInfoHelper.initTableInfo(assistant, entityType);
     }
 
     private SysAuthResource resource(String id, String code, String type, String ownerService) {

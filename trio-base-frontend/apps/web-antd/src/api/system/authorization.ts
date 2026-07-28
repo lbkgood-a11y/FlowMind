@@ -155,7 +155,21 @@ export namespace SystemAuthorizationApi {
     fieldPolicies: FieldPolicy[];
     functionGrants: AuthorizationGrant[];
     roleId: string;
+    grantVersion?: number;
     tenantId?: string;
+  }
+
+  export interface ReplaceRoleFunctionGrants {
+    expectedGrantVersion?: number;
+    grants: Array<{ actionCode: string; description?: string; resourceCode: string }>;
+    tenantId?: string;
+  }
+
+  export interface ReplaceRoleFunctionGrantsResult {
+    authorizationVersion: number;
+    grantVersion: number;
+    persistedCount: number;
+    roleId: string;
   }
 
   export interface SaveGuardTemplate {
@@ -275,6 +289,16 @@ async function deleteAuthorizationGrant(id: string) {
   return requestClient.delete(`/authz/grants/${id}`);
 }
 
+async function replaceRoleFunctionGrants(
+  roleId: string,
+  data: SystemAuthorizationApi.ReplaceRoleFunctionGrants,
+) {
+  return requestClient.put<SystemAuthorizationApi.ReplaceRoleFunctionGrantsResult>(
+    `/authz/roles/${roleId}/function-grants`,
+    data,
+  );
+}
+
 async function saveAuthorizationFieldPolicy(
   data: SystemAuthorizationApi.SaveFieldPolicy,
 ) {
@@ -322,6 +346,7 @@ export {
   getAuthorizationResourceTree,
   getRoleAuthorizationProfile,
   previewAuthorizationDecision,
+  replaceRoleFunctionGrants,
   saveAuthorizationFieldPolicy,
   saveAuthorizationGrant,
   saveAuthorizationGuardTemplate,

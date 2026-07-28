@@ -17,11 +17,13 @@ public interface UserMapper extends BaseMapper<SysUser> {
             "JOIN sys_user_role ur ON ur.role_id = g.subject_id " +
             "JOIN sys_role r ON r.id = ur.role_id " +
             "WHERE ur.user_id = #{userId} AND r.status = 1 " +
+            "AND g.tenant_id = COALESCE((SELECT NULLIF(u.tenant_id, '') FROM sys_user u WHERE u.id = #{userId}), 'default') " +
             "AND g.subject_type = 'ROLE' AND g.effect = 'ALLOW' AND g.status = 1 " +
             "UNION " +
             "SELECT g.resource_code || ':' || g.action_code AS code " +
             "FROM sys_auth_grant g " +
             "WHERE g.subject_type = 'USER' AND g.subject_id = #{userId} " +
+            "AND g.tenant_id = COALESCE((SELECT NULLIF(u.tenant_id, '') FROM sys_user u WHERE u.id = #{userId}), 'default') " +
             "AND g.effect = 'ALLOW' AND g.status = 1" +
             ") permissions WHERE code IS NOT NULL AND code <> '' " +
             "AND NOT EXISTS (" +
@@ -31,11 +33,13 @@ public interface UserMapper extends BaseMapper<SysUser> {
             "JOIN sys_user_role dur ON dur.role_id = dg.subject_id " +
             "JOIN sys_role dr ON dr.id = dur.role_id " +
             "WHERE dur.user_id = #{userId} AND dr.status = 1 " +
+            "AND dg.tenant_id = COALESCE((SELECT NULLIF(u.tenant_id, '') FROM sys_user u WHERE u.id = #{userId}), 'default') " +
             "AND dg.subject_type = 'ROLE' AND dg.effect = 'DENY' AND dg.status = 1 " +
             "UNION " +
             "SELECT dg.resource_code || ':' || dg.action_code AS denied_code " +
             "FROM sys_auth_grant dg " +
             "WHERE dg.subject_type = 'USER' AND dg.subject_id = #{userId} " +
+            "AND dg.tenant_id = COALESCE((SELECT NULLIF(u.tenant_id, '') FROM sys_user u WHERE u.id = #{userId}), 'default') " +
             "AND dg.effect = 'DENY' AND dg.status = 1" +
             ") denied WHERE denied.denied_code = permissions.code)")
     List<String> selectPermissionsByUserId(String userId);
@@ -46,11 +50,13 @@ public interface UserMapper extends BaseMapper<SysUser> {
             "JOIN sys_user_role ur ON ur.role_id = g.subject_id " +
             "JOIN sys_role r ON r.id = ur.role_id " +
             "WHERE ur.user_id = #{userId} AND r.status = 1 " +
+            "AND g.tenant_id = COALESCE((SELECT NULLIF(u.tenant_id, '') FROM sys_user u WHERE u.id = #{userId}), 'default') " +
             "AND g.subject_type = 'ROLE' AND g.effect = 'DENY' AND g.status = 1 " +
             "UNION " +
             "SELECT g.resource_code || ':' || g.action_code AS code " +
             "FROM sys_auth_grant g " +
             "WHERE g.subject_type = 'USER' AND g.subject_id = #{userId} " +
+            "AND g.tenant_id = COALESCE((SELECT NULLIF(u.tenant_id, '') FROM sys_user u WHERE u.id = #{userId}), 'default') " +
             "AND g.effect = 'DENY' AND g.status = 1" +
             ") denied_permissions WHERE code IS NOT NULL AND code <> ''")
     List<String> selectDeniedPermissionsByUserId(String userId);

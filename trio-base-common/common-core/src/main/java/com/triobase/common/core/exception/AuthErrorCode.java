@@ -10,7 +10,8 @@ public enum AuthErrorCode implements ErrorCode {
     PASSWORD_TOO_WEAK(1006, "密码强度不足，至少 8 位且包含大小写字母和数字"),
     USER_NOT_FOUND(1007, "用户不存在"),
     ROLE_NOT_FOUND(1008, "角色不存在"),
-    PERMISSION_DENIED(1009, "权限不足");
+    PERMISSION_DENIED(1009, "权限不足"),
+    TOO_MANY_ATTEMPTS(1010, "登录尝试过于频繁，请 15 分钟后再试");
 
     private final int code;
     private final String message;

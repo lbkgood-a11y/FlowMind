@@ -1,6 +1,7 @@
 package com.triobase.service.auth.service;
 
 import com.triobase.common.core.util.StringHelpers;
+import com.triobase.common.core.context.SecurityContextHolder;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -18,6 +19,8 @@ import com.triobase.service.auth.dto.DecisionLogResponse;
 import com.triobase.service.auth.dto.FieldPolicyResponse;
 import com.triobase.service.auth.dto.GuardTemplateResponse;
 import com.triobase.service.auth.dto.SaveAuthorizationGrantRequest;
+import com.triobase.service.auth.dto.ReplaceRoleFunctionGrantsRequest;
+import com.triobase.service.auth.dto.ReplaceRoleFunctionGrantsResponse;
 import com.triobase.service.auth.dto.SaveFieldPolicyRequest;
 import com.triobase.service.auth.dto.SaveGuardTemplateRequest;
 import com.triobase.service.auth.entity.SysAuthAction;
@@ -548,7 +551,71 @@ public class AuthorizationRegistryService {
     }
 
     public String effectiveTenant(String tenantId) {
-        return StringUtils.hasText(tenantId) ? tenantId.trim() : DEFAULT_TENANT;
+        String authenticatedTenant = SecurityContextHolder.getTenantId();
+        String requestedTenant = StringUtils.hasText(tenantId) ? tenantId.trim() : null;
+        if (StringUtils.hasText(authenticatedTenant)) {
+            if (requestedTenant != null
+                    && !authenticatedTenant.equals(requestedTenant)
+                    && !SecurityContextHolder.getRoles().contains("ADMIN")) {
+                throw new BizException(40382, "AUTHZ_CROSS_TENANT_FORBIDDEN");
+            }
+            return requestedTenant != null ? requestedTenant : authenticatedTenant;
+        }
+        return requestedTenant != null ? requestedTenant : DEFAULT_TENANT;
+    }
+
+    public long currentGrantVersion() {
+        return versionService.current(AuthorizationVersionService.GRANT);
+    }
+
+    @Transactional
+    public ReplaceRoleFunctionGrantsResponse replaceRoleFunctionGrants(
+            String roleId, ReplaceRoleFunctionGrantsRequest request) {
+        if (request == null || request.getGrants() == null) {
+            throw new BizException(40081, "AUTHZ_GRANT_REQUIRED");
+        }
+        String normalizedRoleId = required(roleId, "AUTHZ_SUBJECT_REQUIRED");
+        String tenantId = effectiveTenant(request.getTenantId());
+        long currentVersion = versionService.current(AuthorizationVersionService.GRANT);
+        if (request.getExpectedGrantVersion() != null
+                && request.getExpectedGrantVersion() != currentVersion) {
+            throw new BizException(40980, "AUTHZ_GRANT_VERSION_CONFLICT");
+        }
+
+        Map<String, ReplaceRoleFunctionGrantsRequest.GrantItem> desired = new LinkedHashMap<>();
+        for (ReplaceRoleFunctionGrantsRequest.GrantItem item : request.getGrants()) {
+            if (item == null) {
+                throw new BizException(40081, "AUTHZ_GRANT_REQUIRED");
+            }
+            String resourceCode = normalizeResource(required(item.getResourceCode(), "AUTHZ_RESOURCE_CODE_REQUIRED"));
+            String actionCode = normalize(required(item.getActionCode(), "AUTHZ_ACTION_CODE_REQUIRED"));
+            ensureActionRegistered(tenantId, resourceCode, actionCode);
+            desired.put(resourceCode + ":" + actionCode, item);
+        }
+
+        grantMapper.delete(new LambdaQueryWrapper<SysAuthGrant>()
+                .eq(SysAuthGrant::getTenantId, tenantId)
+                .eq(SysAuthGrant::getSubjectType, "ROLE")
+                .eq(SysAuthGrant::getSubjectId, normalizedRoleId)
+                .eq(SysAuthGrant::getEffect, "ALLOW"));
+        for (Map.Entry<String, ReplaceRoleFunctionGrantsRequest.GrantItem> entry : desired.entrySet()) {
+            int separator = entry.getKey().lastIndexOf(':');
+            SysAuthGrant grant = new SysAuthGrant();
+            grant.setId(UlidGenerator.nextUlid());
+            grant.setTenantId(tenantId);
+            grant.setSubjectType("ROLE");
+            grant.setSubjectId(normalizedRoleId);
+            grant.setResourceCode(entry.getKey().substring(0, separator));
+            grant.setActionCode(entry.getKey().substring(separator + 1));
+            grant.setEffect("ALLOW");
+            grant.setStatus((short) 1);
+            grant.setDescription(StringHelpers.normalizeBlank(entry.getValue().getDescription()));
+            grantMapper.insert(grant);
+        }
+        long grantVersion = versionService.bump(AuthorizationVersionService.GRANT);
+        long authorizationVersion = versionService.bump(AuthorizationVersionService.AUTHORIZATION);
+        return new ReplaceRoleFunctionGrantsResponse(
+                normalizedRoleId, desired.size(), grantVersion, authorizationVersion);
     }
 
     private String required(String value, String errorCode) {

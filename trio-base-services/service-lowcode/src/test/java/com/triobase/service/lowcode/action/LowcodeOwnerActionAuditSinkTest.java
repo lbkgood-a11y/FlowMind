@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.action.enums.ActionEventType;
 import com.triobase.common.action.enums.ActionStatus;
 import com.triobase.common.action.model.ActionEventPayload;
+import com.triobase.common.core.config.InternalServiceSecurityProperties;
 import com.triobase.service.lowcode.entity.LowcodeActionAuditEvent;
 import com.triobase.service.lowcode.mapper.LowcodeActionAuditEventMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
 import java.util.Map;
@@ -19,9 +21,13 @@ import static org.mockito.Mockito.verify;
 class LowcodeOwnerActionAuditSinkTest {
 
     private final LowcodeActionAuditEventMapper mapper = mock(LowcodeActionAuditEventMapper.class);
+    private final RestTemplate restTemplate = mock(RestTemplate.class);
+    private final InternalServiceSecurityProperties internalProperties = mock(InternalServiceSecurityProperties.class);
     private final LowcodeOwnerActionAuditSink sink = new LowcodeOwnerActionAuditSink(
             mapper,
-            new ObjectMapper().findAndRegisterModules());
+            new ObjectMapper().findAndRegisterModules(),
+            restTemplate,
+            internalProperties);
 
     @Test
     void persistsActionAuditEventWithCorrelationFields() {

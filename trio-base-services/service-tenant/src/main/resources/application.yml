@@ -7,9 +7,9 @@ spring:
   config:
     import: optional:nacos:${spring.application.name}.yml
   datasource:
-    url: ${TENANT_DB_URL:jdbc:postgresql://localhost:5433/triobase}
-    username: ${TENANT_DB_USERNAME:triobase}
-    password: ${TENANT_DB_PASSWORD:triobase123}
+    url: ${TENANT_DB_URL:jdbc:postgresql://10.193.102.2:5432/triobase}
+    username: ${TENANT_DB_USERNAME:postgres}
+    password: ${TENANT_DB_PASSWORD:pwd123}
     driver-class-name: org.postgresql.Driver
     type: com.alibaba.druid.pool.DruidDataSource
   flyway:
@@ -21,12 +21,14 @@ spring:
     baseline-version: 0
   cloud:
     nacos:
+      username: nacos
+      password: nacos
       discovery:
-        enabled: ${NACOS_ENABLED:false}
-        server-addr: localhost:8848
+        enabled: ${NACOS_ENABLED:true}
+        server-addr: 10.193.102.2:8848
       config:
-        enabled: ${NACOS_ENABLED:false}
-        server-addr: localhost:8848
+        enabled: ${NACOS_ENABLED:true}
+        server-addr: 10.193.102.2:8848
         file-extension: yml
 
 mybatis-plus:

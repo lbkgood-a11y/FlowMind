@@ -50,6 +50,7 @@ public class UserService {
     private final UserRoleMapper userRoleMapper;
     private final RoleMapper roleMapper;
     private final PasswordEncoder passwordEncoder;
+    private final PermissionCacheService permissionCacheService;
 
     public UserInfoPayload findById(String id) {
         SysUser user = userMapper.selectById(id);
@@ -270,6 +271,7 @@ public class UserService {
     private void replaceRoles(String userId, List<String> roleIds) {
         userRoleMapper.delete(new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getUserId, userId));
         if (roleIds == null || roleIds.isEmpty()) {
+            permissionCacheService.evict(userId);
             return;
         }
         for (String roleId : roleIds) {
@@ -285,6 +287,7 @@ public class UserService {
             userRole.setRoleId(roleId);
             userRoleMapper.insert(userRole);
         }
+        permissionCacheService.evict(userId);
     }
 
     private void validatePassword(String password) {

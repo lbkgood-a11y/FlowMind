@@ -8,8 +8,8 @@ import com.triobase.service.apiruntime.action.OpenApiActionMetadata;
 import com.triobase.common.openapi.entity.CallbackInbox;
 import com.triobase.common.openapi.enums.CallbackInboxState;
 import com.triobase.service.apiruntime.infrastructure.mapper.CallbackInboxMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -17,12 +17,21 @@ import java.time.LocalDateTime;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class CallbackSignalDispatcher {
     private final CallbackInboxMapper inboxMapper;
     private final OrchestrationRuntimeService orchestrationRuntimeService;
     private final ObjectMapper objectMapper;
     private final OpenApiActionDispatchService actionDispatchService;
+
+    public CallbackSignalDispatcher(CallbackInboxMapper inboxMapper,
+                                     OrchestrationRuntimeService orchestrationRuntimeService,
+                                     ObjectMapper objectMapper,
+                                     @Lazy OpenApiActionDispatchService actionDispatchService) {
+        this.inboxMapper = inboxMapper;
+        this.orchestrationRuntimeService = orchestrationRuntimeService;
+        this.objectMapper = objectMapper;
+        this.actionDispatchService = actionDispatchService;
+    }
 
     @Scheduled(fixedDelayString = "${triobase.openapi.callbacks.signal-dispatch-delay-ms:1000}")
     public void dispatchPending() {

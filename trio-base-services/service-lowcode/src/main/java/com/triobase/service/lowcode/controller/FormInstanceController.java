@@ -1,5 +1,6 @@
 package com.triobase.service.lowcode.controller;
 
+import com.triobase.common.core.annotation.RequireDataScope;
 import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.R;
 import com.triobase.common.core.result.PageResult;
@@ -16,6 +17,7 @@ public class FormInstanceController {
 
     @GetMapping("/api/v1/forms/{formKey}/instances")
     @RequirePermission("/api/v1/forms/*/instances:GET")
+    @RequireDataScope(resource = "FORM_INSTANCE", action = "QUERY")
     public R<PageResult<FormInstanceResponse>> list(@PathVariable String formKey,
                                                     @RequestParam(defaultValue = "1") int page,
                                                     @RequestParam(defaultValue = "20") int size) {
@@ -24,6 +26,7 @@ public class FormInstanceController {
 
     @GetMapping("/api/v1/forms/{formKey}/instances/{instanceId}/export")
     @RequirePermission("/api/v1/forms/*/instances/*/export:GET")
+    @RequireDataScope(resource = "FORM_INSTANCE", action = "EXPORT")
     public R<FormInstanceResponse> export(@PathVariable String formKey,
                                           @PathVariable String instanceId) {
         return R.ok(formInstanceService.export(formKey, instanceId));
@@ -31,6 +34,7 @@ public class FormInstanceController {
 
     @GetMapping("/api/v1/form-instances/{id}")
     @RequirePermission("/api/v1/form-instances/*:GET")
+    @RequireDataScope(resource = "FORM_INSTANCE", action = "QUERY")
     public R<FormInstanceResponse> getById(@PathVariable String id) {
         return R.ok(formInstanceService.getById(id));
     }

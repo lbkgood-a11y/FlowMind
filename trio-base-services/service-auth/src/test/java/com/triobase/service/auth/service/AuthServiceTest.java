@@ -41,6 +41,7 @@ class AuthServiceTest {
     @Mock private ValueOperations<String, String> valueOperations;
     @Mock private LoginSessionService loginSessionService;
     @Mock private AuthorizationVersionService authorizationVersionService;
+    @Mock private PermissionCacheService permissionCacheService;
 
     @InjectMocks
     private AuthService authService;

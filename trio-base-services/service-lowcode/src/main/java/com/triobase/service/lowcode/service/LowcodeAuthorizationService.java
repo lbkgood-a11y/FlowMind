@@ -5,10 +5,11 @@ import com.triobase.common.core.util.StringHelpers;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.triobase.common.core.auth.FieldMaskHelper;
 import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.dto.authz.AuthzDataScopeResult;
-import com.triobase.common.dto.authz.AuthzFieldRule;
+
 import com.triobase.common.dto.authz.AuthorizationBatchDecisionRequest;
 import com.triobase.common.dto.authz.AuthorizationBatchDecisionResponse;
 import com.triobase.common.dto.authz.AuthorizationDecisionRequest;
@@ -32,9 +33,6 @@ public class LowcodeAuthorizationService {
 
     private static final String DEFAULT_TENANT_ID = "default";
     private static final String OWNER_SERVICE = "service-lowcode";
-    private static final String MASK_PLACEHOLDER = "******";
-    private static final Set<String> READ_DENIED_MODES = Set.of("HIDDEN", "DENIED");
-    private static final Set<String> WRITE_DENIED_MODES = Set.of("READ_ONLY", "DENIED");
 
     private final AuthorizationDecisionClient decisionClient;
     private final ObjectMapper objectMapper;
@@ -150,16 +148,11 @@ public class LowcodeAuthorizationService {
         if (data == null || data.isEmpty()) {
             return;
         }
-        Map<String, AuthzFieldRule> rules = fieldRulesByKey(decision);
-        for (String fieldKey : data.keySet()) {
-            AuthzFieldRule rule = rules.get(fieldKey);
-            if (rule == null) {
-                continue;
-            }
-            String writeMode = normalizeAction(rule.getWriteMode());
-            if (WRITE_DENIED_MODES.contains(writeMode)) {
-                throw new BizException(40392, "LOWCODE_FIELD_WRITE_DENIED");
-            }
+        try {
+            FieldMaskHelper.assertWritableFields(data,
+                    decision != null ? decision.getFieldRules() : null);
+        } catch (IllegalArgumentException e) {
+            throw new BizException(40392, "LOWCODE_FIELD_WRITE_DENIED");
         }
     }
 
@@ -172,18 +165,7 @@ public class LowcodeAuthorizationService {
         if (data.isEmpty()) {
             return response;
         }
-        for (AuthzFieldRule rule : decision.getFieldRules()) {
-            if (rule == null || !StringUtils.hasText(rule.getFieldKey())) {
-                continue;
-            }
-            String fieldKey = rule.getFieldKey();
-            String readMode = normalizeAction(rule.getReadMode());
-            if (READ_DENIED_MODES.contains(readMode)) {
-                data.remove(fieldKey);
-            } else if ("MASKED".equals(readMode) && data.containsKey(fieldKey)) {
-                data.put(fieldKey, mask(data.get(fieldKey), rule.getMaskStrategy()));
-            }
-        }
+        data = FieldMaskHelper.applyReadRules(data, decision.getFieldRules());
         response.setDataJson(writeData(data));
         return response;
     }
@@ -206,19 +188,6 @@ public class LowcodeAuthorizationService {
         return "LOWCODE_APP:" + appKey.trim().toUpperCase(Locale.ROOT);
     }
 
-    private Map<String, AuthzFieldRule> fieldRulesByKey(AuthorizationDecisionResponse decision) {
-        if (decision == null || decision.getFieldRules() == null || decision.getFieldRules().isEmpty()) {
-            return Map.of();
-        }
-        Map<String, AuthzFieldRule> rules = new LinkedHashMap<>();
-        for (AuthzFieldRule rule : decision.getFieldRules()) {
-            if (rule != null && StringUtils.hasText(rule.getFieldKey())) {
-                rules.put(rule.getFieldKey(), rule);
-            }
-        }
-        return rules;
-    }
-
     private Map<String, Object> readData(String dataJson) {
         try {
             return objectMapper.readValue(dataJson, new TypeReference<LinkedHashMap<String, Object>>() {
@@ -234,47 +203,6 @@ public class LowcodeAuthorizationService {
         } catch (JsonProcessingException exception) {
             throw new BizException(50091, "LOWCODE_AUTHZ_FIELD_READ_FAILED");
         }
-    }
-
-    private Object mask(Object value, String strategy) {
-        if (value == null) {
-            return null;
-        }
-        String text = String.valueOf(value);
-        String normalized = normalizeAction(strategy);
-        if ("LAST4".equals(normalized)) {
-            return last4(text);
-        }
-        if ("PHONE".equals(normalized)) {
-            return phone(text);
-        }
-        if ("EMAIL".equals(normalized)) {
-            return email(text);
-        }
-        return MASK_PLACEHOLDER;
-    }
-
-    private String last4(String text) {
-        if (text.length() <= 4) {
-            return MASK_PLACEHOLDER;
-        }
-        return "*".repeat(text.length() - 4) + text.substring(text.length() - 4);
-    }
-
-    private String phone(String text) {
-        if (text.length() < 7) {
-            return MASK_PLACEHOLDER;
-        }
-        return text.substring(0, 3) + "****" + text.substring(text.length() - 4);
-    }
-
-    private String email(String text) {
-        int at = text.indexOf('@');
-        if (at <= 0) {
-            return MASK_PLACEHOLDER;
-        }
-        String first = text.substring(0, 1);
-        return first + "***" + text.substring(at);
     }
 
     private String currentTenantId() {

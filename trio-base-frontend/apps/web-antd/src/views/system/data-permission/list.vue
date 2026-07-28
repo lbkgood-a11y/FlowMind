@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {
   LowcodeApi,
+  SystemAuthorizationApi,
   SystemDataPolicyApi,
   SystemOrgApi,
   SystemRoleApi,
@@ -40,6 +41,7 @@ import {
   getRoleList,
   updateDataPolicy,
 } from '#/api';
+import { getAuthorizationResourceTree } from '#/api/system/authorization';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
 
 const Textarea = Input.TextArea;
@@ -107,6 +109,7 @@ const resourcesLoading = ref(false);
 const formOpen = ref(false);
 const editingPolicy = ref<SystemDataPolicyApi.DataPolicy>();
 const formDataResources = ref<LowcodeApi.FormDataResource[]>([]);
+const resourceTree = ref<SystemAuthorizationApi.ResourceTree>();
 
 const pagination = reactive({
   current: 1,
@@ -153,13 +156,28 @@ const resourceLabelMap = computed(() =>
   ]),
 );
 
-const actionOptions = [
-  { label: '查询', value: 'QUERY' },
-  { label: '创建', value: 'CREATE' },
-  { label: '修改', value: 'UPDATE' },
-  { label: '审批', value: 'APPROVE' },
-  { label: '导出', value: 'EXPORT' },
-];
+const actionOptions = computed(() => {
+  const resource = findResourceNode(formModel.resourceCode);
+  if (!resource) {
+    return [];
+  }
+  return (resource.actions ?? [])
+    .filter((a: SystemAuthorizationApi.ActionNode) => a.status !== 0)
+    .map((a: SystemAuthorizationApi.ActionNode) => ({
+      label: `${a.actionCode}${a.description ? ` · ${a.description}` : ''}`,
+      value: a.actionCode,
+    }));
+});
+
+function findResourceNode(resourceCode: string) {
+  if (!resourceTree.value) return undefined;
+  for (const group of resourceTree.value.groups ?? []) {
+    for (const r of group.resources ?? []) {
+      if (r.resourceCode === resourceCode) return r;
+    }
+  }
+  return undefined;
+}
 
 const scopeOptions = [
   { label: '本人', value: 'SELF' },
@@ -296,7 +314,12 @@ function normalizePolicyPage() {
 async function loadDataResources() {
   resourcesLoading.value = true;
   try {
-    formDataResources.value = await getFormDataResources();
+    const [formResources, tree] = await Promise.all([
+      getFormDataResources(),
+      getAuthorizationResourceTree(),
+    ]);
+    formDataResources.value = formResources;
+    resourceTree.value = tree;
   } catch {
     formDataResources.value = [];
     message.warning('低代码表单资源加载失败，当前仅展示平台内置资源');

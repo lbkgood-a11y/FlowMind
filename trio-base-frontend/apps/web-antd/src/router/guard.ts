@@ -1,3 +1,4 @@
+import type { MenuRecordRaw } from '@vben/types';
 import type { Router } from 'vue-router';
 
 import { LOGIN_PATH } from '@vben/constants';
@@ -9,6 +10,25 @@ import { accessRoutes, coreRouteNames } from '#/router/routes';
 import { useAuthStore } from '#/store';
 
 import { generateAccess } from './access';
+
+function findFirstAccessibleMenuPath(menus: MenuRecordRaw[]): string | undefined {
+  for (const menu of menus) {
+    const childPath = menu.children?.length
+      ? findFirstAccessibleMenuPath(menu.children)
+      : undefined;
+    if (childPath) {
+      return childPath;
+    }
+    if (menu.path && !menu.disabled) {
+      return menu.path;
+    }
+  }
+  return undefined;
+}
+
+function resolvesToNotFound(router: Router, path: string) {
+  return router.resolve(path).name === 'FallbackNotFound';
+}
 
 /**
  * 通用守卫配置
@@ -112,13 +132,17 @@ function setupAccessGuard(router: Router) {
     accessStore.setAccessMenus(accessibleMenus);
     accessStore.setAccessRoutes(accessibleRoutes);
     accessStore.setIsAccessChecked(true);
-    const redirectPath = (from.query.redirect ??
+    const requestedRedirectPath = (from.query.redirect ??
       (to.path === preferences.app.defaultHomePath
         ? userInfo.homePath || preferences.app.defaultHomePath
         : to.fullPath)) as string;
+    const decodedRedirectPath = decodeURIComponent(requestedRedirectPath);
+    const redirectPath = resolvesToNotFound(router, decodedRedirectPath)
+      ? findFirstAccessibleMenuPath(accessibleMenus) || decodedRedirectPath
+      : decodedRedirectPath;
 
     return {
-      ...router.resolve(decodeURIComponent(redirectPath)),
+      ...router.resolve(redirectPath),
       replace: true,
     };
   });
