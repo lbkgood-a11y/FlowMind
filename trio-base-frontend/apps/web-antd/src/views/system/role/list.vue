@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { TableProps } from 'ant-design-vue';
+import type { Dayjs } from 'dayjs';
+
 import type {
   SystemAuthorizationApi,
   SystemDataPolicyApi,
@@ -6,8 +9,7 @@ import type {
   SystemOrgApi,
   SystemRoleApi,
 } from '#/api';
-import type { TableProps } from 'ant-design-vue';
-import type { Dayjs } from 'dayjs';
+import type { TableColumnSetting } from '#/shared';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -30,7 +32,6 @@ import {
   Modal,
   Pagination,
   Popconfirm,
-  Popover,
   Radio,
   RadioGroup,
   Select,
@@ -67,7 +68,11 @@ import {
   updateRoleStatus,
 } from '#/api';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
-import { BusinessPageScaffold } from '#/shared';
+import {
+  BusinessPageScaffold,
+  restoreTableColumnSettings,
+  TableColumnSettings,
+} from '#/shared';
 
 const RangePicker = DatePicker.RangePicker;
 const TabPane = Tabs.TabPane;
@@ -132,10 +137,8 @@ type RoleColumnKey =
   | 'roleName'
   | 'status';
 
-type RoleColumnSetting = {
+type RoleColumnSetting = TableColumnSetting & {
   key: RoleColumnKey;
-  title: string;
-  visible: boolean;
   width: number;
 };
 
@@ -196,13 +199,13 @@ type ResourceActionItem = {
 };
 
 const defaultColumnSettings: RoleColumnSetting[] = [
-  { key: 'roleName', title: '角色名称', visible: true, width: 180 },
+  { fixed: 'left', key: 'roleName', title: '角色名称', visible: true, width: 180 },
   { key: 'roleCode', title: '角色编码', visible: true, width: 160 },
   { key: 'id', title: '角色ID', visible: true, width: 150 },
   { key: 'status', title: '状态', visible: true, width: 110 },
   { key: 'description', title: '描述', visible: true, width: 260 },
   { key: 'createdAt', title: '创建时间', visible: true, width: 210 },
-  { key: 'action', title: '操作', visible: true, width: 230 },
+  { fixed: 'right', key: 'action', required: true, title: '操作', visible: true, width: 230 },
 ];
 
 const roleViewPresets: Record<RoleViewKey, RoleViewPreset> = {
@@ -274,7 +277,6 @@ const permissionOnly = ref(false);
 const collapsed = ref(false);
 const queryHidden = ref(false);
 const blockFullscreen = ref(false);
-const columnSettingOpen = ref(false);
 const tableKey = ref(0);
 const editingRole = ref<SystemRoleApi.RoleDetail>();
 const detailRole = ref<SystemRoleApi.RoleDetail>();
@@ -339,10 +341,10 @@ const formModel = reactive<RoleFormModel>({
 });
 
 const columnSettings = reactive<RoleColumnSetting[]>(
-  defaultColumnSettings.map((item) => ({ ...item })),
-);
-const columnDraft = ref<RoleColumnSetting[]>(
-  defaultColumnSettings.map((item) => ({ ...item })),
+  restoreTableColumnSettings(
+    'triobase:table-columns:system-role',
+    defaultColumnSettings,
+  ) as RoleColumnSetting[],
 );
 
 const dataPolicyForm = reactive({
@@ -503,15 +505,6 @@ const resourceGuardRows = computed(() =>
     ),
 );
 
-const allDraftChecked = computed({
-  get: () => columnDraft.value.every((item) => item.visible),
-  set: (checked: boolean) => {
-    columnDraft.value.forEach((item) => {
-      item.visible = checked;
-    });
-  },
-});
-
 const baseColumns: Record<RoleColumnKey, NonNullable<TableProps['columns']>[number]> =
   {
     action: { align: 'center', fixed: 'right', key: 'action', title: '操作', width: 230 },
@@ -551,6 +544,7 @@ const columns = computed<TableProps['columns']>(() =>
     .filter((item) => item.visible)
     .map((item) => ({
       ...baseColumns[item.key],
+      fixed: item.fixed,
       width: item.width,
     })),
 );
@@ -1006,29 +1000,13 @@ async function openDetail(record: SystemRoleApi.SystemRole) {
   detailOpen.value = true;
 }
 
-function cloneColumnSettings(source = columnSettings) {
-  return source.map((item) => ({ ...item }));
-}
-
-function syncColumnDraft(open: boolean) {
-  columnSettingOpen.value = open;
-  if (open) {
-    columnDraft.value = cloneColumnSettings();
-  }
-}
-
-function restoreColumnSettings() {
-  columnDraft.value = defaultColumnSettings.map((item) => ({ ...item }));
-}
-
-function cancelColumnSettings() {
-  columnSettingOpen.value = false;
-}
-
-function confirmColumnSettings() {
-  columnSettings.splice(0, columnSettings.length, ...cloneColumnSettings(columnDraft.value));
+function applyColumnSettings(settings: TableColumnSetting[]) {
+  columnSettings.splice(
+    0,
+    columnSettings.length,
+    ...(settings as RoleColumnSetting[]),
+  );
   tableKey.value += 1;
-  columnSettingOpen.value = false;
 }
 
 async function syncFunctionGrants(roleId: string) {
@@ -1195,9 +1173,7 @@ async function handleSaveGuard() {
     });
     message.success('守卫模板已创建');
     guardDrawerOpen.value = false;
-    if (authorizationOptions.value) {
-      authorizationOptions.value = { ...authorizationOptions.value };
-    }
+    authorizationOptions.value = await getAuthorizationAdminOptions();
   } catch {
     message.error('创建守卫模板失败');
   } finally {
@@ -1464,68 +1440,33 @@ onMounted(() => {
               </Button>
               <Tooltip v-if="canQuery" title="查询并隐藏搜索栏">
                 <Button shape="circle" type="primary" @click="handleToolbarSearch">
-                  <IconifyIcon :icon="ERP_TOOLBAR_ICONS.search" class="size-4" />
+                  <i aria-hidden="true" class="vxe-button--item vxe-table-icon-search"></i>
                 </Button>
               </Tooltip>
               <Tooltip v-if="canQuery" title="刷新">
                 <Button shape="circle" @click="loadRoles()">
-                  <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+                  <i aria-hidden="true" class="vxe-button--item vxe-table-icon-refresh"></i>
                 </Button>
               </Tooltip>
               <Tooltip :title="blockFullscreen ? '还原' : '全屏'">
                 <Button shape="circle" @click="toggleFullscreen">
-                  <IconifyIcon
-                    :icon="
+                  <i
+                    aria-hidden="true"
+                    class="vxe-button--item vxe-button--prefix-icon"
+                    :class="
                       blockFullscreen
-                        ? ERP_TOOLBAR_ICONS.fullscreenExit
-                        : ERP_TOOLBAR_ICONS.fullscreen
+                        ? 'vxe-table-icon-minimize'
+                        : 'vxe-table-icon-fullscreen'
                     "
-                    class="size-4"
-                  />
+                  ></i>
                 </Button>
               </Tooltip>
-              <Popover
-                :open="columnSettingOpen"
-                overlay-class-name="role-column-popover"
-                placement="bottomRight"
-                trigger="click"
-                @open-change="syncColumnDraft"
-              >
-                <template #content>
-                  <div class="column-settings">
-                    <Checkbox v-model:checked="allDraftChecked" class="column-check-all">
-                      全部
-                    </Checkbox>
-                    <div class="column-setting-list">
-                      <div
-                        v-for="item in columnDraft"
-                        :key="item.key"
-                        class="column-setting-item"
-                      >
-                        <Checkbox v-model:checked="item.visible" />
-                        <IconifyIcon :icon="ERP_TOOLBAR_ICONS.drag" class="drag-icon" />
-                        <span class="column-setting-title">{{ item.title }}</span>
-                      </div>
-                    </div>
-                    <div class="column-setting-footer">
-                      <Button type="link" @click="restoreColumnSettings">恢复默认</Button>
-                      <Space>
-                        <Button type="text" @click="cancelColumnSettings">取消</Button>
-                        <Button type="link" @click="confirmColumnSettings">确认</Button>
-                      </Space>
-                    </div>
-                  </div>
-                </template>
-                <Tooltip title="列设置">
-                  <Button
-                    :class="{ 'is-active': columnSettingOpen }"
-                    class="column-setting-trigger"
-                    shape="circle"
-                  >
-                    <IconifyIcon :icon="ERP_TOOLBAR_ICONS.columnSettings" class="size-4" />
-                  </Button>
-                </Tooltip>
-              </Popover>
+              <TableColumnSettings
+                :defaults="defaultColumnSettings"
+                :model-value="columnSettings"
+                storage-key="triobase:table-columns:system-role"
+                @apply="applyColumnSettings"
+              />
             </Space>
           </div>
 
@@ -1728,7 +1669,7 @@ onMounted(() => {
               </div>
               <div class="permission-panel">
                 <Tree
-                  v-model:checkedKeys="functionGrantCheckedKeys"
+                  v-model:checked-keys="functionGrantCheckedKeys"
                   :check-strictly="true"
                   :tree-data="authorizationTreeData"
                   block-node

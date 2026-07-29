@@ -9,7 +9,7 @@ import java.util.List;
  */
 public final class SecurityContextHolder {
 
-    private static final ThreadLocal<SecurityContext> CONTEXT = new ThreadLocal<>();
+    private static final ThreadLocal<SecurityContext> CONTEXT = new InheritableThreadLocal<>();
 
     private SecurityContextHolder() {
     }

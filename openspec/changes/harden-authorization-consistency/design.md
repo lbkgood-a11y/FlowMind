@@ -26,6 +26,10 @@
 4. Redis cache reads and writes fail open to the database path, while authorization evaluation itself remains fail-closed.
 5. A `PUT /api/v1/authz/roles/{roleId}/function-grants` endpoint accepts the complete desired ALLOW set and an optional expected grant version. The service validates the role, tenant, resources and actions before mutating, applies the diff in one transaction, preserves DENY grants, and bumps versions once.
 6. The frontend uses the replacement endpoint and reloads the role profile after success. A version conflict prompts a reload instead of silently overwriting another administrator's changes.
+7. Grant replacement claims the expected grant version with a conditional database update inside the same transaction; an update count of zero is a conflict.
+8. Data-scope interception is fail-closed. Unsupported scoped SELECT shapes, missing enforceable columns, parse failures, and SQL mutation failures reject the query.
+9. Effective permission refresh compares normalized permission sets and regenerates menus and dynamic routes when they differ.
+10. DENY ALL is terminal for every row-scope mode; narrower DENY entries are subtracted from their matching ALLOW entries.
 
 ## Risks / Trade-offs
 

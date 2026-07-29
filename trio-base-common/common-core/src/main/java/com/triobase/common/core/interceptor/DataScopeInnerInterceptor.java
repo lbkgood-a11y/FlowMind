@@ -8,6 +8,8 @@ import com.baomidou.mybatisplus.extension.plugins.inner.InnerInterceptor;
 import com.triobase.common.core.auth.DataScope;
 import com.triobase.common.core.context.DataScopeContextHolder;
 import com.triobase.common.core.context.SecurityContextHolder;
+import com.triobase.common.core.exception.AuthErrorCode;
+import com.triobase.common.core.exception.BizException;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.StringValue;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
@@ -18,6 +20,8 @@ import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.select.FromItem;
+import net.sf.jsqlparser.statement.select.Join;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
 import org.apache.ibatis.executor.Executor;
@@ -25,6 +29,9 @@ import org.apache.ibatis.mapping.BoundSql;
 import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.session.ResultHandler;
 import org.apache.ibatis.session.RowBounds;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -34,6 +41,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DataScopeInnerInterceptor implements InnerInterceptor {
+
+    private static final Logger log = LoggerFactory.getLogger(DataScopeInnerInterceptor.class);
 
     private static final Set<String> SELF_COLUMN_CANDIDATES = Set.of(
             "created_by", "user_id", "submitted_by");
@@ -58,24 +67,24 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
         try {
             Statement stmt = CCJSqlParserUtil.parse(sql);
             if (!(stmt instanceof Select selectStmt)) {
-                return;
+                throw new IllegalStateException("Scoped query is not a SELECT statement");
             }
             PlainSelect plainSelect;
             if (selectStmt instanceof PlainSelect) {
                 plainSelect = (PlainSelect) selectStmt;
             } else {
-                // Handle ParenthesedSelect or SetOperationList — skip for now
-                return;
+                throw new IllegalStateException("Unsupported scoped SELECT shape: "
+                        + selectStmt.getClass().getSimpleName());
             }
             Table table = extractMainTable(plainSelect);
             if (table == null) {
-                return;
+                throw new IllegalStateException("Scoped query has no enforceable main table");
             }
             String tableName = cleanTableName(table.getName());
 
             Expression extraWhere = buildScopeCondition(tableName, scope);
             if (extraWhere == null) {
-                return;
+                throw new IllegalStateException("Scoped query has no enforceable row predicate for table " + tableName);
             }
 
             Expression originalWhere = plainSelect.getWhere();
@@ -85,14 +94,27 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
                 plainSelect.setWhere(extraWhere);
             }
             setBoundSql(boundSql, selectStmt.toString());
+        } catch (IllegalStateException e) {
+            log.error("Data-scope SQL rewrite failed for mappedStatement={} — denying query. Reason: {}",
+                    ms.getId(), e.getMessage());
+            throw new BizException(AuthErrorCode.PERMISSION_DENIED);
         } catch (Exception e) {
-            // If SQL parsing/modification fails, skip scope injection — do not break the query
+            log.error("Data-scope enforcement failed; denying query mappedStatement={}", ms.getId(), e);
+            throw new BizException(AuthErrorCode.PERMISSION_DENIED);
         }
     }
 
     private Table extractMainTable(PlainSelect plainSelect) {
-        if (plainSelect.getFromItem() instanceof Table table) {
+        FromItem fromItem = plainSelect.getFromItem();
+        if (fromItem instanceof Table table) {
             return table;
+        }
+        if (plainSelect.getJoins() != null) {
+            for (Join join : plainSelect.getJoins()) {
+                if (join.getFromItem() instanceof Table table) {
+                    return table;
+                }
+            }
         }
         return null;
     }
@@ -142,6 +164,9 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
             return cached;
         }
         Set<String> columns = resolveTableColumns(tableName);
+        if (columns == null) {
+            return null;
+        }
         if (columns.isEmpty()) {
             tablesWithoutSelfColumn.add(tableName);
             return null;
@@ -167,6 +192,9 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
             return cached;
         }
         Set<String> columns = resolveTableColumns(tableName);
+        if (columns == null) {
+            return null;
+        }
         if (columns.isEmpty()) {
             tablesWithoutOrgColumn.add(tableName);
             return null;
@@ -184,7 +212,7 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
     private Set<String> resolveTableColumns(String tableName) {
         TableInfo tableInfo = TableInfoHelper.getTableInfo(tableName);
         if (tableInfo == null) {
-            return Set.of();
+            return null;
         }
         Set<String> columns = new HashSet<>();
         String keyColumn = tableInfo.getKeyColumn();
@@ -200,22 +228,31 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
     }
 
     private List<String> collectOrgUnitIds(DataScope scope) {
-        List<String> ids = new ArrayList<>();
+        if (scope.deniesAll()) {
+            return List.of();
+        }
+        List<String> allowed = new ArrayList<>();
+        List<String> denied = new ArrayList<>();
         for (DataScope.Policy policy : scope.policies()) {
-            if (!"ALLOW".equalsIgnoreCase(policy.effect())) {
-                continue;
-            }
             for (DataScope.Dimension dim : policy.dimensions()) {
                 String scopeType = dim.scopeType();
                 if ("ALL".equalsIgnoreCase(scopeType) || "SELF".equalsIgnoreCase(scopeType)) {
                     continue;
                 }
                 if (CollectionUtils.isNotEmpty(dim.orgUnitIds())) {
-                    ids.addAll(dim.orgUnitIds());
+                    if ("DENY".equalsIgnoreCase(policy.effect())) {
+                        denied.addAll(dim.orgUnitIds());
+                    } else if ("ALLOW".equalsIgnoreCase(policy.effect())) {
+                        allowed.addAll(dim.orgUnitIds());
+                    }
                 }
             }
         }
-        return ids;
+        if (!denied.isEmpty()) {
+            Set<String> denySet = new HashSet<>(denied);
+            allowed.removeIf(denySet::contains);
+        }
+        return allowed;
     }
 
     private String cleanTableName(String name) {
@@ -225,13 +262,21 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
         return name.replace("\"", "").replace("`", "").toLowerCase();
     }
 
+    /**
+     * Reflectively sets the SQL string on BoundSql.
+     * On Java 17+ with strict module enforcement, the JVM may require:
+     * --add-opens java.base/java.lang=ALL-UNNAMED
+     * --add-opens java.base/java.lang.reflect=ALL-UNNAMED
+     */
     private void setBoundSql(BoundSql boundSql, String sql) {
         try {
             Field field = BoundSql.class.getDeclaredField("sql");
-            field.setAccessible(true);
+            if (!field.trySetAccessible()) {
+                throw new IllegalStateException("BoundSql.sql is not accessible");
+            }
             field.set(boundSql, sql);
         } catch (Exception e) {
-            // fallback: cannot modify SQL, scope not applied
+            throw new IllegalStateException("Unable to apply data-scope predicate", e);
         }
     }
 }

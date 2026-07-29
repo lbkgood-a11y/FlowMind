@@ -52,8 +52,7 @@ public class MybatisPlusAutoConfiguration {
 
             @Override
             public boolean ignoreTable(String tableName) {
-                String tid = SecurityContextHolder.getTenantId();
-                if (tid == null || tid.isBlank()) {
+                if (SecurityContextHolder.getTenantId() == null) {
                     return true;
                 }
                 String clean = cleanTableName(tableName);

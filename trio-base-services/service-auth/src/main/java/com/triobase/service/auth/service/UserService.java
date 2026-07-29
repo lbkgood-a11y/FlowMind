@@ -51,6 +51,7 @@ public class UserService {
     private final RoleMapper roleMapper;
     private final PasswordEncoder passwordEncoder;
     private final PermissionCacheService permissionCacheService;
+    private final AuthService authService;
 
     public UserInfoPayload findById(String id) {
         SysUser user = userMapper.selectById(id);
@@ -153,7 +154,7 @@ public class UserService {
         user.setStatus(request.getStatus() == null ? 1 : request.getStatus());
         userMapper.insert(user);
 
-        replaceRoles(user.getId(), request.getRoleIds());
+        replaceRoles(user.getId(), request.getRoleIds(), targetTenantId);
         return toPayload(user);
     }
 
@@ -176,7 +177,7 @@ public class UserService {
         userMapper.updateById(user);
 
         if (request.getRoleIds() != null) {
-            replaceRoles(id, request.getRoleIds());
+            replaceRoles(id, request.getRoleIds(), tenantId(user));
         }
         return toPayload(user);
     }
@@ -234,6 +235,7 @@ public class UserService {
         }
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userMapper.updateById(user);
+        authService.revokeUserTokens(userId);
     }
 
     @Transactional
@@ -254,7 +256,7 @@ public class UserService {
             throw new BizException(AuthErrorCode.USER_NOT_FOUND);
         }
         ensureWritable(user);
-        replaceRoles(userId, roleIds);
+        replaceRoles(userId, roleIds, user.getTenantId());
     }
 
     @Transactional
@@ -268,10 +270,10 @@ public class UserService {
         userMapper.updateById(user);
     }
 
-    private void replaceRoles(String userId, List<String> roleIds) {
+    private void replaceRoles(String userId, List<String> roleIds, String tenantId) {
         userRoleMapper.delete(new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getUserId, userId));
         if (roleIds == null || roleIds.isEmpty()) {
-            permissionCacheService.evict(userId);
+            permissionCacheService.evict(tenantId, userId);
             return;
         }
         for (String roleId : roleIds) {
@@ -287,7 +289,7 @@ public class UserService {
             userRole.setRoleId(roleId);
             userRoleMapper.insert(userRole);
         }
-        permissionCacheService.evict(userId);
+        permissionCacheService.evict(tenantId, userId);
     }
 
     private void validatePassword(String password) {

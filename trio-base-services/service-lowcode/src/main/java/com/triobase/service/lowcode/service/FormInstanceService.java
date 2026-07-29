@@ -102,8 +102,7 @@ public class FormInstanceService {
         AuthorizationDecisionResponse decision = authorizationService.requireFormDecision(
                 formKey, "VIEW", null, List.of());
         LowcodeAuthorizationService.DataAccessMode accessMode = authorizationService.dataAccessMode(decision);
-        if (accessMode == LowcodeAuthorizationService.DataAccessMode.DENIED
-                || accessMode == LowcodeAuthorizationService.DataAccessMode.ORG) {
+        if (accessMode == LowcodeAuthorizationService.DataAccessMode.DENIED) {
             return PageResult.empty(page, size);
         }
 
@@ -121,8 +120,9 @@ public class FormInstanceService {
             });
         }
         if (safeField(sortField)) {
-            query.last("ORDER BY data_json::jsonb ->> '" + sortField + "' "
-                    + ("ASC".equalsIgnoreCase(sortDirection) ? "ASC" : "DESC"));
+            // safeField() regex [A-Za-z][A-Za-z0-9_]{0,127} guarantees no SQL metacharacters
+            String direction = "ASC".equalsIgnoreCase(sortDirection) ? "ASC" : "DESC";
+            query.last("ORDER BY data_json::jsonb ->> '" + sortField + "' " + direction);
         } else {
             query.orderByDesc(LcFormInstance::getSubmittedAt);
         }

@@ -27,6 +27,8 @@ import com.triobase.service.auth.mapper.OrgScopeMapper;
 import com.triobase.service.auth.mapper.RoleMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -42,6 +44,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DataPolicyService {
 
+    private static final Logger log = LoggerFactory.getLogger(DataPolicyService.class);
     private static final String DEFAULT_TENANT = "default";
     private static final String SUBJECT_TYPE_ROLE = "ROLE";
     private static final String ADMIN_ROLE_CODE = "ADMIN";
@@ -215,6 +218,8 @@ public class DataPolicyService {
         return response;
     }
 
+    private static final Set<String> WORKFLOW_SCOPE_TYPES = Set.of("PARTICIPATED", "CANDIDATE_TASKS");
+
     private boolean resolveOrgContext(String tenantId, String userId, List<DataPolicyResponse> policies) {
         boolean resolved = false;
         for (DataPolicyResponse policy : policies) {
@@ -225,6 +230,13 @@ public class DataPolicyService {
                 String scopeType = dimension.getScopeType();
                 if ("ASSIGNED_ORGS".equals(scopeType)) {
                     resolved = true;
+                    continue;
+                }
+                if (WORKFLOW_SCOPE_TYPES.contains(scopeType)) {
+                    resolved = true;
+                    log.debug("Data scope type '{}' requires service-level resolution "
+                            + "(tenant={}, userId={}, dimension={}) — orgUnitIds not pre-computed",
+                            scopeType, tenantId, userId, dimension.getDimensionCode());
                     continue;
                 }
                 if (!"OWN_ORG".equals(scopeType) && !"OWN_ORG_AND_CHILDREN".equals(scopeType)) {
@@ -260,7 +272,7 @@ public class DataPolicyService {
         if (orgUnitIds.isEmpty()) {
             return List.of();
         }
-        return List.of(orgUnitIds.get(0));
+        return List.copyOf(orgUnitIds);
     }
 
     private void fillPolicy(SysDataPolicy policy, SaveDataPolicyRequest request) {

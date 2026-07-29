@@ -555,10 +555,10 @@ function onRoleChange() {
             <span class="text-muted-foreground text-sm">按资源 + 动作授权给角色或用户</span>
             <Space v-if="canCreate">
               <Button @click="loadGrants" class="!w-8 !h-8">
-                <IconifyIcon icon="mdi:refresh" />
+                <IconifyIcon icon="lucide:refresh-cw" />
               </Button>
               <Button type="primary" @click="openGrantDrawer">
-                <IconifyIcon icon="mdi:plus" class="mr-1" />新增授权
+                <IconifyIcon icon="lucide:plus" class="mr-1" />新增授权
               </Button>
             </Space>
           </div>
@@ -592,10 +592,10 @@ function onRoleChange() {
             <span class="text-muted-foreground text-sm">按字段配置读写权限和脱敏策略</span>
             <Space v-if="canCreate">
               <Button @click="loadFieldPolicies" class="!w-8 !h-8">
-                <IconifyIcon icon="mdi:refresh" />
+                <IconifyIcon icon="lucide:refresh-cw" />
               </Button>
               <Button type="primary" @click="openFieldDrawer">
-                <IconifyIcon icon="mdi:plus" class="mr-1" />新增字段策略
+                <IconifyIcon icon="lucide:plus" class="mr-1" />新增字段策略
               </Button>
             </Space>
           </div>
@@ -629,10 +629,10 @@ function onRoleChange() {
             <span class="text-muted-foreground text-sm">管理运行时守卫模板的启用/禁用</span>
             <Space v-if="canCreate">
               <Button @click="loadGuards" class="!w-8 !h-8">
-                <IconifyIcon icon="mdi:refresh" />
+                <IconifyIcon icon="lucide:refresh-cw" />
               </Button>
               <Button type="primary" @click="openGuardDrawer">
-                <IconifyIcon icon="mdi:plus" class="mr-1" />新增守卫
+                <IconifyIcon icon="lucide:plus" class="mr-1" />新增守卫
               </Button>
             </Space>
           </div>

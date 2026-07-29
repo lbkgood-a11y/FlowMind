@@ -41,6 +41,8 @@ import com.triobase.service.auth.mapper.RoleMapper;
 import com.triobase.service.auth.mapper.UserMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -56,6 +58,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class AuthorizationDecisionService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthorizationDecisionService.class);
     private static final String DEFAULT_TENANT = "default";
     private static final String ADMIN_ROLE_CODE = "ADMIN";
     private static final String SUBJECT_ROLE = "ROLE";
@@ -225,7 +228,11 @@ public class AuthorizationDecisionService {
     private List<SysAuthGrant> matchingGrants(SubjectSnapshot subject, String resourceCode, String actionCode) {
         List<SysAuthGrant> candidates = grantMapper.selectList(new LambdaQueryWrapper<SysAuthGrant>()
                 .eq(SysAuthGrant::getTenantId, subject.tenantId())
-                .eq(SysAuthGrant::getStatus, (short) 1));
+                .eq(SysAuthGrant::getStatus, (short) 1)
+                .and(w -> w.eq(SysAuthGrant::getResourceCode, resourceCode)
+                        .or().eq(SysAuthGrant::getResourceCode, "*"))
+                .and(w -> w.eq(SysAuthGrant::getActionCode, actionCode)
+                        .or().eq(SysAuthGrant::getActionCode, "*")));
         return candidates.stream()
                 .filter(grant -> subjectMatches(subject, grant.getSubjectType(), grant.getSubjectId()))
                 .filter(grant -> actionMatches(grant.getActionCode(), actionCode))
@@ -267,7 +274,9 @@ public class AuthorizationDecisionService {
             result.setOrgUnitIds(orgUnitIds.stream().filter(StringUtils::hasText).distinct().toList());
             result.setPolicyIds(policyIds.stream().filter(StringUtils::hasText).distinct().toList());
             return result;
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
+            log.warn("Data scope resolution failed for tenant={} user={} resource={} action={} — returning empty scope",
+                    subject.tenantId(), subject.userId(), resourceCode, actionCode, e);
             return result;
         }
     }

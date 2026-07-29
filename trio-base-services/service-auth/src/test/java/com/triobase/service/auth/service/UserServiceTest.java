@@ -57,6 +57,9 @@ class UserServiceTest {
     @Mock
     private PermissionCacheService permissionCacheService;
 
+    @Mock
+    private AuthService authService;
+
     @InjectMocks
     private UserService userService;
 
@@ -81,7 +84,7 @@ class UserServiceTest {
 
         userService.assignRoles("U001", List.of("R002"));
 
-        verify(permissionCacheService).evict("U001");
+        verify(permissionCacheService).evict("default", "U001");
     }
 
     @Test

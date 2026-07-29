@@ -12,10 +12,12 @@ import com.triobase.service.lowcode.entity.LcApplicationVersion;
 import com.triobase.service.lowcode.entity.LcFormDefinition;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 
@@ -23,6 +25,8 @@ import java.util.Locale;
 public class AuthorizationResourceSyncClient {
 
     private static final String SERVICE_NAME = "service-lowcode";
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
     private static final List<String> FORM_ACTIONS = List.of(
             "VIEW", "CREATE", "EDIT", "DELETE", "SUBMIT", "APPROVE", "REJECT",
             "EXPORT", "DESIGN", "PUBLISH", "OFFLINE", "FIELD_READ", "FIELD_WRITE");
@@ -33,7 +37,14 @@ public class AuthorizationResourceSyncClient {
     @Autowired
     public AuthorizationResourceSyncClient(InternalServiceSecurityProperties securityProperties,
                                            @Value("${triobase.integrations.auth.base-url:http://localhost:8081}") String authBaseUrl) {
-        this(securityProperties, RestClient.builder().baseUrl(authBaseUrl).build());
+        this(securityProperties, buildRestClient(authBaseUrl));
+    }
+
+    private static RestClient buildRestClient(String baseUrl) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(CONNECT_TIMEOUT);
+        factory.setReadTimeout(READ_TIMEOUT);
+        return RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
 
     AuthorizationResourceSyncClient(InternalServiceSecurityProperties securityProperties, RestClient restClient) {

@@ -32,17 +32,35 @@ public record DataScope(
     }
 
     public boolean allowsAll() {
-        return policies.stream()
-                .filter(policy -> "ALLOW".equalsIgnoreCase(policy.effect()))
-                .flatMap(policy -> policy.dimensions().stream())
-                .anyMatch(dimension -> "ALL".equalsIgnoreCase(dimension.scopeType()));
+        if (restrictive || denies("ALL")) {
+            return false;
+        }
+        return allows("ALL");
     }
 
     public boolean allowsSelf() {
+        if (restrictive || denies("ALL") || denies("SELF")) {
+            return false;
+        }
+        return allows("SELF");
+    }
+
+    public boolean deniesAll() {
+        return restrictive || denies("ALL");
+    }
+
+    private boolean allows(String scopeType) {
         return policies.stream()
                 .filter(policy -> "ALLOW".equalsIgnoreCase(policy.effect()))
                 .flatMap(policy -> policy.dimensions().stream())
-                .anyMatch(dimension -> "SELF".equalsIgnoreCase(dimension.scopeType()));
+                .anyMatch(dimension -> scopeType.equalsIgnoreCase(dimension.scopeType()));
+    }
+
+    private boolean denies(String scopeType) {
+        return policies.stream()
+                .filter(policy -> "DENY".equalsIgnoreCase(policy.effect()))
+                .flatMap(policy -> policy.dimensions().stream())
+                .anyMatch(dimension -> scopeType.equalsIgnoreCase(dimension.scopeType()));
     }
 
     public record Policy(

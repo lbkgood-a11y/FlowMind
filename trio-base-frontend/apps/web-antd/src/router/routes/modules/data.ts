@@ -5,7 +5,7 @@ import { $t } from '#/locales';
 const routes: RouteRecordRaw[] = [
   {
     meta: {
-      icon: 'mdi:database-search-outline',
+      icon: 'lucide:database-zap',
       order: 60,
       title: $t('data.title'),
     },
@@ -16,7 +16,7 @@ const routes: RouteRecordRaw[] = [
         path: 'catalog',
         name: 'DataCatalog',
         meta: {
-          icon: 'mdi:table-cog',
+          icon: 'lucide:table-properties',
           title: $t('data.catalog.title'),
         },
         component: () => import('#/views/data/hybrid-query/index.vue'),
@@ -25,7 +25,7 @@ const routes: RouteRecordRaw[] = [
         path: 'hybrid-query',
         name: 'HybridQuery',
         meta: {
-          icon: 'mdi:text-search',
+          icon: 'lucide:scan-search',
           title: $t('data.hybridQuery.title'),
         },
         component: () => import('#/views/data/hybrid-query/index.vue'),

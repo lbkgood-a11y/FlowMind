@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import type { SystemTenantApi } from '#/api';
 import type { TableProps } from 'ant-design-vue';
+
+import type { SystemTenantApi } from '#/api';
+import type { TableColumnSetting } from '#/shared';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -46,6 +48,8 @@ import {
   CompactQueryBar,
   CompactTableFrame,
   CompactToolbar,
+  restoreTableColumnSettings,
+  TableColumnSettings,
 } from '#/shared';
 
 const Textarea = Input.TextArea;
@@ -85,6 +89,24 @@ type SettingFormModel = {
   valueType: string;
 };
 
+type TenantColumnKey =
+  | 'action'
+  | 'contactName'
+  | 'expireAt'
+  | 'maxUsers'
+  | 'planCode'
+  | 'region'
+  | 'status'
+  | 'tenantId'
+  | 'tenantName'
+  | 'tenantType'
+  | 'updatedAt';
+
+type TenantColumnSetting = TableColumnSetting & {
+  key: TenantColumnKey;
+  width: number;
+};
+
 const { hasAccessByCodes } = useAccess();
 const canQuery = computed(() => hasAccessByCodes([TENANT_PERMISSIONS.query]));
 const canCreate = computed(() => hasAccessByCodes([TENANT_PERMISSIONS.create]));
@@ -106,6 +128,8 @@ const formOpen = ref(false);
 const detailOpen = ref(false);
 const settingsOpen = ref(false);
 const settingFormOpen = ref(false);
+const queryHidden = ref(false);
+const blockFullscreen = ref(false);
 const editingTenant = ref<SystemTenantApi.Tenant>();
 const detailTenant = ref<SystemTenantApi.Tenant>();
 const activeTenant = ref<SystemTenantApi.Tenant>();
@@ -182,25 +206,58 @@ const settingTypeOptions = [
   { label: 'JSON', value: 'JSON' },
 ];
 
-const columns = computed<TableProps['columns']>(() => [
-  {
+const defaultColumnSettings: TenantColumnSetting[] = [
+  { fixed: 'left', key: 'tenantName', title: '租户名称', visible: true, width: 180 },
+  { key: 'tenantId', title: '租户ID', visible: true, width: 150 },
+  { key: 'tenantType', title: '类型', visible: true, width: 110 },
+  { key: 'status', title: '状态', visible: true, width: 110 },
+  { key: 'planCode', title: '套餐', visible: true, width: 120 },
+  { key: 'maxUsers', title: '用户上限', visible: true, width: 100 },
+  { key: 'contactName', title: '联系人', visible: true, width: 120 },
+  { key: 'region', title: '区域', visible: true, width: 120 },
+  { key: 'expireAt', title: '到期时间', visible: true, width: 180 },
+  { key: 'updatedAt', title: '更新时间', visible: true, width: 180 },
+  { fixed: 'right', key: 'action', required: true, title: '操作', visible: true, width: 250 },
+];
+
+const columnSettings = reactive<TenantColumnSetting[]>(
+  restoreTableColumnSettings(
+    'triobase:table-columns:system-tenant',
+    defaultColumnSettings,
+  ) as TenantColumnSetting[],
+);
+
+const baseColumns: Record<
+  TenantColumnKey,
+  NonNullable<TableProps['columns']>[number]
+> = {
+  tenantName: {
     dataIndex: 'tenantName',
-    fixed: 'left',
     key: 'tenantName',
     title: '租户名称',
     width: 180,
   },
-  { dataIndex: 'tenantId', key: 'tenantId', title: '租户ID', width: 150 },
-  { dataIndex: 'tenantType', key: 'tenantType', title: '类型', width: 110 },
-  { dataIndex: 'status', key: 'status', title: '状态', width: 110 },
-  { dataIndex: 'planCode', key: 'planCode', title: '套餐', width: 120 },
-  { dataIndex: 'maxUsers', key: 'maxUsers', title: '用户上限', width: 100 },
-  { dataIndex: 'contactName', key: 'contactName', title: '联系人', width: 120 },
-  { dataIndex: 'region', key: 'region', title: '区域', width: 120 },
-  { dataIndex: 'expireAt', key: 'expireAt', title: '到期时间', width: 180 },
-  { dataIndex: 'updatedAt', key: 'updatedAt', title: '更新时间', width: 180 },
-  { fixed: 'right', key: 'action', title: '操作', width: 250 },
-]);
+  tenantId: { dataIndex: 'tenantId', key: 'tenantId', title: '租户ID', width: 150 },
+  tenantType: { dataIndex: 'tenantType', key: 'tenantType', title: '类型', width: 110 },
+  status: { dataIndex: 'status', key: 'status', title: '状态', width: 110 },
+  planCode: { dataIndex: 'planCode', key: 'planCode', title: '套餐', width: 120 },
+  maxUsers: { dataIndex: 'maxUsers', key: 'maxUsers', title: '用户上限', width: 100 },
+  contactName: { dataIndex: 'contactName', key: 'contactName', title: '联系人', width: 120 },
+  region: { dataIndex: 'region', key: 'region', title: '区域', width: 120 },
+  expireAt: { dataIndex: 'expireAt', key: 'expireAt', title: '到期时间', width: 180 },
+  updatedAt: { dataIndex: 'updatedAt', key: 'updatedAt', title: '更新时间', width: 180 },
+  action: { key: 'action', title: '操作', width: 250 },
+};
+
+const columns = computed<TableProps['columns']>(() =>
+  columnSettings
+    .filter((item) => item.visible)
+    .map((item) => ({
+      ...baseColumns[item.key],
+      fixed: item.fixed,
+      width: item.width,
+    })),
+);
 
 const settingColumns = computed<TableProps['columns']>(() => [
   {
@@ -501,48 +558,106 @@ function asSetting(record: Record<string, any>) {
   return record as SystemTenantApi.TenantSetting;
 }
 
+async function handleToolbarSearch() {
+  await loadTenants(1);
+  queryHidden.value = true;
+}
+
+function toggleFullscreen() {
+  blockFullscreen.value = !blockFullscreen.value;
+}
+
+function applyColumnSettings(settings: TableColumnSetting[]) {
+  columnSettings.splice(
+    0,
+    columnSettings.length,
+    ...(settings as TenantColumnSetting[]),
+  );
+}
+
 onMounted(loadTenants);
 </script>
 
 <template>
   <Page auto-content-height>
-    <BusinessPageScaffold class="tenant-page" pattern="single-table">
+    <BusinessPageScaffold
+      class="tenant-page"
+      pattern="single-table"
+      :fullscreen="blockFullscreen"
+      :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }"
+    >
       <template #query>
-        <CompactQueryBar :columns="3">
-          <Input
-            v-model:value="query.keyword"
-            allow-clear
-            class="query-input"
-            placeholder="租户名称/ID/联系人"
-            @press-enter="loadTenants(1)"
-          />
-          <Select
-            v-model:value="query.status"
-            allow-clear
-            class="query-select"
-            :options="statusOptions"
-            placeholder="状态"
-          />
+        <CompactQueryBar v-show="!queryHidden" :columns="4">
+          <FormItem label="租户名称">
+            <Input
+              v-model:value="query.keyword"
+              allow-clear
+              placeholder="请输入租户名称、ID或联系人"
+              @press-enter="loadTenants(1)"
+            />
+          </FormItem>
+          <FormItem label="状态">
+            <Select
+              v-model:value="query.status"
+              allow-clear
+              :options="statusOptions"
+              placeholder="请选择"
+            />
+          </FormItem>
           <template #actions>
             <Button v-if="canQuery" @click="resetQuery">重置</Button>
             <Button v-if="canQuery" type="primary" @click="loadTenants(1)">
-              查询
+              搜索
             </Button>
-            <Tooltip v-if="canQuery" title="刷新">
-              <Button shape="circle" @click="loadTenants()">
-                <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
-              </Button>
-            </Tooltip>
           </template>
         </CompactQueryBar>
       </template>
 
       <template #toolbar>
-        <CompactToolbar title="租户管理" subtitle="维护租户资料、状态和运行级配置">
-          <Button v-if="canCreate" type="primary" @click="openCreate">
-            <Plus class="size-4" />
-            新增租户
-          </Button>
+        <CompactToolbar>
+          <template #title>
+            <div class="list-title">
+              <h2>租户列表</h2>
+              <Button v-if="queryHidden" type="link" @click="queryHidden = false">
+                展开搜索
+              </Button>
+            </div>
+          </template>
+          <Space :size="8">
+            <Button v-if="canCreate" type="primary" @click="openCreate">
+              <Plus class="size-4" />
+              新增租户
+            </Button>
+            <Tooltip v-if="canQuery" title="查询并隐藏搜索栏">
+              <Button shape="circle" type="primary" @click="handleToolbarSearch">
+                <i aria-hidden="true" class="vxe-button--item vxe-table-icon-search"></i>
+              </Button>
+            </Tooltip>
+            <Tooltip v-if="canQuery" title="刷新">
+              <Button shape="circle" @click="loadTenants()">
+                <i aria-hidden="true" class="vxe-button--item vxe-table-icon-refresh"></i>
+              </Button>
+            </Tooltip>
+            <Tooltip :title="blockFullscreen ? '还原' : '全屏'">
+              <Button shape="circle" @click="toggleFullscreen">
+                <i
+                  aria-hidden="true"
+                  class="vxe-button--item vxe-button--prefix-icon"
+                  :class="
+                    blockFullscreen
+                      ? 'vxe-table-icon-minimize'
+                      : 'vxe-table-icon-fullscreen'
+                  "
+                ></i>
+              </Button>
+            </Tooltip>
+            <TableColumnSettings
+              :defaults="defaultColumnSettings"
+              :model-value="columnSettings"
+              storage-key="triobase:table-columns:system-tenant"
+              @apply="applyColumnSettings"
+            />
+          </Space>
         </CompactToolbar>
       </template>
 
@@ -554,6 +669,7 @@ onMounted(loadTenants);
           :loading="loading"
           :pagination="false"
           :scroll="{ x: 1600 }"
+          bordered
           size="small"
           :sticky="{ offsetScroll: 0 }"
           table-layout="fixed"
@@ -730,7 +846,7 @@ onMounted(loadTenants);
             <Textarea
               v-model:value="formModel.attributesJson"
               :rows="4"
-              placeholder='{"featureFlags":["rag","workflow"]}'
+              placeholder="{&quot;featureFlags&quot;:[&quot;rag&quot;,&quot;workflow&quot;]}"
             />
           </FormItem>
         </div>
@@ -950,15 +1066,34 @@ onMounted(loadTenants);
   display: flex;
   min-height: 100%;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--erp-panel-gap);
 }
 
-.query-input {
-  width: 220px;
+.tenant-page.is-block-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  height: 100dvh;
+  min-height: 0;
+  padding: var(--tb-panel-padding);
+  overflow: hidden;
 }
 
-.query-select {
-  width: 140px;
+.tenant-page.is-block-fullscreen .list-panel {
+  flex: 1;
+}
+
+.list-title {
+  display: flex;
+  align-items: center;
+  gap: var(--tb-panel-padding);
+}
+
+.list-title h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .tenant-name-cell,

@@ -8,35 +8,39 @@ import type { App, Directive, DirectiveBinding } from 'vue';
 
 import { useAccess } from './use-access';
 
-function isAccessible(
-  el: Element,
+function checkAccess(
   binding: DirectiveBinding<string | string[]>,
-) {
+): boolean {
   const { accessMode, hasAccessByCodes, hasAccessByRoles } = useAccess();
 
   const value = binding.value;
+  if (!value) return true;
 
-  if (!value) return;
   const authMethod =
     accessMode.value === 'frontend' && binding.arg === 'role'
       ? hasAccessByRoles
       : hasAccessByCodes;
 
   const values = Array.isArray(value) ? value : [value];
+  return authMethod(values);
+}
 
-  if (!authMethod(values)) {
-    (el as HTMLElement).style.display = 'none';
-  } else {
-    (el as HTMLElement).style.display = '';
+function removeElement(el: Element) {
+  if (el.parentNode) {
+    el.parentNode.removeChild(el);
   }
 }
 
 const mounted = (el: Element, binding: DirectiveBinding<string | string[]>) => {
-  isAccessible(el, binding);
+  if (!checkAccess(binding)) {
+    removeElement(el);
+  }
 };
 
 const updated = (el: Element, binding: DirectiveBinding<string | string[]>) => {
-  isAccessible(el, binding);
+  if (!checkAccess(binding)) {
+    removeElement(el);
+  }
 };
 
 const authDirective: Directive = {

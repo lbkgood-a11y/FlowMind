@@ -41,7 +41,7 @@ Shape.HTML.register({
     div.style.fontSize = '13px';
     div.style.color = '#1677ff';
     div.style.fontWeight = '500';
-    div.innerText = '📋 审批节点';
+    div.innerText = '审批节点';
     return div;
   },
 });

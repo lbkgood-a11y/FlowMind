@@ -7,10 +7,12 @@ import com.triobase.common.core.filter.InternalServiceTokenFilter;
 import com.triobase.service.lowcode.dto.ApplicationActionRequest;
 import com.triobase.service.lowcode.entity.LcApplicationVersion;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -21,6 +23,8 @@ import java.util.Set;
 public class ApplicationReferenceValidator {
 
     private static final String SERVICE_NAME = "service-lowcode";
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
     private static final Set<String> WORKFLOW_ACTION_TYPES = Set.of(
             "SUBMIT_AND_LAUNCH_WORKFLOW", "RETRY_WORKFLOW");
 
@@ -32,8 +36,15 @@ public class ApplicationReferenceValidator {
                                          @Value("${triobase.integrations.auth.base-url:http://localhost:8081}") String authBaseUrl,
                                          @Value("${triobase.integrations.workflow.base-url:http://localhost:8086}") String workflowBaseUrl) {
         this.securityProperties = securityProperties;
-        this.authClient = RestClient.builder().baseUrl(authBaseUrl).build();
-        this.workflowClient = RestClient.builder().baseUrl(workflowBaseUrl).build();
+        this.authClient = buildRestClient(authBaseUrl);
+        this.workflowClient = buildRestClient(workflowBaseUrl);
+    }
+
+    private static RestClient buildRestClient(String baseUrl) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(CONNECT_TIMEOUT);
+        factory.setReadTimeout(READ_TIMEOUT);
+        return RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
 
     public void validatePublication(LcApplicationVersion version, List<ApplicationActionRequest> actions) {

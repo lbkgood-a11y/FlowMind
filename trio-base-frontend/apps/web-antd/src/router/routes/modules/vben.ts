@@ -40,7 +40,7 @@ const routes: RouteRecordRaw[] = [
         path: 'github',
         component: IFrameView,
         meta: {
-          icon: 'mdi:github',
+          icon: 'lucide:github',
           link: VBEN_GITHUB_URL,
           title: 'Github',
         },

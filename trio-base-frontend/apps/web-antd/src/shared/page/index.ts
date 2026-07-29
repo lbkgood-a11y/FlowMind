@@ -5,6 +5,11 @@ export { default as CompactToolbar } from './CompactToolbar.vue';
 export { default as MasterDetailLayout } from './MasterDetailLayout.vue';
 export { default as MultiTableLayout } from './MultiTableLayout.vue';
 export { default as SplitLayout } from './SplitLayout.vue';
+export { default as TableColumnSettings } from './TableColumnSettings.vue';
+export {
+  restoreTableColumnSettings,
+  type TableColumnSetting,
+} from './table-column-settings';
 export {
   MIGRATED_OPERATION_PAGES,
   OPERATION_PAGE_EXCEPTIONS,

@@ -5,6 +5,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.lang.NonNull;
@@ -19,6 +21,8 @@ import com.triobase.common.core.context.SecurityContextHolder.SecurityContext;
 @Order(Ordered.LOWEST_PRECEDENCE - 10)
 public class AuditSecurityFilter extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(AuditSecurityFilter.class);
+
     private static final String HEADER_USER_ID = "X-User-Id";
     private static final String HEADER_USERNAME = "X-Username";
     private static final String HEADER_TENANT_ID = "X-Tenant-Id";
@@ -32,13 +36,28 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
     private static final String HEADER_FIELD_POLICY_VERSION = "X-Field-Policy-Version";
     private static final String HEADER_GUARD_TEMPLATE_VERSION = "X-Guard-Template-Version";
 
+    private static final List<String> TRUSTED_HEADERS = List.of(
+            HEADER_USER_ID, HEADER_USERNAME, HEADER_TENANT_ID,
+            HEADER_ROLES, HEADER_PERMISSIONS, HEADER_DENIED_PERMISSIONS,
+            HEADER_AUTH_VERSION, HEADER_ROLE_VERSION, HEADER_DATA_POLICY_VERSION,
+            HEADER_AUTHORIZATION_VERSION, HEADER_FIELD_POLICY_VERSION,
+            HEADER_GUARD_TEMPLATE_VERSION);
+
+    private final String expectedGatewaySecret;
+
+    public AuditSecurityFilter(String expectedGatewaySecret) {
+        this.expectedGatewaySecret = expectedGatewaySecret;
+    }
+
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain)
+                                    @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain filterChain)
             throws ServletException, IOException {
 
         try {
+            boolean fromGateway = isFromGateway(request);
+
             String userId = request.getHeader(HEADER_USER_ID);
             String username = request.getHeader(HEADER_USERNAME);
             String tenantId = request.getHeader(HEADER_TENANT_ID);
@@ -47,6 +66,12 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
             String deniedPermissionsHeader = request.getHeader(HEADER_DENIED_PERMISSIONS);
 
             if (userId != null && !userId.isBlank()) {
+                if (!fromGateway) {
+                    log.warn("Identity headers present without gateway validation — "
+                            + "request may have bypassed gateway. "
+                            + "uri={} ip={} userId={}",
+                            request.getRequestURI(), request.getRemoteAddr(), userId);
+                }
                 List<String> roles = rolesHeader != null && !rolesHeader.isBlank()
                         ? List.of(rolesHeader.split(","))
                         : Collections.emptyList();
@@ -78,6 +103,21 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
         } finally {
             SecurityContextHolder.clear();
         }
+    }
+
+    private boolean isFromGateway(HttpServletRequest request) {
+        String serviceName = request.getHeader("X-Internal-Service");
+        if (serviceName == null || serviceName.isBlank()) {
+            return false;
+        }
+        String token = request.getHeader("X-Internal-Token");
+        if (expectedGatewaySecret != null && !expectedGatewaySecret.isBlank()
+                && token != null && !token.isBlank()) {
+            return java.security.MessageDigest.isEqual(
+                    expectedGatewaySecret.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        return false;
     }
 
     private Long parseLong(String value) {

@@ -5,7 +5,7 @@ import { $t } from '#/locales';
 const routes: RouteRecordRaw[] = [
   {
     meta: {
-      icon: 'mdi:application-braces-outline',
+      icon: 'lucide:blocks',
       order: 70,
       title: $t('lowcode.title'),
     },
@@ -16,7 +16,7 @@ const routes: RouteRecordRaw[] = [
         path: 'application',
         name: 'LowcodeApplication',
         meta: {
-          icon: 'mdi:application-edit-outline',
+          icon: 'lucide:app-window',
           title: '应用管理',
         },
         component: () => import('#/views/lowcode/application/list.vue'),
@@ -25,7 +25,7 @@ const routes: RouteRecordRaw[] = [
         path: 'apps',
         name: 'LowcodeAppCenter',
         meta: {
-          icon: 'mdi:apps',
+          icon: 'lucide:layout-grid',
           title: $t('lowcode.runtime.title'),
         },
         component: () => import('#/views/lowcode/runtime/center.vue'),
@@ -43,7 +43,7 @@ const routes: RouteRecordRaw[] = [
         path: 'form',
         name: 'LowcodeForm',
         meta: {
-          icon: 'mdi:form-select',
+          icon: 'lucide:list-checks',
           title: $t('lowcode.form.title'),
         },
         component: () => import('#/views/lowcode/form/list.vue'),
@@ -52,7 +52,7 @@ const routes: RouteRecordRaw[] = [
         path: 'expense',
         name: 'LowcodeExpense',
         meta: {
-          icon: 'mdi:receipt-text-edit-outline',
+          icon: 'lucide:file-pen-line',
           title: '费用报销',
         },
         component: () => import('#/views/lowcode/runtime/expense-compat.vue'),

@@ -39,7 +39,7 @@ mybatis-plus:
 
 auth:
   jwt:
-    secret: ${JWT_SECRET:triobase-dev-secret-key-min-32-chars!!}
+    secret: ${JWT_SECRET:triobase-local-dev-secret-at-least-32-chars}
     access-token-ttl: 3600
     refresh-token-ttl: 86400
 

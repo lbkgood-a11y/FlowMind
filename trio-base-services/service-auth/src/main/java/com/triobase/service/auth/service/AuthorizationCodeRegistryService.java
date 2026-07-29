@@ -1,5 +1,6 @@
 package com.triobase.service.auth.service;
 
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.util.StringHelpers;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -28,30 +29,40 @@ public class AuthorizationCodeRegistryService {
     private final AuthActionMapper actionMapper;
 
     public List<String> missingRegisteredCodes(List<String> codes) {
+        return missingRegisteredCodes(currentTenantId(), codes);
+    }
+
+    public List<String> missingRegisteredCodes(String tenantId, List<String> codes) {
         Set<String> requested = normalizeCodes(codes);
         if (requested.isEmpty()) {
             return List.of();
         }
+        String effectiveTenant = StringUtils.hasText(tenantId) ? tenantId.trim() : DEFAULT_TENANT;
         return requested.stream()
-                .filter(code -> !isRegistered(code))
+                .filter(code -> !isRegistered(effectiveTenant, code))
                 .toList();
     }
 
-    private boolean isRegistered(String code) {
+    private boolean isRegistered(String tenantId, String code) {
         PermissionKey key = parsePermissionCode(code);
         if (key == null) {
             return false;
         }
         Long resourceCount = resourceMapper.selectCount(new LambdaQueryWrapper<SysAuthResource>()
-                .eq(SysAuthResource::getTenantId, DEFAULT_TENANT)
+                .eq(SysAuthResource::getTenantId, tenantId)
                 .eq(SysAuthResource::getResourceCode, key.resourceCode())
                 .eq(SysAuthResource::getLifecycleStatus, ACTIVE));
         Long actionCount = actionMapper.selectCount(new LambdaQueryWrapper<SysAuthAction>()
-                .eq(SysAuthAction::getTenantId, DEFAULT_TENANT)
+                .eq(SysAuthAction::getTenantId, tenantId)
                 .eq(SysAuthAction::getResourceCode, key.resourceCode())
                 .eq(SysAuthAction::getActionCode, key.actionCode())
                 .eq(SysAuthAction::getStatus, STATUS_ENABLED));
         return resourceCount != null && resourceCount > 0 && actionCount != null && actionCount > 0;
+    }
+
+    private String currentTenantId() {
+        String tenantId = SecurityContextHolder.getTenantId();
+        return StringUtils.hasText(tenantId) ? tenantId : DEFAULT_TENANT;
     }
 
     private PermissionKey parsePermissionCode(String permissionCode) {

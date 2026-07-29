@@ -3,12 +3,13 @@ package com.triobase.service.auth.service;
 import com.triobase.service.auth.entity.SysAuthVersion;
 import com.triobase.service.auth.mapper.AuthVersionMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthorizationVersionService {
@@ -20,42 +21,35 @@ public class AuthorizationVersionService {
     public static final String GUARD_TEMPLATE = "GUARD_TEMPLATE";
     public static final String DATA_POLICY = "DATA_POLICY";
 
-    private static final long CACHE_TTL_MS = 30_000;
-
     private final AuthVersionMapper authVersionMapper;
     private final Map<String, Long> fallbackVersions = new ConcurrentHashMap<>();
-    private final Map<String, VersionEntry> versionCache = new ConcurrentHashMap<>();
 
     public long current(String key) {
-        VersionEntry cached = versionCache.get(key);
-        long now = System.currentTimeMillis();
-        if (cached != null && (now - cached.fetchedAt) < CACHE_TTL_MS) {
-            return cached.version;
+        try {
+            SysAuthVersion version = authVersionMapper.selectById(key);
+            if (version != null && version.getVersionValue() != null) {
+                fallbackVersions.put(key, version.getVersionValue());
+                return version.getVersionValue();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to read auth version for key={} from DB — falling back to in-memory value", key, e);
         }
-
-        SysAuthVersion version = authVersionMapper.selectById(key);
-        if (version != null && version.getVersionValue() != null) {
-            versionCache.put(key, new VersionEntry(version.getVersionValue(), now));
-            return version.getVersionValue();
-        }
-        long fallback = fallbackVersions.computeIfAbsent(key, ignored -> 1L);
-        versionCache.put(key, new VersionEntry(fallback, now));
-        return fallback;
+        return fallbackVersions.computeIfAbsent(key, ignored -> 1L);
     }
 
     public long bump(String key) {
-        versionCache.remove(key);
-        int updated = authVersionMapper.bump(key);
-        if (updated == 0) {
-            SysAuthVersion version = new SysAuthVersion();
-            version.setVersionKey(key);
-            version.setVersionValue(1L);
-            version.setUpdatedAt(LocalDateTime.now());
-            authVersionMapper.insert(version);
-        }
+        authVersionMapper.bumpAtomic(key);
         fallbackVersions.merge(key, 1L, Long::sum);
         return current(key);
     }
 
-    private record VersionEntry(long version, long fetchedAt) {}
+    public long bumpIfExpected(String key, long expectedVersion) {
+        int updated = authVersionMapper.bumpIfExpected(key, expectedVersion);
+        if (updated != 1) {
+            return -1L;
+        }
+        fallbackVersions.compute(key, (ignored, current) ->
+                current == null ? expectedVersion + 1 : Math.max(current, expectedVersion + 1));
+        return expectedVersion + 1;
+    }
 }

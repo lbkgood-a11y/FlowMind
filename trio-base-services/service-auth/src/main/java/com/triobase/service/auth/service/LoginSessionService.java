@@ -14,6 +14,7 @@ import com.triobase.service.auth.entity.SysUser;
 import com.triobase.service.auth.entity.SysUserSession;
 import com.triobase.service.auth.mapper.LoginLogMapper;
 import com.triobase.service.auth.mapper.UserSessionMapper;
+import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,7 +24,9 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class LoginSessionService {
@@ -106,7 +109,7 @@ public class LoginSessionService {
                                                  LocalDateTime loginStart,
                                                  LocalDateTime loginEnd) {
         LambdaQueryWrapper<SysLoginLog> wrapper = new LambdaQueryWrapper<SysLoginLog>()
-                .eq(SysLoginLog::getTenantId, DEFAULT_TENANT)
+                .eq(SysLoginLog::getTenantId, currentTenantId())
                 .like(StringUtils.hasText(username), SysLoginLog::getUsername, username)
                 .eq(StringUtils.hasText(loginResult), SysLoginLog::getLoginResult, loginResult)
                 .ge(loginStart != null, SysLoginLog::getLoginAt, loginStart)
@@ -123,7 +126,7 @@ public class LoginSessionService {
                                                    LocalDateTime activeStart,
                                                    LocalDateTime activeEnd) {
         LambdaQueryWrapper<SysUserSession> wrapper = new LambdaQueryWrapper<SysUserSession>()
-                .eq(SysUserSession::getTenantId, DEFAULT_TENANT)
+                .eq(SysUserSession::getTenantId, currentTenantId())
                 .like(StringUtils.hasText(username), SysUserSession::getUsername, username)
                 .eq(StringUtils.hasText(sessionStatus), SysUserSession::getSessionStatus, sessionStatus)
                 .ge(activeStart != null, SysUserSession::getLastActiveAt, activeStart)
@@ -131,6 +134,26 @@ public class LoginSessionService {
                 .orderByDesc(SysUserSession::getLastActiveAt);
         IPage<SysUserSession> result = userSessionMapper.selectPage(new Page<>(page, size), wrapper);
         return PageResult.of(result.getRecords(), result.getTotal(), page, size);
+    }
+
+    public List<String> revokeAllSessions(String userId) {
+        List<SysUserSession> sessions = userSessionMapper.selectList(new LambdaQueryWrapper<SysUserSession>()
+                .eq(SysUserSession::getUserId, userId)
+                .eq(SysUserSession::getSessionStatus, STATUS_ACTIVE));
+        List<String> revokedAccessJtis = new java.util.ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+        for (SysUserSession session : sessions) {
+            session.setSessionStatus("REVOKED");
+            session.setRevokedBy(SecurityContextHolder.getUserId());
+            session.setRevokedAt(now);
+            session.setLastActiveAt(now);
+            userSessionMapper.updateById(session);
+            if (org.springframework.util.StringUtils.hasText(session.getAccessJti())) {
+                revokedAccessJtis.add(session.getAccessJti());
+            }
+        }
+        log.info("Revoked {} sessions for userId={}", sessions.size(), userId);
+        return revokedAccessJtis;
     }
 
     public SysUserSession revoke(String id) {
@@ -154,11 +177,16 @@ public class LoginSessionService {
         return session != null && !"ACTIVE".equals(session.getSessionStatus());
     }
 
+    private String currentTenantId() {
+        String tenantId = SecurityContextHolder.getTenantId();
+        return StringUtils.hasText(tenantId) ? tenantId : DEFAULT_TENANT;
+    }
+
     private SysLoginLog baseLoginLog(String username) {
         HttpServletRequest request = currentRequest();
         SysLoginLog log = new SysLoginLog();
         log.setId(UlidGenerator.nextUlid());
-        log.setTenantId(DEFAULT_TENANT);
+        log.setTenantId(currentTenantId());
         log.setUsername(username);
         log.setClientIp(clientIp(request));
         log.setUserAgent(limit(request != null ? request.getHeader("User-Agent") : null, 512));

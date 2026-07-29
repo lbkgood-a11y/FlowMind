@@ -9,12 +9,14 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 
 @AutoConfiguration
 @ConditionalOnClass(name = "org.aspectj.lang.annotation.Aspect")
 @EnableAspectJAutoProxy
+@EnableConfigurationProperties(InternalServiceSecurityProperties.class)
 public class PermissionAutoConfiguration {
 
     @Bean
@@ -31,6 +33,8 @@ public class PermissionAutoConfiguration {
     @ConditionalOnMissingBean(DataScopeProvider.class)
     public RemoteDataScopeProvider remoteDataScopeProvider(InternalServiceSecurityProperties securityProperties,
                                                             ObjectMapper objectMapper) {
-        return new RemoteDataScopeProvider(securityProperties, objectMapper);
+        return new RemoteDataScopeProvider(securityProperties, objectMapper,
+                securityProperties.getDataScope().getAuthBaseUrl(),
+                securityProperties.getDataScope().getServiceName());
     }
 }

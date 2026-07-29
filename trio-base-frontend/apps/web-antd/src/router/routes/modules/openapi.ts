@@ -5,7 +5,7 @@ const routes: RouteRecordRaw[] = [
     path: '/openapi-operations',
     name: 'OpenApiOperations',
     meta: {
-      icon: 'mdi:connection',
+      icon: 'lucide:unplug',
       order: 9997,
       title: 'OpenAPI 集成运维',
     },
@@ -18,7 +18,7 @@ const routes: RouteRecordRaw[] = [
         path: 'workbench',
         name: 'OpenApiWorkbench',
         meta: {
-          icon: 'mdi:view-dashboard-edit',
+          icon: 'lucide:panel-top-open',
           title: 'OpenAPI 工作台',
         },
         component: () => import('#/views/openapi/workbench/index.vue'),
@@ -27,7 +27,7 @@ const routes: RouteRecordRaw[] = [
         path: 'overview',
         name: 'OpenApiLifecycleOverview',
         meta: {
-          icon: 'mdi:monitor-dashboard',
+          icon: 'lucide:monitor-cog',
           title: '生命周期总览',
         },
         component: () => import('#/views/openapi/lifecycle/overview.vue'),

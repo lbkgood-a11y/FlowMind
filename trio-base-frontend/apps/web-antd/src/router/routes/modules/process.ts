@@ -5,7 +5,7 @@ import { $t } from '#/locales';
 const routes: RouteRecordRaw[] = [
   {
     meta: {
-      icon: 'mdi:timeline-text-outline',
+      icon: 'lucide:workflow',
       order: 80,
       title: $t('process.title'),
     },
@@ -16,7 +16,7 @@ const routes: RouteRecordRaw[] = [
         path: 'package',
         name: 'ProcessPackage',
         meta: {
-          icon: 'mdi:file-document-multiple-outline',
+          icon: 'lucide:files',
           title: $t('process.package.title'),
         },
         component: () => import('#/views/process/package/list.vue'),
@@ -25,7 +25,7 @@ const routes: RouteRecordRaw[] = [
         path: 'instance',
         name: 'ProcessInstance',
         meta: {
-          icon: 'mdi:play-circle-outline',
+          icon: 'lucide:circle-play',
           title: $t('process.instance.title'),
         },
         component: () => import('#/views/process/instance/list.vue'),
@@ -34,7 +34,7 @@ const routes: RouteRecordRaw[] = [
         path: 'task',
         name: 'TaskCenter',
         meta: {
-          icon: 'mdi:clipboard-check-outline',
+          icon: 'lucide:clipboard-check',
           title: $t('process.task.title'),
         },
         component: () => import('#/views/process/task/list.vue'),
@@ -44,7 +44,7 @@ const routes: RouteRecordRaw[] = [
         name: 'ProcessDesigner',
         meta: {
           hideInMenu: true,
-          icon: 'mdi:vector-polyline-edit',
+          icon: 'lucide:git-branch-plus',
           title: $t('process.designer.title'),
         },
         component: () => import('#/views/process/designer/index.vue'),

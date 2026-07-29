@@ -29,6 +29,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -115,7 +116,9 @@ class AuthorizationRegistryServiceTest {
 
     @Test
     void replaceRoleFunctionGrantsRejectsStaleVersionWithoutMutation() {
-        when(versionService.current(AuthorizationVersionService.GRANT)).thenReturn(8L);
+        when(resourceMapper.selectCount(any())).thenReturn(1L);
+        when(actionMapper.selectCount(any())).thenReturn(1L);
+        when(versionService.bumpIfExpected(AuthorizationVersionService.GRANT, 7L)).thenReturn(-1L);
         ReplaceRoleFunctionGrantsRequest request = replacementRequest(7L, "LOWCODE_FORM:EXPENSE", "VIEW");
 
         assertThrows(BizException.class, () -> service.replaceRoleFunctionGrants("R001", request));
@@ -125,8 +128,24 @@ class AuthorizationRegistryServiceTest {
     }
 
     @Test
+    void replaceRoleFunctionGrantsClaimsVersionBeforeMutation() {
+        when(resourceMapper.selectCount(any())).thenReturn(1L);
+        when(actionMapper.selectCount(any())).thenReturn(1L);
+        when(versionService.bumpIfExpected(AuthorizationVersionService.GRANT, 8L)).thenReturn(9L);
+        when(versionService.bump(AuthorizationVersionService.AUTHORIZATION)).thenReturn(12L);
+
+        var response = service.replaceRoleFunctionGrants(
+                "R001", replacementRequest(8L, "LOWCODE_FORM:EXPENSE", "VIEW"));
+
+        assertThat(response.getGrantVersion()).isEqualTo(9L);
+        assertThat(response.getAuthorizationVersion()).isEqualTo(12L);
+        verify(versionService, never()).bump(AuthorizationVersionService.GRANT);
+        verify(grantMapper).delete(any());
+        verify(grantMapper).insert(any(SysAuthGrant.class));
+    }
+
+    @Test
     void replaceRoleFunctionGrantsValidatesAllActionsBeforeMutation() {
-        when(versionService.current(AuthorizationVersionService.GRANT)).thenReturn(8L);
         when(resourceMapper.selectCount(any())).thenReturn(0L);
         ReplaceRoleFunctionGrantsRequest request = replacementRequest(8L, "UNKNOWN", "VIEW");
 
@@ -134,6 +153,7 @@ class AuthorizationRegistryServiceTest {
 
         verify(grantMapper, never()).delete(any());
         verify(grantMapper, never()).insert(any(SysAuthGrant.class));
+        verify(versionService, never()).bumpIfExpected(any(), anyLong());
     }
 
     private ReplaceRoleFunctionGrantsRequest replacementRequest(

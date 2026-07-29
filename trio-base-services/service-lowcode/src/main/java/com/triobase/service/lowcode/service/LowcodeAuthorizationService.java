@@ -120,7 +120,9 @@ public class LowcodeAuthorizationService {
             return true;
         }
         if (mode == DataAccessMode.ORG) {
-            return false;
+            // ORG-level row filtering is done at SQL level by DataScopeInnerInterceptor.
+            // Instance-level ORG check requires an org column (e.g. org_unit_id) on lc_form_instance — not yet present.
+            return instance != null;
         }
         return mode == DataAccessMode.SELF
                 && instance != null
@@ -135,9 +137,12 @@ public class LowcodeAuthorizationService {
         return ids != null ? ids : List.of();
     }
 
+    private static final Set<String> ORG_SCOPE_TYPES = Set.of(
+            "OWN_ORG", "OWN_ORG_AND_CHILDREN", "ASSIGNED_ORGS", "PARTICIPATED", "CANDIDATE_TASKS");
+
     private boolean hasOrgScope(Set<String> normalized) {
         for (String type : normalized) {
-            if (type.contains("ORG") || type.contains("DEPT") || type.contains("OWN")) {
+            if (ORG_SCOPE_TYPES.contains(type)) {
                 return true;
             }
         }

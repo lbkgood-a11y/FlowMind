@@ -6,31 +6,62 @@ import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.result.R;
 import com.triobase.common.dto.auth.*;
 import com.triobase.service.auth.dto.ChangePasswordRequest;
+import com.triobase.service.auth.dto.RegisterRequest;
 import com.triobase.service.auth.dto.UpdateProfileRequest;
 import com.triobase.service.auth.dto.UserProfileResponse;
 import com.triobase.service.auth.service.AuthService;
 import com.triobase.service.auth.service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
+    private static final String REGISTER_RATE_KEY_PREFIX = "register:rate:";
+    private static final int MAX_REGISTRATIONS_PER_HOUR = 3;
+    private static final Duration REGISTER_RATE_WINDOW = Duration.ofHours(1);
+
     private final AuthService authService;
     private final UserService userService;
+    private final StringRedisTemplate redis;
 
     @PostMapping("/register")
-    public R<LoginResponse> register(@RequestParam String username,
-                                     @RequestParam String password,
-                                     @RequestParam(required = false) String email,
-                                     @RequestParam(required = false) String phone) {
-        return R.ok(authService.register(username, password, email, phone));
+    public R<LoginResponse> register(@RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
+        String clientIp = resolveClientIp(httpRequest);
+        String rateKey = REGISTER_RATE_KEY_PREFIX + clientIp;
+        Boolean isNew = redis.opsForValue().setIfAbsent(rateKey, "1", REGISTER_RATE_WINDOW);
+        if (Boolean.TRUE.equals(isNew)) {
+            return R.ok(authService.register(request.getUsername(), request.getPassword(),
+                    request.getEmail(), request.getPhone()));
+        }
+        Long count = redis.opsForValue().increment(rateKey);
+        if (count != null && count > MAX_REGISTRATIONS_PER_HOUR) {
+            throw new BizException(42900, "REGISTER_RATE_LIMITED");
+        }
+        return R.ok(authService.register(request.getUsername(), request.getPassword(),
+                request.getEmail(), request.getPhone()));
+    }
+
+    private String resolveClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (StringUtils.hasText(forwarded)) {
+            return forwarded.split(",")[0].trim();
+        }
+        String realIp = request.getHeader("X-Real-IP");
+        if (StringUtils.hasText(realIp)) {
+            return realIp.trim();
+        }
+        return request.getRemoteAddr();
     }
 
     @PostMapping("/login")
@@ -39,7 +70,11 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public R<LoginResponse> refresh(@RequestParam String refreshToken) {
+    public R<LoginResponse> refresh(@RequestBody Map<String, String> body) {
+        String refreshToken = body.get("refreshToken");
+        if (!StringUtils.hasText(refreshToken)) {
+            throw new BizException(AuthErrorCode.TOKEN_INVALID);
+        }
         return R.ok(authService.refresh(refreshToken));
     }
 
@@ -78,9 +113,7 @@ public class AuthController {
             return R.fail(1005, result.getError());
         }
         UserProfileResponse user = userService.findProfile(result.getUserId());
-        Map<String, Object> userInfo = buildUserInfo(user);
-        userInfo.put("token", token);
-        return R.ok(userInfo);
+        return R.ok(buildUserInfo(user));
     }
 
     @GetMapping("/profile")

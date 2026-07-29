@@ -3,6 +3,7 @@ import type { TableProps } from 'ant-design-vue';
 import type { Dayjs } from 'dayjs';
 
 import type { SystemOrgApi, SystemRoleApi, SystemUserApi } from '#/api';
+import type { TableColumnSetting } from '#/shared';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -12,7 +13,6 @@ import { IconifyIcon, Plus } from '@vben/icons';
 
 import {
   Button,
-  Checkbox,
   DatePicker,
   Descriptions,
   DescriptionsItem,
@@ -26,7 +26,6 @@ import {
   Modal,
   Pagination,
   Popconfirm,
-  Popover,
   Radio,
   RadioGroup,
   Select,
@@ -57,6 +56,8 @@ import {
   CompactQueryBar,
   CompactTableFrame,
   CompactToolbar,
+  restoreTableColumnSettings,
+  TableColumnSettings,
 } from '#/shared';
 
 const RangePicker = DatePicker.RangePicker;
@@ -103,22 +104,20 @@ type UserColumnKey =
   | 'status'
   | 'username';
 
-type UserColumnSetting = {
+type UserColumnSetting = TableColumnSetting & {
   key: UserColumnKey;
-  title: string;
-  visible: boolean;
   width: number;
 };
 
 const defaultColumnSettings: UserColumnSetting[] = [
-  { key: 'username', title: '用户名', visible: true, width: 120 },
+  { fixed: 'left', key: 'username', title: '用户名', visible: true, width: 120 },
   { key: 'roles', title: '角色', visible: true, width: 200 },
   { key: 'orgs', title: '组织', visible: true, width: 240 },
   { key: 'phone', title: '手机号', visible: true, width: 140 },
   { key: 'email', title: '邮箱', visible: true, width: 220 },
   { key: 'status', title: '状态', visible: true, width: 110 },
   { key: 'createdAt', title: '创建时间', visible: true, width: 220 },
-  { key: 'action', title: '操作', visible: true, width: 190 },
+  { fixed: 'right', key: 'action', required: true, title: '操作', visible: true, width: 190 },
 ];
 
 const users = ref<SystemUserApi.SystemUser[]>([]);
@@ -136,7 +135,6 @@ const detailOpen = ref(false);
 const collapsed = ref(false);
 const queryHidden = ref(false);
 const blockFullscreen = ref(false);
-const columnSettingOpen = ref(false);
 const tableKey = ref(0);
 const editingUser = ref<SystemUserApi.SystemUser>();
 const detailUser = ref<SystemUserApi.SystemUser>();
@@ -202,10 +200,10 @@ const primaryOrgOptions = computed(() =>
 );
 
 const columnSettings = reactive<UserColumnSetting[]>(
-  defaultColumnSettings.map((item) => ({ ...item })),
-);
-const columnDraft = ref<UserColumnSetting[]>(
-  defaultColumnSettings.map((item) => ({ ...item })),
+  restoreTableColumnSettings(
+    'triobase:table-columns:system-user',
+    defaultColumnSettings,
+  ) as UserColumnSetting[],
 );
 
 const baseColumns: Record<UserColumnKey, NonNullable<TableProps['columns']>[number]> =
@@ -237,18 +235,10 @@ const columns = computed<TableProps['columns']>(() =>
     .filter((item) => item.visible)
     .map((item) => ({
       ...baseColumns[item.key],
+      fixed: item.fixed,
       width: item.width,
     })),
 );
-
-const allDraftChecked = computed({
-  get: () => columnDraft.value.every((item) => item.visible),
-  set: (checked: boolean) => {
-    columnDraft.value.forEach((item) => {
-      item.visible = checked;
-    });
-  },
-});
 
 const keyword = computed(() => {
   return queryForm.remark?.trim() || undefined;
@@ -417,29 +407,13 @@ async function handleToolbarSearch() {
   queryHidden.value = true;
 }
 
-function cloneColumnSettings(source = columnSettings) {
-  return source.map((item) => ({ ...item }));
-}
-
-function syncColumnDraft(open: boolean) {
-  columnSettingOpen.value = open;
-  if (open) {
-    columnDraft.value = cloneColumnSettings();
-  }
-}
-
-function restoreColumnSettings() {
-  columnDraft.value = defaultColumnSettings.map((item) => ({ ...item }));
-}
-
-function cancelColumnSettings() {
-  columnSettingOpen.value = false;
-}
-
-function confirmColumnSettings() {
-  columnSettings.splice(0, columnSettings.length, ...cloneColumnSettings(columnDraft.value));
+function applyColumnSettings(settings: TableColumnSetting[]) {
+  columnSettings.splice(
+    0,
+    columnSettings.length,
+    ...(settings as UserColumnSetting[]),
+  );
   tableKey.value += 1;
-  columnSettingOpen.value = false;
 }
 
 function resetForm() {
@@ -751,74 +725,33 @@ onMounted(async () => {
             </Button>
             <Tooltip v-if="canQuery" title="查询并隐藏搜索栏">
               <Button shape="circle" type="primary" @click="handleToolbarSearch">
-                <IconifyIcon :icon="ERP_TOOLBAR_ICONS.search" class="size-4" />
+                <i aria-hidden="true" class="vxe-button--item vxe-table-icon-search"></i>
               </Button>
             </Tooltip>
             <Tooltip v-if="canQuery" title="刷新">
               <Button shape="circle" @click="loadUsers()">
-                <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+                <i aria-hidden="true" class="vxe-button--item vxe-table-icon-refresh"></i>
               </Button>
             </Tooltip>
             <Tooltip :title="blockFullscreen ? '还原' : '全屏'">
               <Button shape="circle" @click="toggleFullscreen">
-                <IconifyIcon
-                  :icon="
+                <i
+                  aria-hidden="true"
+                  class="vxe-button--item vxe-button--prefix-icon"
+                  :class="
                     blockFullscreen
-                      ? ERP_TOOLBAR_ICONS.fullscreenExit
-                      : ERP_TOOLBAR_ICONS.fullscreen
+                      ? 'vxe-table-icon-minimize'
+                      : 'vxe-table-icon-fullscreen'
                   "
-                  class="size-4"
-                />
+                ></i>
               </Button>
             </Tooltip>
-            <Popover
-              :open="columnSettingOpen"
-              overlay-class-name="user-column-popover"
-              placement="bottomRight"
-              trigger="click"
-              @open-change="syncColumnDraft"
-            >
-              <template #content>
-                <div class="column-settings">
-                  <Checkbox v-model:checked="allDraftChecked" class="column-check-all">
-                    全部
-                  </Checkbox>
-                  <div class="column-setting-list">
-                    <div
-                      v-for="item in columnDraft"
-                      :key="item.key"
-                      class="column-setting-item"
-                    >
-                      <Checkbox v-model:checked="item.visible" />
-                      <IconifyIcon :icon="ERP_TOOLBAR_ICONS.drag" class="drag-icon" />
-                      <span class="column-setting-title">{{ item.title }}</span>
-                      <button class="pin-button" disabled type="button">
-                        <IconifyIcon :icon="ERP_TOOLBAR_ICONS.pin" class="size-4" />
-                      </button>
-                      <button class="pin-button" disabled type="button">
-                        <IconifyIcon :icon="ERP_TOOLBAR_ICONS.pin" class="size-4 rotate-pin" />
-                      </button>
-                    </div>
-                  </div>
-                  <div class="column-setting-footer">
-                    <Button type="link" @click="restoreColumnSettings">恢复默认</Button>
-                    <Space>
-                      <Button type="text" @click="cancelColumnSettings">取消</Button>
-                      <Button type="link" @click="confirmColumnSettings">确认</Button>
-                    </Space>
-                  </div>
-                </div>
-              </template>
-              <Tooltip title="列设置">
-                <Button
-                  :class="{ 'is-active': columnSettingOpen }"
-                  class="column-setting-trigger"
-                  shape="circle"
-                >
-                  <IconifyIcon :icon="ERP_TOOLBAR_ICONS.columnSettings" class="size-4" />
-                </Button>
-              </Tooltip>
-            </Popover>
+            <TableColumnSettings
+              :defaults="defaultColumnSettings"
+              :model-value="columnSettings"
+              storage-key="triobase:table-columns:system-user"
+              @apply="applyColumnSettings"
+            />
           </Space>
         </CompactToolbar>
       </template>

@@ -57,6 +57,7 @@ import java.util.Set;
 public class AuthorizationRegistryService {
 
     public static final String DEFAULT_TENANT = "default";
+    private static final String ADMIN_ROLE_CODE = "ADMIN";
     private static final String ACTIVE = "ACTIVE";
     private static final Set<String> SUBJECT_TYPES = Set.of("ROLE", "USER");
     private static final Set<String> EFFECTS = Set.of("ALLOW", "DENY");
@@ -354,7 +355,7 @@ public class AuthorizationRegistryService {
         resource.setGlobalFlag(Boolean.TRUE.equals(request.getGlobalResource()) ? (short) 1 : (short) 0);
         resource.setMetadataJson(StringHelpers.normalizeBlank(request.getMetadataJson()));
         resource.setLastSyncedAt(LocalDateTime.now());
-        if (resource.getCreatedAt() == null && resourceMapper.selectById(resource.getId()) == null) {
+        if (resource.getCreatedAt() == null) {
             resourceMapper.insert(resource);
         } else {
             resourceMapper.updateById(resource);
@@ -382,7 +383,7 @@ public class AuthorizationRegistryService {
         action.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         action.setGuardCodes(joinCodes(request.getGuardCodes()));
         action.setStatus(toStatus(request.getStatus()));
-        if (action.getCreatedAt() == null && actionMapper.selectById(action.getId()) == null) {
+        if (action.getCreatedAt() == null) {
             actionMapper.insert(action);
         } else {
             actionMapper.updateById(action);
@@ -410,7 +411,7 @@ public class AuthorizationRegistryService {
         field.setSensitivityClassification(StringHelpers.normalizeBlank(request.getSensitivityClassification()));
         field.setDefaultMaskStrategy(StringHelpers.normalizeBlank(request.getDefaultMaskStrategy()));
         field.setStatus(toStatus(request.getStatus()));
-        if (field.getCreatedAt() == null && fieldMapper.selectById(field.getId()) == null) {
+        if (field.getCreatedAt() == null) {
             fieldMapper.insert(field);
         } else {
             fieldMapper.updateById(field);
@@ -437,7 +438,7 @@ public class AuthorizationRegistryService {
         guard.setConfigSchemaJson(StringHelpers.normalizeBlank(request.getConfigSchemaJson()));
         guard.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         guard.setStatus(toStatus(request.getStatus()));
-        if (guard.getCreatedAt() == null && guardTemplateMapper.selectById(guard.getId()) == null) {
+        if (guard.getCreatedAt() == null) {
             guardTemplateMapper.insert(guard);
         } else {
             guardTemplateMapper.updateById(guard);
@@ -556,7 +557,7 @@ public class AuthorizationRegistryService {
         if (StringUtils.hasText(authenticatedTenant)) {
             if (requestedTenant != null
                     && !authenticatedTenant.equals(requestedTenant)
-                    && !SecurityContextHolder.getRoles().contains("ADMIN")) {
+                    && !SecurityContextHolder.getRoles().contains(ADMIN_ROLE_CODE)) {
                 throw new BizException(40382, "AUTHZ_CROSS_TENANT_FORBIDDEN");
             }
             return requestedTenant != null ? requestedTenant : authenticatedTenant;
@@ -576,12 +577,6 @@ public class AuthorizationRegistryService {
         }
         String normalizedRoleId = required(roleId, "AUTHZ_SUBJECT_REQUIRED");
         String tenantId = effectiveTenant(request.getTenantId());
-        long currentVersion = versionService.current(AuthorizationVersionService.GRANT);
-        if (request.getExpectedGrantVersion() != null
-                && request.getExpectedGrantVersion() != currentVersion) {
-            throw new BizException(40980, "AUTHZ_GRANT_VERSION_CONFLICT");
-        }
-
         Map<String, ReplaceRoleFunctionGrantsRequest.GrantItem> desired = new LinkedHashMap<>();
         for (ReplaceRoleFunctionGrantsRequest.GrantItem item : request.getGrants()) {
             if (item == null) {
@@ -593,11 +588,20 @@ public class AuthorizationRegistryService {
             desired.put(resourceCode + ":" + actionCode, item);
         }
 
+        Long expectedVersion = request.getExpectedGrantVersion();
+        long claimedGrantVersion = -1L;
+        if (expectedVersion != null) {
+            claimedGrantVersion = versionService.bumpIfExpected(
+                    AuthorizationVersionService.GRANT, expectedVersion);
+            if (claimedGrantVersion < 0) {
+                throw new BizException(40980, "AUTHZ_GRANT_VERSION_CONFLICT");
+            }
+        }
+
         grantMapper.delete(new LambdaQueryWrapper<SysAuthGrant>()
                 .eq(SysAuthGrant::getTenantId, tenantId)
                 .eq(SysAuthGrant::getSubjectType, "ROLE")
-                .eq(SysAuthGrant::getSubjectId, normalizedRoleId)
-                .eq(SysAuthGrant::getEffect, "ALLOW"));
+                .eq(SysAuthGrant::getSubjectId, normalizedRoleId));
         for (Map.Entry<String, ReplaceRoleFunctionGrantsRequest.GrantItem> entry : desired.entrySet()) {
             int separator = entry.getKey().lastIndexOf(':');
             SysAuthGrant grant = new SysAuthGrant();
@@ -612,7 +616,9 @@ public class AuthorizationRegistryService {
             grant.setDescription(StringHelpers.normalizeBlank(entry.getValue().getDescription()));
             grantMapper.insert(grant);
         }
-        long grantVersion = versionService.bump(AuthorizationVersionService.GRANT);
+        long grantVersion = expectedVersion != null
+                ? claimedGrantVersion
+                : versionService.bump(AuthorizationVersionService.GRANT);
         long authorizationVersion = versionService.bump(AuthorizationVersionService.AUTHORIZATION);
         return new ReplaceRoleFunctionGrantsResponse(
                 normalizedRoleId, desired.size(), grantVersion, authorizationVersion);
@@ -694,7 +700,7 @@ public class AuthorizationRegistryService {
         policy.setEffect(StringHelpers.normalizeBlank(request.getEffect()));
         policy.setStatus(toStatus(request.getStatus()));
         policy.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
-        if (policy.getCreatedAt() == null && fieldPolicyMapper.selectById(policy.getId()) == null) {
+        if (policy.getCreatedAt() == null) {
             fieldPolicyMapper.insert(policy);
         } else {
             fieldPolicyMapper.updateById(policy);
@@ -748,7 +754,7 @@ public class AuthorizationRegistryService {
         guard.setConfigSchemaJson(StringHelpers.normalizeBlank(request.getConfigSchemaJson()));
         guard.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         guard.setStatus(toStatus(request.getStatus()));
-        if (guard.getCreatedAt() == null && guardTemplateMapper.selectById(guard.getId()) == null) {
+        if (guard.getCreatedAt() == null) {
             guardTemplateMapper.insert(guard);
         } else {
             guardTemplateMapper.updateById(guard);

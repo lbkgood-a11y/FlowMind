@@ -5,7 +5,7 @@ import { $t } from '#/locales';
 const routes: RouteRecordRaw[] = [
   {
     meta: {
-      icon: 'ion:settings-outline',
+      icon: 'lucide:settings',
       order: 9997,
       title: $t('system.title'),
     },
@@ -16,7 +16,7 @@ const routes: RouteRecordRaw[] = [
         path: 'tenant',
         name: 'SystemTenant',
         meta: {
-          icon: 'mdi:domain',
+          icon: 'lucide:building-2',
           title: $t('system.tenant.title'),
         },
         component: () => import('#/views/system/tenant/list.vue'),
@@ -25,7 +25,7 @@ const routes: RouteRecordRaw[] = [
         path: 'user',
         name: 'SystemUser',
         meta: {
-          icon: 'mdi:user',
+          icon: 'lucide:user',
           title: $t('system.user.title'),
         },
         component: () => import('#/views/system/user/list.vue'),
@@ -34,7 +34,7 @@ const routes: RouteRecordRaw[] = [
         path: 'role',
         name: 'SystemRole',
         meta: {
-          icon: 'mdi:account-group',
+          icon: 'lucide:users',
           title: $t('system.role.title'),
         },
         component: () => import('#/views/system/role/list.vue'),
@@ -43,7 +43,7 @@ const routes: RouteRecordRaw[] = [
         path: 'menu',
         name: 'SystemMenu',
         meta: {
-          icon: 'mdi:menu',
+          icon: 'lucide:list-tree',
           title: $t('system.menu.title'),
         },
         component: () => import('#/views/system/menu/list.vue'),
@@ -52,7 +52,7 @@ const routes: RouteRecordRaw[] = [
         path: 'org',
         name: 'SystemOrg',
         meta: {
-          icon: 'charm:organisation',
+          icon: 'lucide:network',
           title: $t('system.org.title'),
         },
         component: () => import('#/views/system/org/list.vue'),
@@ -61,7 +61,7 @@ const routes: RouteRecordRaw[] = [
         path: 'data-permission',
         name: 'SystemDataPermission',
         meta: {
-          icon: 'mdi:shield-key-outline',
+          icon: 'lucide:shield-keyhole',
           title: $t('system.dataPermission.title'),
         },
         component: () => import('#/views/system/data-permission/list.vue'),
@@ -70,7 +70,7 @@ const routes: RouteRecordRaw[] = [
         path: 'audit-log',
         name: 'SystemAuditLog',
         meta: {
-          icon: 'mdi:clipboard-text-clock-outline',
+          icon: 'lucide:clipboard-clock',
           title: $t('system.auditLog.title'),
         },
         component: () => import('#/views/system/audit-log/list.vue'),
@@ -79,7 +79,7 @@ const routes: RouteRecordRaw[] = [
         path: 'session',
         name: 'SystemSession',
         meta: {
-          icon: 'mdi:account-clock-outline',
+          icon: 'lucide:user-round-clock',
           title: $t('system.session.title'),
         },
         component: () => import('#/views/system/session/list.vue'),
@@ -88,7 +88,7 @@ const routes: RouteRecordRaw[] = [
         path: 'dictionary',
         name: 'SystemDictionary',
         meta: {
-          icon: 'mdi:book-open-variant-outline',
+          icon: 'lucide:book-open-text',
           title: $t('system.dictionary.title'),
         },
         component: () => import('#/views/system/dictionary/list.vue'),
@@ -97,7 +97,7 @@ const routes: RouteRecordRaw[] = [
         path: 'config',
         name: 'SystemConfig',
         meta: {
-          icon: 'mdi:tune-variant',
+          icon: 'lucide:sliders-horizontal',
           title: $t('system.config.title'),
         },
         component: () => import('#/views/system/config/list.vue'),
@@ -115,7 +115,7 @@ const routes: RouteRecordRaw[] = [
         path: 'authz',
         name: 'SystemAuthz',
         meta: {
-          icon: 'mdi:shield-account',
+          icon: 'lucide:shield-user',
           title: '企业授权',
         },
         component: () => import('#/views/system/authz/index.vue'),

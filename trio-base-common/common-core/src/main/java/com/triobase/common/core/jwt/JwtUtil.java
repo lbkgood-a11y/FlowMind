@@ -56,7 +56,7 @@ public final class JwtUtil {
                     new JWSHeader(JWSAlgorithm.HS256),
                     builder.build()
             );
-            jwt.sign(new MACSigner(secret.getBytes()));
+            jwt.sign(new MACSigner(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             return jwt.serialize();
         } catch (JOSEException e) {
             throw new RuntimeException("JWT 签发失败", e);
@@ -66,7 +66,7 @@ public final class JwtUtil {
     public static JwtPayload verifyAndParse(String token, String secret) {
         try {
             SignedJWT jwt = SignedJWT.parse(token);
-            JWSVerifier verifier = new MACVerifier(secret.getBytes());
+            JWSVerifier verifier = new MACVerifier(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             if (!jwt.verify(verifier)) {
                 return JwtPayload.invalid("签名验证失败");
             }

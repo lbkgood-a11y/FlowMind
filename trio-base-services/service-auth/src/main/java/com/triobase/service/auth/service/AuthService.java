@@ -17,13 +17,19 @@ import com.triobase.service.auth.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -89,9 +95,14 @@ public class AuthService {
 
     public LoginResponse login(LoginRequest request) {
         String attemptsKey = LOGIN_ATTEMPTS_KEY_PREFIX + request.getUsername();
-        String attemptsStr = redis.opsForValue().get(attemptsKey);
-        int attempts = attemptsStr != null ? Integer.parseInt(attemptsStr) : 0;
-        if (attempts >= MAX_LOGIN_ATTEMPTS) {
+        Boolean isNew = redis.opsForValue().setIfAbsent(attemptsKey, "1", LOGIN_LOCK_DURATION);
+        Long attempts;
+        if (Boolean.TRUE.equals(isNew)) {
+            attempts = 1L;
+        } else {
+            attempts = redis.opsForValue().increment(attemptsKey);
+        }
+        if (attempts != null && attempts > MAX_LOGIN_ATTEMPTS) {
             loginSessionService.recordLoginFailure(request.getUsername(), "RATE_LIMITED");
             throw new BizException(AuthErrorCode.TOO_MANY_ATTEMPTS);
         }
@@ -99,8 +110,6 @@ public class AuthService {
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, request.getUsername()));
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            redis.opsForValue().increment(attemptsKey);
-            redis.expire(attemptsKey, LOGIN_LOCK_DURATION);
             loginSessionService.recordLoginFailure(request.getUsername(), "BAD_CREDENTIALS");
             throw new BizException(AuthErrorCode.BAD_CREDENTIALS);
         }
@@ -165,7 +174,7 @@ public class AuthService {
         List<String> permissions;
         List<String> deniedPermissions;
 
-        var cached = permissionCacheService.get(payload.userId());
+        var cached = permissionCacheService.get(tenantId(user), payload.userId());
         if (cached.isPresent()) {
             roles = cached.get().roles();
             permissions = cached.get().permissions();
@@ -174,7 +183,7 @@ public class AuthService {
             roles = userMapper.selectRoleCodesByUserId(payload.userId());
             permissions = userMapper.selectPermissionsByUserId(payload.userId());
             deniedPermissions = userMapper.selectDeniedPermissionsByUserId(payload.userId());
-            permissionCacheService.put(payload.userId(), roles, permissions, deniedPermissions);
+            permissionCacheService.put(tenantId(user), payload.userId(), roles, permissions, deniedPermissions);
         }
 
         TokenValidateResult result = TokenValidateResult.success(payload.userId(), payload.username(), tenantId(user),
@@ -183,7 +192,7 @@ public class AuthService {
                 authorizationVersionService.current(AuthorizationVersionService.AUTHORIZATION),
                 authorizationVersionService.current(AuthorizationVersionService.GRANT),
                 authorizationVersionService.current(AuthorizationVersionService.DATA_POLICY),
-                authorizationVersionService.current(AuthorizationVersionService.AUTHORIZATION),
+                authorizationVersionService.current(AuthorizationVersionService.RESOURCE),
                 authorizationVersionService.current(AuthorizationVersionService.FIELD_POLICY),
                 authorizationVersionService.current(AuthorizationVersionService.GUARD_TEMPLATE));
         result.setDeniedPermissions(deniedPermissions);
@@ -209,10 +218,29 @@ public class AuthService {
         }
     }
 
+    public void revokeUserTokens(String userId) {
+        revokeAllUserTokens(userId);
+    }
+
     private void revokeAllUserTokens(String userId) {
-        var keys = redis.keys(REFRESH_KEY_PREFIX + userId + ":*");
+        String pattern = REFRESH_KEY_PREFIX + userId + ":*";
+        Set<String> keys = redis.execute((RedisCallback<Set<String>>) connection -> {
+            Set<String> matchingKeys = new HashSet<>();
+            try (Cursor<byte[]> cursor = connection.scan(
+                    ScanOptions.scanOptions().match(pattern).count(100).build())) {
+                while (cursor.hasNext()) {
+                    matchingKeys.add(new String(cursor.next(), StandardCharsets.UTF_8));
+                }
+            }
+            return matchingKeys;
+        });
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
+        }
+
+        List<String> accessJtis = loginSessionService.revokeAllSessions(userId);
+        for (String jti : accessJtis) {
+            redis.opsForValue().set(REVOKED_KEY_PREFIX + jti, "1", Duration.ofSeconds(accessTokenTtl));
         }
     }
 

@@ -33,21 +33,14 @@ export async function loginApi(data: AuthApi.LoginParams) {
 }
 
 export async function registerApi(data: AuthApi.RegisterParams) {
-  return requestClient.post<AuthApi.LoginResult>('/auth/register', undefined, {
-    params: data,
-  });
+  return requestClient.post<AuthApi.LoginResult>('/auth/register', data);
 }
 
 export async function refreshTokenApi() {
   const accessStore = useAccessStore();
   return baseRequestClient.post<{ data: HttpResponse<AuthApi.LoginResult> }>(
     '/auth/refresh',
-    undefined,
-    {
-      params: {
-        refreshToken: accessStore.refreshToken,
-      },
-    },
+    { refreshToken: accessStore.refreshToken },
   );
 }
 

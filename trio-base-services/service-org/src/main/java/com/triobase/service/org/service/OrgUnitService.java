@@ -1,5 +1,6 @@
 package com.triobase.service.org.service;
 
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.util.StringHelpers;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -45,7 +46,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OrgUnitService {
 
-    private static final String DEFAULT_TENANT = "default";
     private static final String DEFAULT_DIMENSION_CODE = "ADMIN";
     private static final String DEFAULT_UNIT_TYPE = "DEPARTMENT";
 
@@ -57,7 +57,7 @@ public class OrgUnitService {
 
     public List<SysOrgDimension> listDimensions() {
         return orgDimensionMapper.selectList(new LambdaQueryWrapper<SysOrgDimension>()
-                .eq(SysOrgDimension::getTenantId, DEFAULT_TENANT)
+                .eq(SysOrgDimension::getTenantId, currentTenantId())
                 .eq(SysOrgDimension::getStatus, (short) 1)
                 .orderByDesc(SysOrgDimension::getIsDefault)
                 .orderByAsc(SysOrgDimension::getSortOrder)
@@ -70,7 +70,7 @@ public class OrgUnitService {
 
     public List<SysOrgUnit> listOrgUnits(String keyword, String unitType, Integer status) {
         LambdaQueryWrapper<SysOrgUnit> wrapper = new LambdaQueryWrapper<SysOrgUnit>()
-                .eq(SysOrgUnit::getTenantId, DEFAULT_TENANT)
+                .eq(SysOrgUnit::getTenantId, currentTenantId())
                 .orderByAsc(SysOrgUnit::getTreePath)
                 .orderByAsc(SysOrgUnit::getSortOrder);
         String normalizedKeyword = StringHelpers.normalizeBlank(keyword);
@@ -102,7 +102,7 @@ public class OrgUnitService {
     public List<OrgTreeNodeResponse> listOrgTree(String dimensionCode) {
         SysOrgDimension dimension = findDimensionByCode(dimensionCode);
         List<SysOrgRelation> relations = orgRelationMapper.selectList(new LambdaQueryWrapper<SysOrgRelation>()
-                .eq(SysOrgRelation::getTenantId, DEFAULT_TENANT)
+                .eq(SysOrgRelation::getTenantId, currentTenantId())
                 .eq(SysOrgRelation::getDimensionId, dimension.getId())
                 .orderByAsc(SysOrgRelation::getTreePath)
                 .orderByAsc(SysOrgRelation::getSortOrder));
@@ -130,7 +130,7 @@ public class OrgUnitService {
                 : DEFAULT_DIMENSION_CODE;
 
         if (orgUnitMapper.selectCount(new LambdaQueryWrapper<SysOrgUnit>()
-                .eq(SysOrgUnit::getTenantId, DEFAULT_TENANT)
+                .eq(SysOrgUnit::getTenantId, currentTenantId())
                 .eq(SysOrgUnit::getUnitCode, request.getUnitCode())) > 0) {
             throw new BizException(40042, "ORG_UNIT_CODE_ALREADY_EXISTS");
         }
@@ -145,7 +145,7 @@ public class OrgUnitService {
 
         SysOrgUnit unit = new SysOrgUnit();
         unit.setId(UlidGenerator.nextUlid());
-        unit.setTenantId(DEFAULT_TENANT);
+        unit.setTenantId(currentTenantId());
         unit.setParentId(DEFAULT_DIMENSION_CODE.equals(dimensionCode) && StringUtils.hasText(request.getParentId())
                 ? request.getParentId()
                 : null);
@@ -245,7 +245,7 @@ public class OrgUnitService {
         SysOrgRelation relation = current != null ? current : new SysOrgRelation();
         if (relation.getId() == null) {
             relation.setId(UlidGenerator.nextUlid());
-            relation.setTenantId(DEFAULT_TENANT);
+            relation.setTenantId(currentTenantId());
             relation.setDimensionId(dimension.getId());
             relation.setChildUnitId(childUnitId);
         }
@@ -295,7 +295,7 @@ public class OrgUnitService {
 
     public List<UserOrgAssignmentResponse> listUserAssignments(String userId, String dimensionCode) {
         LambdaQueryWrapper<SysUserOrgUnit> wrapper = new LambdaQueryWrapper<SysUserOrgUnit>()
-                .eq(SysUserOrgUnit::getTenantId, DEFAULT_TENANT)
+                .eq(SysUserOrgUnit::getTenantId, currentTenantId())
                 .eq(SysUserOrgUnit::getUserId, userId)
                 .orderByDesc(SysUserOrgUnit::getIsPrimary)
                 .orderByAsc(SysUserOrgUnit::getOrgUnitId);
@@ -345,7 +345,7 @@ public class OrgUnitService {
         }
 
         List<SysUserOrgUnit> relations = userOrgUnitMapper.selectList(new LambdaQueryWrapper<SysUserOrgUnit>()
-                .eq(SysUserOrgUnit::getTenantId, DEFAULT_TENANT)
+                .eq(SysUserOrgUnit::getTenantId, currentTenantId())
                 .eq(SysUserOrgUnit::getDimensionId, dimension.getId())
                 .eq(SysUserOrgUnit::getOrgUnitId, orgUnitId)
                 .orderByDesc(SysUserOrgUnit::getIsPrimary)
@@ -412,14 +412,14 @@ public class OrgUnitService {
         }
 
         userOrgUnitMapper.delete(new LambdaUpdateWrapper<SysUserOrgUnit>()
-                .eq(SysUserOrgUnit::getTenantId, DEFAULT_TENANT)
+                .eq(SysUserOrgUnit::getTenantId, currentTenantId())
                 .eq(SysUserOrgUnit::getUserId, userId)
                 .eq(SysUserOrgUnit::getDimensionId, dimension.getId()));
 
         for (UserOrgAssignmentItem assignment : assignments) {
             SysUserOrgUnit relation = new SysUserOrgUnit();
             relation.setId(UlidGenerator.nextUlid());
-            relation.setTenantId(DEFAULT_TENANT);
+            relation.setTenantId(currentTenantId());
             relation.setUserId(userId);
             relation.setDimensionId(dimension.getId());
             relation.setOrgUnitId(assignment.getOrgUnitId().trim());
@@ -456,7 +456,7 @@ public class OrgUnitService {
             normalizedCode = DEFAULT_DIMENSION_CODE;
         }
         SysOrgDimension dimension = orgDimensionMapper.selectOne(new LambdaQueryWrapper<SysOrgDimension>()
-                .eq(SysOrgDimension::getTenantId, DEFAULT_TENANT)
+                .eq(SysOrgDimension::getTenantId, currentTenantId())
                 .eq(SysOrgDimension::getDimensionCode, normalizedCode)
                 .last("LIMIT 1"));
         if (dimension == null) {
@@ -529,6 +529,11 @@ public class OrgUnitService {
         if (primaryCount > 1) {
             throw new BizException(40048, "MULTIPLE_PRIMARY_ORG_UNITS");
         }
+    }
+
+    private String currentTenantId() {
+        String tenantId = SecurityContextHolder.getTenantId();
+        return org.springframework.util.StringUtils.hasText(tenantId) ? tenantId : "default";
     }
 
     private Short toStatus(Integer status) {

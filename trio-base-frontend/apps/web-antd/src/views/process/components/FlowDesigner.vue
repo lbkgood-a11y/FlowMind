@@ -21,6 +21,7 @@ import {
   Snapline,
 } from '@antv/x6';
 import { Button, message, Space, Tooltip } from 'ant-design-vue';
+import { IconifyIcon } from '@vben/icons';
 
 import {
   buildParticipantAssignment,
@@ -62,13 +63,13 @@ const emit = defineEmits<{
 }>();
 
 const NODE_TYPES: NodeTypeDef[] = [
-  { type: 'START', label: '开始', color: '#8c8c8c', bg: '#fafafa', icon: '▶', width: 40, height: 40 },
-  { type: 'APPROVAL', label: '审批', color: '#1677ff', bg: '#e6f4ff', icon: '📋', width: 128, height: 42 },
-  { type: 'COUNTERSIGN', label: '会签', color: '#722ed1', bg: '#f9f0ff', icon: '👥', width: 128, height: 42 },
-  { type: 'CONDITION', label: '条件', color: '#fa8c16', bg: '#fff7e6', icon: '◇', width: 40, height: 40 },
-  { type: 'NOTIFY', label: '抄送', color: '#52c41a', bg: '#f6ffed', icon: '📧', width: 112, height: 42 },
-  { type: 'SERVICE_TASK', label: '服务任务', color: '#eb2f96', bg: '#fff0f6', icon: '⚙', width: 112, height: 42 },
-  { type: 'END', label: '结束', color: '#ff4d4f', bg: '#fff2f0', icon: '⏹', width: 40, height: 40 },
+  { type: 'START', label: '开始', color: '#8c8c8c', bg: '#fafafa', icon: 'lucide:circle-play', width: 40, height: 40 },
+  { type: 'APPROVAL', label: '审批', color: '#1677ff', bg: '#e6f4ff', icon: 'lucide:clipboard-check', width: 128, height: 42 },
+  { type: 'COUNTERSIGN', label: '会签', color: '#722ed1', bg: '#f9f0ff', icon: 'lucide:users-round', width: 128, height: 42 },
+  { type: 'CONDITION', label: '条件', color: '#fa8c16', bg: '#fff7e6', icon: 'lucide:diamond', width: 40, height: 40 },
+  { type: 'NOTIFY', label: '抄送', color: '#52c41a', bg: '#f6ffed', icon: 'lucide:mail', width: 112, height: 42 },
+  { type: 'SERVICE_TASK', label: '服务任务', color: '#eb2f96', bg: '#fff0f6', icon: 'lucide:cog', width: 112, height: 42 },
+  { type: 'END', label: '结束', color: '#ff4d4f', bg: '#fff2f0', icon: 'lucide:square', width: 40, height: 40 },
 ];
 
 const NODE_TYPE_MAP = new Map(NODE_TYPES.map((n) => [n.type, n]));
@@ -719,7 +720,7 @@ onUnmounted(() => {
             @dblclick="addNode(nt.type)"
             @dragstart="startDrag(nt.type, $event)"
           >
-            <span class="palette-icon">{{ nt.icon }}</span>
+            <IconifyIcon :icon="nt.icon" class="palette-icon" />
             <span>{{ nt.label }}</span>
           </div>
         </div>

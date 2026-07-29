@@ -1,5 +1,8 @@
 package com.triobase.common.core.auth;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -8,6 +11,7 @@ import java.util.Set;
 
 public final class FieldMaskHelper {
 
+    private static final Logger log = LoggerFactory.getLogger(FieldMaskHelper.class);
     private static final String MASK_PLACEHOLDER = "******";
     private static final Set<String> READ_DENIED_MODES = Set.of("HIDDEN", "DENIED");
     private static final Set<String> WRITE_DENIED_MODES = Set.of("READ_ONLY", "DENIED");
@@ -38,14 +42,18 @@ public final class FieldMaskHelper {
 
     public static void assertWritableFields(Map<String, Object> data,
                                              List<? extends FieldRule> fieldRules) {
-        if (data == null || data.isEmpty() || fieldRules == null || fieldRules.isEmpty()) {
+        if (data == null || data.isEmpty()) {
             return;
+        }
+        if (fieldRules == null || fieldRules.isEmpty()) {
+            throw new IllegalArgumentException("Field rules are required for write operations");
         }
         Map<String, FieldRule> rulesByKey = indexByKey(fieldRules);
         for (String fieldKey : data.keySet()) {
             FieldRule rule = rulesByKey.get(fieldKey);
             if (rule == null) {
-                continue;
+                throw new IllegalArgumentException("Field '" + fieldKey
+                        + "' is not registered in field rules — write denied by default");
             }
             if (WRITE_DENIED_MODES.contains(normalize(rule.getWriteMode()))) {
                 throw new IllegalArgumentException("Field write denied: " + fieldKey);
@@ -67,7 +75,10 @@ public final class FieldMaskHelper {
             case "LAST4" -> last4(text);
             case "PHONE" -> phone(text);
             case "EMAIL" -> email(text);
-            default -> MASK_PLACEHOLDER;
+            default -> {
+                log.warn("Unknown field mask strategy '{}' — falling back to placeholder", strategy);
+                yield MASK_PLACEHOLDER;
+            }
         };
     }
 

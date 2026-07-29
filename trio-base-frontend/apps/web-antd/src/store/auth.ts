@@ -1,4 +1,4 @@
-import type { Recordable, UserInfo } from '@vben/types';
+import type { MenuRecordRaw, Recordable, UserInfo } from '@vben/types';
 
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -11,7 +11,8 @@ import { resetStaticRoutes } from '@vben/utils';
 import { notification } from 'ant-design-vue';
 import { defineStore } from 'pinia';
 
-import { routes } from '../router/routes';
+import { generateAccess } from '../router/access';
+import { accessRoutes, routes } from '../router/routes';
 
 import {
   getAccessCodesApi,
@@ -29,7 +30,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   const loginLoading = ref(false);
   const registerLoading = ref(false);
-  let permissionRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  let permissionRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let permissionRefreshFailures = 0;
+  const MAX_PERMISSION_REFRESH_BACKOFF_MS = 1_800_000; // 30 min max
 
   function resetAccessState() {
     resetStaticRoutes(router, routes);
@@ -37,6 +40,54 @@ export const useAuthStore = defineStore('auth', () => {
     accessStore.setIsAccessChecked(false);
     accessStore.setAccessMenus([]);
     accessStore.setAccessRoutes([]);
+  }
+
+  function sameAccessCodes(left: string[], right: string[]) {
+    if (left.length !== right.length) {
+      return false;
+    }
+    const expected = new Set(left);
+    return right.every((code) => expected.has(code));
+  }
+
+  function firstAccessibleMenuPath(menus: MenuRecordRaw[]): string | undefined {
+    for (const menu of menus) {
+      const childPath = menu.children?.length
+        ? firstAccessibleMenuPath(menu.children)
+        : undefined;
+      if (childPath) {
+        return childPath;
+      }
+      if (menu.path && !menu.disabled) {
+        return menu.path;
+      }
+    }
+    return undefined;
+  }
+
+  async function rebuildAccessProjection(codes: string[]) {
+    const currentPath = router.currentRoute.value.fullPath;
+    resetAccessState();
+    accessStore.setAccessCodes(codes);
+
+    const userInfo = userStore.userInfo || (await fetchUserInfo());
+    const { accessibleMenus, accessibleRoutes } = await generateAccess({
+      roles: userInfo.roles ?? [],
+      router,
+      routes: accessRoutes,
+    });
+    accessStore.setAccessMenus(accessibleMenus);
+    accessStore.setAccessRoutes(accessibleRoutes);
+    accessStore.setIsAccessChecked(true);
+
+    const resolvedCurrent = router.resolve(currentPath);
+    const targetPath =
+      resolvedCurrent.name === 'FallbackNotFound'
+        ? firstAccessibleMenuPath(accessibleMenus) ||
+          userInfo.homePath ||
+          preferences.app.defaultHomePath
+        : currentPath;
+    await router.replace(targetPath);
   }
 
   async function completeAuthentication(
@@ -174,19 +225,37 @@ export const useAuthStore = defineStore('auth', () => {
 
   function startPermissionRefresh(intervalMs = 300_000) {
     stopPermissionRefresh();
-    permissionRefreshTimer = setInterval(async () => {
+    permissionRefreshFailures = 0;
+    scheduleRefresh(intervalMs);
+  }
+
+  function scheduleRefresh(delayMs: number) {
+    permissionRefreshTimer = setTimeout(async () => {
       try {
         const codes = await getAccessCodesApi();
-        accessStore.setAccessCodes(codes);
-      } catch {
-        // Silently skip — token refresh handler will pick up expired sessions
+        if (!sameAccessCodes(accessStore.accessCodes, codes)) {
+          await rebuildAccessProjection(codes);
+        }
+        permissionRefreshFailures = 0;
+        scheduleRefresh(300_000);
+      } catch (err) {
+        permissionRefreshFailures++;
+        const backoff = Math.min(
+          300_000 * 2 ** permissionRefreshFailures,
+          MAX_PERMISSION_REFRESH_BACKOFF_MS,
+        );
+        console.warn(
+          `[Auth] Permission refresh failed (#${permissionRefreshFailures}), retrying in ${Math.round(backoff / 1000)}s`,
+          err,
+        );
+        scheduleRefresh(backoff);
       }
-    }, intervalMs);
+    }, delayMs);
   }
 
   function stopPermissionRefresh() {
     if (permissionRefreshTimer !== null) {
-      clearInterval(permissionRefreshTimer);
+      clearTimeout(permissionRefreshTimer);
       permissionRefreshTimer = null;
     }
   }

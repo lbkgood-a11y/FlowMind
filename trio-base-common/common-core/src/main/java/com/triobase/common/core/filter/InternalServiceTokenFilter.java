@@ -5,6 +5,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.lang.NonNull;
@@ -19,6 +21,8 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
 
     public static final String HEADER_SERVICE_NAME = "X-Internal-Service";
     public static final String HEADER_SERVICE_TOKEN = "X-Internal-Token";
+
+    private static final Logger log = LoggerFactory.getLogger(InternalServiceTokenFilter.class);
 
     private final InternalServiceSecurityProperties properties;
 
@@ -41,6 +45,8 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
         boolean callerAllowed = caller != null && properties.getAllowedCallers().contains(caller);
         boolean tokenValid = secureEquals(properties.getToken(), token);
         if (!callerAllowed || !tokenValid) {
+            log.warn("Internal service auth failed — caller={} callerAllowed={} tokenValid={} uri={} ip={}",
+                    caller, callerAllowed, tokenValid, request.getRequestURI(), request.getRemoteAddr());
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "INVALID_INTERNAL_SERVICE_CREDENTIALS");
             return;
         }

@@ -5,7 +5,7 @@ import { $t } from '#/locales';
 const routes: RouteRecordRaw[] = [
   {
     meta: {
-      icon: 'mdi:application-cog-outline',
+      icon: 'lucide:settings-2',
       order: 9998,
       title: $t('operations.title'),
     },
@@ -16,7 +16,7 @@ const routes: RouteRecordRaw[] = [
         path: 'announcement',
         name: 'OperationsAnnouncement',
         meta: {
-          icon: 'mdi:bullhorn-outline',
+          icon: 'lucide:megaphone',
           title: $t('operations.announcement.title'),
         },
         component: () => import('#/views/operations/announcement/list.vue'),
@@ -25,7 +25,7 @@ const routes: RouteRecordRaw[] = [
         path: 'message',
         name: 'OperationsMessage',
         meta: {
-          icon: 'mdi:message-badge-outline',
+          icon: 'lucide:message-square-dot',
           title: $t('operations.message.title'),
         },
         component: () => import('#/views/operations/message/list.vue'),
@@ -34,7 +34,7 @@ const routes: RouteRecordRaw[] = [
         path: 'file',
         name: 'OperationsFile',
         meta: {
-          icon: 'mdi:file-cog-outline',
+          icon: 'lucide:file-cog',
           title: $t('operations.file.title'),
         },
         component: () => import('#/views/operations/file/list.vue'),
@@ -43,7 +43,7 @@ const routes: RouteRecordRaw[] = [
         path: 'import-export',
         name: 'OperationsImportExport',
         meta: {
-          icon: 'mdi:database-arrow-up-outline',
+          icon: 'lucide:database-backup',
           title: $t('operations.importExport.title'),
         },
         component: () => import('#/views/operations/import-export/list.vue'),
@@ -52,7 +52,7 @@ const routes: RouteRecordRaw[] = [
         path: 'job',
         name: 'OperationsJob',
         meta: {
-          icon: 'mdi:timer-cog-outline',
+          icon: 'lucide:timer-reset',
           title: $t('operations.job.title'),
         },
         component: () => import('#/views/operations/job/list.vue'),

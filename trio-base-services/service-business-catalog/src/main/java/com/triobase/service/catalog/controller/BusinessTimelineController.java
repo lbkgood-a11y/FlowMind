@@ -2,6 +2,8 @@ package com.triobase.service.catalog.controller;
 
 import com.triobase.common.core.annotation.RequireDataScope;
 import com.triobase.common.core.annotation.RequirePermission;
+import com.triobase.common.core.context.SecurityContextHolder;
+import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.core.result.R;
 import com.triobase.common.dto.catalog.BusinessTimelineEntry;
@@ -47,6 +49,10 @@ public class BusinessTimelineController {
                                                       Instant endTime,
                                                       @RequestParam(defaultValue = "1") int page,
                                                       @RequestParam(defaultValue = "20") int size) {
+        String currentTenantId = SecurityContextHolder.getTenantId();
+        if (!"default".equals(currentTenantId) && !currentTenantId.equals(tenantId)) {
+            throw new BizException(40361, "TENANT_ACCESS_DENIED");
+        }
         BusinessTimelineQuery query = new BusinessTimelineQuery();
         query.setTenantId(tenantId);
         query.setTargetType(targetType);

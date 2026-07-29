@@ -218,7 +218,7 @@ function createDefaultUploadSlots(listType: string, placeholder: string) {
         Button,
         {
           icon: h(IconifyIcon, {
-            icon: 'ant-design:upload-outlined',
+            icon: 'lucide:upload',
             class: 'mb-1 size-4',
           }),
         },

@@ -22,8 +22,8 @@ public class AuditAutoConfiguration {
     }
 
     @Bean
-    public AuditSecurityFilter auditSecurityFilter() {
-        return new AuditSecurityFilter();
+    public AuditSecurityFilter auditSecurityFilter(InternalServiceSecurityProperties properties) {
+        return new AuditSecurityFilter(properties.getToken());
     }
 
     @Bean
