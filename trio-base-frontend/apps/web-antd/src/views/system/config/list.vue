@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import type { SystemGovernanceApi } from '#/api';
 import type { TableProps } from 'ant-design-vue';
+
+import type { SystemGovernanceApi } from '#/api';
+import type { TableColumnSetting } from '#/shared';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -30,6 +32,8 @@ import {
   CompactQueryBar,
   CompactTableFrame,
   CompactToolbar,
+  restoreTableColumnSettings,
+  TableColumnSettings,
 } from '#/shared';
 
 const Textarea = Input.TextArea;
@@ -59,6 +63,10 @@ const loading = ref(false);
 const saving = ref(false);
 const formOpen = ref(false);
 const editingConfig = ref<SystemGovernanceApi.SystemConfig>();
+const collapsed = ref(false);
+const queryHidden = ref(false);
+const blockFullscreen = ref(false);
+const tableKey = ref(0);
 
 const query = reactive({
   configGroup: undefined as string | undefined,
@@ -89,7 +97,7 @@ const configTypeOptions = [
   { label: 'JSON', value: 'JSON' },
 ];
 
-const columns = computed<TableProps['columns']>(() => [
+const baseColumns: NonNullable<TableProps['columns']> = [
   { dataIndex: 'configGroup', fixed: 'left', key: 'configGroup', title: '分组', width: 130 },
   { dataIndex: 'configKey', key: 'configKey', title: '参数键', width: 260 },
   { dataIndex: 'configValue', key: 'configValue', title: '参数值', width: 220 },
@@ -100,7 +108,28 @@ const columns = computed<TableProps['columns']>(() => [
   { dataIndex: 'sortOrder', key: 'sortOrder', title: '排序', width: 80 },
   { dataIndex: 'description', key: 'description', title: '描述', width: 280 },
   { fixed: 'right', key: 'action', title: '操作', width: 100 },
-]);
+];
+const defaultColumnSettings: TableColumnSetting[] = baseColumns.map((column) => ({
+  fixed: column.fixed === true ? 'left' : column.fixed || undefined,
+  key: String(column.key),
+  required: column.key === 'action',
+  title: String(column.title),
+  visible: true,
+  width: Number(column.width || 120),
+}));
+const columnSettings = reactive(
+  restoreTableColumnSettings(
+    'triobase:table-columns:system-config',
+    defaultColumnSettings,
+  ),
+);
+const columns = computed<TableProps['columns']>(() =>
+  columnSettings.filter((item) => item.visible).map((item) => ({
+    ...baseColumns.find((column) => String(column.key) === item.key),
+    fixed: item.fixed,
+    width: item.width,
+  })),
+);
 
 async function loadConfigs() {
   if (!canQuery.value) {
@@ -124,6 +153,20 @@ function resetQuery() {
   query.keyword = '';
   query.status = undefined;
   loadConfigs();
+}
+
+async function handleToolbarSearch() {
+  await loadConfigs();
+  queryHidden.value = true;
+}
+
+function applyColumnSettings(settings: TableColumnSetting[]) {
+  columnSettings.splice(0, columnSettings.length, ...settings);
+  tableKey.value += 1;
+}
+
+function toggleFullscreen() {
+  blockFullscreen.value = !blockFullscreen.value;
 }
 
 function openEdit(record: SystemGovernanceApi.SystemConfig) {
@@ -180,45 +223,52 @@ onMounted(loadConfigs);
 
 <template>
   <Page auto-content-height>
-    <BusinessPageScaffold class="config-page" pattern="single-table">
+    <BusinessPageScaffold class="config-page" pattern="single-table" :fullscreen="blockFullscreen" :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }">
       <template #query>
-        <CompactQueryBar :columns="3">
-          <Select
+        <CompactQueryBar v-show="!queryHidden" :collapsed="collapsed" :columns="3">
+          <FormItem label="参数分组">
+<Select
             v-model:value="query.configGroup"
             allow-clear
-            class="group-select"
             :options="groupOptions"
-            placeholder="参数分组"
+            placeholder="请选择"
           />
-          <Input v-model:value="query.keyword" class="query-input" placeholder="参数键/描述" allow-clear />
-          <Select
+</FormItem>
+          <FormItem label="关键词"><Input v-model:value="query.keyword" placeholder="参数键/描述" allow-clear /></FormItem>
+          <FormItem v-if="!collapsed" label="状态">
+<Select
             v-model:value="query.status"
             allow-clear
-            class="query-select"
             :options="[
               { label: '启用', value: 1 },
               { label: '禁用', value: 0 },
             ]"
-            placeholder="状态"
+            placeholder="请选择"
           />
+</FormItem>
           <template #actions>
-          <Button v-if="canQuery" type="primary" @click="loadConfigs">查询</Button>
-          <Button v-if="canQuery" @click="resetQuery">重置</Button>
-        <Tooltip v-if="canQuery" title="刷新">
-          <Button shape="circle" @click="loadConfigs">
-            <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
-          </Button>
-        </Tooltip>
+            <Button v-if="canQuery" @click="resetQuery">重置</Button>
+            <Button v-if="canQuery" type="primary" @click="loadConfigs">搜索</Button>
+            <Button type="link" @click="collapsed = !collapsed">{{ collapsed ? '展开' : '收起' }}<IconifyIcon :icon="collapsed ? ERP_TOOLBAR_ICONS.expand : ERP_TOOLBAR_ICONS.collapse" class="ml-1 size-4" /></Button>
           </template>
         </CompactQueryBar>
       </template>
 
       <template #toolbar>
-        <CompactToolbar title="系统参数" subtitle="维护平台运行参数和敏感配置标记" />
+        <CompactToolbar>
+          <template #title><div class="list-title"><h2>系统参数</h2><Button v-if="queryHidden" type="link" @click="queryHidden = false">展开搜索</Button></div></template>
+          <Space :size="8">
+            <Tooltip v-if="canQuery" title="查询并隐藏搜索栏"><Button shape="circle" type="primary" @click="handleToolbarSearch"><i aria-hidden="true" class="vxe-button--item vxe-table-icon-search"></i></Button></Tooltip>
+            <Tooltip v-if="canQuery" title="刷新"><Button shape="circle" @click="loadConfigs"><i aria-hidden="true" class="vxe-button--item vxe-table-icon-refresh"></i></Button></Tooltip>
+            <Tooltip :title="blockFullscreen ? '还原' : '全屏'"><Button shape="circle" @click="toggleFullscreen"><i aria-hidden="true" class="vxe-button--item vxe-button--prefix-icon" :class="blockFullscreen ? 'vxe-table-icon-minimize' : 'vxe-table-icon-fullscreen'"></i></Button></Tooltip>
+            <TableColumnSettings :defaults="defaultColumnSettings" :model-value="columnSettings" storage-key="triobase:table-columns:system-config" @apply="applyColumnSettings" />
+          </Space>
+        </CompactToolbar>
       </template>
 
       <CompactTableFrame>
         <Table
+          :key="tableKey"
           row-key="id"
           :columns="columns"
           :data-source="configs"
@@ -226,7 +276,7 @@ onMounted(loadConfigs);
           :pagination="false"
           :scroll="{ x: 1570 }"
           size="small"
-          :sticky="{ offsetScroll: 0 }"
+          table-layout="fixed"
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'status'">
@@ -246,6 +296,7 @@ onMounted(loadConfigs);
             </template>
           </template>
         </Table>
+        <template #footer><div class="table-total">共 {{ configs.length }} 条记录</div></template>
       </CompactTableFrame>
     </BusinessPageScaffold>
 

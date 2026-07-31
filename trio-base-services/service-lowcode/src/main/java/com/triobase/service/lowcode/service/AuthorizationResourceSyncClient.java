@@ -147,6 +147,9 @@ public class AuthorizationResourceSyncClient {
         resource.setDisplayName(definition.getName());
         resource.setBusinessObjectId(definition.getId());
         resource.setLifecycleStatus("ACTIVE");
+        resource.setReadHideEnforced(true);
+        resource.setReadMaskEnforced(true);
+        resource.setWriteDenyEnforced(true);
         resource.setMetadataJson("{\"formKey\":\"" + escape(definition.getFormKey()) + "\",\"version\":"
                 + definition.getVersion() + "}");
         resource.setActions(FORM_ACTIONS.stream()

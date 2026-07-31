@@ -15,8 +15,11 @@ public class RoleDetailResponse {
     private Short status;
     private LocalDateTime createdAt;
     private List<String> menuIds;
+    private List<RoleMenuProjectionResponse> menuProjection;
 
-    public static RoleDetailResponse from(SysRole role, List<String> menuIds) {
+    public static RoleDetailResponse from(SysRole role,
+                                          List<String> menuIds,
+                                          List<RoleMenuProjectionResponse> menuProjection) {
         RoleDetailResponse response = new RoleDetailResponse();
         response.setId(role.getId());
         response.setRoleCode(role.getRoleCode());
@@ -25,6 +28,7 @@ public class RoleDetailResponse {
         response.setStatus(role.getStatus());
         response.setCreatedAt(role.getCreatedAt());
         response.setMenuIds(menuIds);
+        response.setMenuProjection(menuProjection);
         return response;
     }
 }

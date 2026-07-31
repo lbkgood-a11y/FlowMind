@@ -10,6 +10,7 @@ import com.triobase.service.lowcode.entity.LcFormFieldDefinition;
 import com.triobase.service.lowcode.mapper.FormDefinitionMapper;
 import com.triobase.service.lowcode.mapper.FormFieldDefinitionMapper;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -30,6 +31,11 @@ import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 class FormDefinitionServiceTest {
+
+    @BeforeAll
+    static void initMybatisPlusMetadata() {
+        MybatisPlusTestMetadata.initialize();
+    }
 
     @Mock
     private FormDefinitionMapper formDefinitionMapper;

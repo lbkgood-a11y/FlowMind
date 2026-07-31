@@ -50,6 +50,9 @@ auth:
       password: ${REDIS_PASSWORD:pwd123}
 
 triobase:
+  integrations:
+    lowcode:
+      base-url: ${LOWCODE_SERVICE_URL:http://localhost:8085}
   internal:
     token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
     allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-lowcode,service-api-runtime}

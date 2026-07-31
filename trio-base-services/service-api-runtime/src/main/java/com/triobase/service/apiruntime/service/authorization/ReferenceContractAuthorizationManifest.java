@@ -26,6 +26,9 @@ public final class ReferenceContractAuthorizationManifest {
         document.setDocumentType("CONTRACT");
         document.setDisplayName("合同单据");
         document.setBusinessObjectId("CONTRACT");
+        document.setReadHideEnforced(true);
+        document.setReadMaskEnforced(true);
+        document.setWriteDenyEnforced(true);
         document.setMetadataJson("{\"documentType\":\"CONTRACT\",\"reference\":true}");
         document.setActions(List.of(
                 action("VIEW", "查看合同", List.of()),

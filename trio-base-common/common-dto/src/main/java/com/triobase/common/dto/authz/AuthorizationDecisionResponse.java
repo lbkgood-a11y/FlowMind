@@ -23,6 +23,10 @@ public class AuthorizationDecisionResponse {
     private String businessObjectId;
     private String matchedGrantId;
     private String effect;
+    private String evaluationMode = "ACTUAL_USER";
+    private String simulatedRoleId;
+    private List<String> suppliedOrganizationIds = new ArrayList<>();
+    private List<AuthzMenuDerivation> menuDerivation = new ArrayList<>();
     private AuthzDataScopeResult dataScope;
     private List<AuthzFieldRule> fieldRules = new ArrayList<>();
     private List<AuthzGuardRequirement> guardRequirements = new ArrayList<>();

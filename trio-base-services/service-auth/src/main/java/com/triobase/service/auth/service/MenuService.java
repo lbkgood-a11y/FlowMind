@@ -3,6 +3,7 @@ package com.triobase.service.auth.service;
 import com.triobase.common.core.util.StringHelpers;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.service.auth.dto.CreateMenuRequest;
@@ -28,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -85,10 +87,74 @@ public class MenuService {
             wrapper.eq(SysMenu::getStatus, toStatus(status));
         }
 
-        return menuMapper.selectList(wrapper
+        List<SysMenu> menus = menuMapper.selectList(wrapper
                 .orderByAsc(SysMenu::getMenuGroup)
                 .orderByAsc(SysMenu::getSortOrder)
                 .orderByAsc(SysMenu::getCreatedAt));
+        enrichAuthorizationMappings(menus);
+        return menus;
+    }
+
+    private void enrichAuthorizationMappings(List<SysMenu> menus) {
+        if (menus == null || menus.isEmpty()) {
+            return;
+        }
+        Map<SysMenu, PermissionKey> parsed = new LinkedHashMap<>();
+        Set<String> resourceCodes = new HashSet<>();
+        for (SysMenu menu : menus) {
+            String permissionCode = StringHelpers.normalizeBlank(menu.getPermissionCode());
+            if (permissionCode == null) {
+                setMappingDiagnostic(menu, "MISSING", "No resource/action mapping is configured");
+                continue;
+            }
+            PermissionKey key = parsePermissionCode(permissionCode);
+            if (key == null) {
+                setMappingDiagnostic(menu, "INVALID_FORMAT", "Mapping must use resourceCode:actionCode");
+                continue;
+            }
+            menu.setAuthorizationResourceCode(key.resourceCode());
+            menu.setAuthorizationActionCode(key.actionCode());
+            parsed.put(menu, key);
+            resourceCodes.add(key.resourceCode());
+        }
+        if (parsed.isEmpty()) {
+            return;
+        }
+        String tenantId = StringUtils.hasText(com.triobase.common.core.context.SecurityContextHolder.getTenantId())
+                ? com.triobase.common.core.context.SecurityContextHolder.getTenantId() : DEFAULT_TENANT;
+        Map<String, SysAuthResource> resources = Optional.ofNullable(authResourceMapper.selectList(
+                        new QueryWrapper<SysAuthResource>()
+                                .eq("tenant_id", tenantId)
+                                .in("resource_code", resourceCodes)))
+                .orElseGet(List::of)
+                .stream().collect(Collectors.toMap(SysAuthResource::getResourceCode, value -> value, (left, right) -> left));
+        Set<String> registeredActionKeys = Optional.ofNullable(authActionMapper.selectList(
+                        new QueryWrapper<SysAuthAction>()
+                                .eq("tenant_id", tenantId)
+                                .in("resource_code", resourceCodes)
+                                .eq("status", STATUS_ENABLED)))
+                .orElseGet(List::of)
+                .stream().map(action -> action.getResourceCode() + "\u0000" + action.getActionCode())
+                .collect(Collectors.toSet());
+        for (Map.Entry<SysMenu, PermissionKey> entry : parsed.entrySet()) {
+            SysMenu menu = entry.getKey();
+            PermissionKey key = entry.getValue();
+            SysAuthResource resource = resources.get(key.resourceCode());
+            if (resource == null) {
+                setMappingDiagnostic(menu, "RESOURCE_NOT_FOUND", "Mapped authorization resource is not registered");
+            } else if (!ACTIVE.equalsIgnoreCase(resource.getLifecycleStatus())) {
+                setMappingDiagnostic(menu, "RESOURCE_INACTIVE", "Mapped authorization resource is inactive");
+            } else if (!registeredActionKeys.contains(key.resourceCode() + "\u0000" + key.actionCode())) {
+                setMappingDiagnostic(menu, "ACTION_NOT_FOUND_OR_INACTIVE", "Mapped action is missing or inactive");
+            } else {
+                setMappingDiagnostic(menu, "VALID", "Mapping participates in role menu derivation");
+            }
+        }
+    }
+
+    private void setMappingDiagnostic(SysMenu menu, String status, String message) {
+        menu.setAuthorizationMappingStatus(status);
+        menu.setAuthorizationMappingMessage(message);
     }
 
     public List<MenuRouteResponse> listRoutes() {

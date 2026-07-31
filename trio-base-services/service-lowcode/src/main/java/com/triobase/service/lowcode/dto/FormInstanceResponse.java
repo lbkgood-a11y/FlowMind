@@ -15,6 +15,8 @@ public class FormInstanceResponse {
     private String status;
     private String dataJson;
     private String submittedBy;
+    private String ownerOrgId;
+    private String ownerOrgProvenance;
     private String processKey;
     private String processInstanceId;
     private String workflowStatus;

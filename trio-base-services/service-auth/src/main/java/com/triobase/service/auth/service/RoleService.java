@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.service.auth.dto.CreateRoleRequest;
@@ -38,6 +39,7 @@ public class RoleService {
 
     public List<SysRole> list(String keyword, Integer status) {
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getTenantId, currentTenantId())
                 .orderByDesc(SysRole::getCreatedAt);
         String normalizedKeyword = StringHelpers.normalizeBlank(keyword);
         if (normalizedKeyword != null) {
@@ -63,6 +65,7 @@ public class RoleService {
                                     LocalDateTime createdStart,
                                     LocalDateTime createdEnd) {
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getTenantId, currentTenantId())
                 .orderByDesc(SysRole::getCreatedAt);
         String normalizedKeyword = StringHelpers.normalizeBlank(keyword);
         if (normalizedKeyword != null) {
@@ -96,12 +99,14 @@ public class RoleService {
     }
 
     public RoleDetailResponse findById(String id) {
-        SysRole role = roleMapper.selectById(id);
+        String tenantId = currentTenantId();
+        SysRole role = findTenantRole(id, tenantId);
         if (role == null) {
             throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
         }
-        List<String> menuIds = roleAuthorizationDataService.menuIdsForRole(id);
-        return RoleDetailResponse.from(role, menuIds);
+        var menuProjection = roleAuthorizationDataService.menuProjectionForRole(tenantId, id);
+        List<String> menuIds = menuProjection.stream().map(item -> item.getMenuId()).toList();
+        return RoleDetailResponse.from(role, menuIds, menuProjection);
     }
 
     public boolean existsRoleCode(String roleCode, String excludeId) {
@@ -119,6 +124,7 @@ public class RoleService {
 
         SysRole role = new SysRole();
         role.setId(UlidGenerator.nextUlid());
+        role.setTenantId(currentTenantId());
         role.setRoleCode(request.getRoleCode().trim());
         role.setRoleName(request.getRoleName().trim());
         role.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
@@ -129,20 +135,21 @@ public class RoleService {
 
     @Transactional
     public void delete(String id) {
-        if (roleMapper.selectById(id) == null) {
+        String tenantId = currentTenantId();
+        if (findTenantRole(id, tenantId) == null) {
             throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
         }
         if (userRoleMapper.selectCount(new LambdaQueryWrapper<SysUserRole>()
                 .eq(SysUserRole::getRoleId, id)) > 0) {
             throw new BizException(40043, "ROLE_HAS_USERS");
         }
-        roleAuthorizationDataService.deleteRoleAuthorizationData(id);
+        roleAuthorizationDataService.deleteRoleAuthorizationData(tenantId, id);
         roleMapper.deleteById(id);
     }
 
     @Transactional
     public SysRole update(String id, UpdateRoleRequest request) {
-        SysRole role = roleMapper.selectById(id);
+        SysRole role = findTenantRole(id, currentTenantId());
         if (role == null) {
             throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
         }
@@ -158,7 +165,7 @@ public class RoleService {
 
     @Transactional
     public SysRole updateStatus(String id, Integer status) {
-        SysRole role = roleMapper.selectById(id);
+        SysRole role = findTenantRole(id, currentTenantId());
         if (role == null) {
             throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
         }
@@ -182,6 +189,7 @@ public class RoleService {
 
     private long countRoleCode(String roleCode, String currentId) {
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getTenantId, currentTenantId())
                 .eq(SysRole::getRoleCode, roleCode);
         if (StringUtils.hasText(currentId)) {
             wrapper.ne(SysRole::getId, currentId);
@@ -191,6 +199,20 @@ public class RoleService {
 
     private Short toStatus(Integer status) {
         return status != null && status == 0 ? (short) 0 : (short) 1;
+    }
+
+    private SysRole findTenantRole(String id, String tenantId) {
+        return roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getId, id)
+                .eq(SysRole::getTenantId, tenantId));
+    }
+
+    private String currentTenantId() {
+        String tenantId = StringHelpers.normalizeBlank(SecurityContextHolder.getTenantId());
+        if (tenantId == null) {
+            throw new BizException(40082, "AUTHZ_TENANT_REQUIRED");
+        }
+        return tenantId;
     }
 
 }

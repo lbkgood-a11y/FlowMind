@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
@@ -132,6 +133,25 @@ class FormInstanceServiceTest {
     }
 
     @Test
+    void listCompilesOrganizationScopeIntoOwnerPredicate() {
+        setTenantUser();
+        AuthorizationDecisionResponse decision = allowDecision("VIEW");
+        when(authorizationService.requireFormDecision(eq("expense"), eq("VIEW"), isNull(), any()))
+                .thenReturn(decision);
+        when(authorizationService.dataAccessMode(decision))
+                .thenReturn(LowcodeAuthorizationService.DataAccessMode.ORG);
+        when(authorizationService.orgUnitIds(decision)).thenReturn(List.of("ORG-1", "ORG-2"));
+        when(formInstanceMapper.selectPage(any(Page.class), any(Wrapper.class)))
+                .thenReturn(new Page<>(1, 10, 0));
+        ArgumentCaptor<Wrapper<LcFormInstance>> wrapperCaptor = ArgumentCaptor.forClass(Wrapper.class);
+
+        service.list("expense", 1, 10);
+
+        verify(formInstanceMapper).selectPage(any(Page.class), wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getValue().getSqlSegment()).contains("ownerOrgId");
+    }
+
+    @Test
     void submitValidationFailureDoesNotInsert() {
         setTenantUser();
         when(formDefinitionService.findLatestByFormKey("expense")).thenReturn(publishedForm());
@@ -158,6 +178,7 @@ class FormInstanceServiceTest {
         when(authorizationService.requireFormDecision(eq("expense"), eq("SUBMIT"), isNull(), any()))
                 .thenReturn(decision);
         when(authorizationService.allowsCreate(decision)).thenReturn(true);
+        when(authorizationService.primarySubjectOrganizationId(decision)).thenReturn("ORG-PRIMARY");
         when(objectMapper.writeValueAsString(any())).thenReturn("{}");
         when(formInstanceMapper.insert(any(LcFormInstance.class))).thenAnswer(invocation -> {
             instanceRef.set(invocation.getArgument(0));
@@ -176,6 +197,8 @@ class FormInstanceServiceTest {
         assertEquals("trace-action-1", response.getActionTraceId());
         assertEquals("corr-001", response.getActionCorrelationId());
         assertEquals("act_lowcode_001", instanceRef.get().getActionId());
+        assertEquals("ORG-PRIMARY", response.getOwnerOrgId());
+        assertEquals("GOVERNED_AUTHORIZATION_SUBJECT", response.getOwnerOrgProvenance());
     }
 
     @Test

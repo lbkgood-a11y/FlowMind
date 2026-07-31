@@ -39,6 +39,9 @@ class AuthorizationResourceSyncClientTest {
                 .andExpect(jsonPath("$.ownerService").value("service-lowcode"))
                 .andExpect(jsonPath("$.resources[0].resourceCode").value("LOWCODE_FORM:EXPENSE"))
                 .andExpect(jsonPath("$.resources[0].resourceType").value("LOWCODE_FORM"))
+                .andExpect(jsonPath("$.resources[0].readHideEnforced").value(true))
+                .andExpect(jsonPath("$.resources[0].readMaskEnforced").value(true))
+                .andExpect(jsonPath("$.resources[0].writeDenyEnforced").value(true))
                 .andExpect(jsonPath("$.resources[0].businessObjectId").value("FORM001"))
                 .andExpect(jsonPath("$.resources[0].actions[*].actionCode",
                         hasItems("VIEW", "CREATE", "EDIT", "DELETE", "SUBMIT", "APPROVE", "EXPORT",

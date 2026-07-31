@@ -2,6 +2,7 @@
 import type { TableProps } from 'ant-design-vue';
 
 import type { SystemGovernanceApi } from '#/api';
+import type { TableColumnSetting } from '#/shared';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -14,9 +15,11 @@ import {
   Descriptions,
   DescriptionsItem,
   Drawer,
+  FormItem,
   Input,
   Pagination,
   Select,
+  Space,
   Table,
   Tag,
   Tooltip,
@@ -29,6 +32,8 @@ import {
   CompactQueryBar,
   CompactTableFrame,
   CompactToolbar,
+  restoreTableColumnSettings,
+  TableColumnSettings,
 } from '#/shared';
 
 const AUDIT_PERMISSIONS = {
@@ -42,27 +47,23 @@ const logs = ref<SystemGovernanceApi.AuditLog[]>([]);
 const loading = ref(false);
 const detailOpen = ref(false);
 const detail = ref<SystemGovernanceApi.AuditLog>();
+const collapsed = ref(false);
+const queryHidden = ref(false);
+const blockFullscreen = ref(false);
+const tableKey = ref(0);
 const page = ref(1);
 const size = ref(20);
 const total = ref(0);
 
-function paginationTotal(totalCount: number, range: [number, number]) {
-  return `共 ${totalCount} 条记录，本页 ${range[0]}-${range[1]} 条`;
-}
-
 const query = reactive({
-  actionId: '',
-  actionSource: undefined as string | undefined,
   actionStatus: undefined as string | undefined,
-  actionTargetId: '',
-  actionTargetType: '',
   actionType: '',
   requestPath: '',
   resultStatus: undefined as string | undefined,
   username: '',
 });
 
-const columns = computed<TableProps['columns']>(() => [
+const baseColumns: NonNullable<TableProps['columns']> = [
   { dataIndex: 'operatedAt', fixed: 'left', key: 'operatedAt', title: '操作时间', width: 190 },
   { dataIndex: 'username', key: 'username', title: '用户', width: 100 },
   { dataIndex: 'httpMethod', key: 'httpMethod', title: '方法', width: 70 },
@@ -76,7 +77,31 @@ const columns = computed<TableProps['columns']>(() => [
   { dataIndex: 'clientIp', key: 'clientIp', title: 'IP', width: 115 },
   { dataIndex: 'traceId', ellipsis: true, key: 'traceId', title: 'TraceId', width: 190 },
   { fixed: 'right', key: 'action', title: '操作', width: 70 },
-]);
+];
+
+const defaultColumnSettings: TableColumnSetting[] = baseColumns.map((column) => ({
+  fixed: column.fixed === true ? 'left' : column.fixed || undefined,
+  key: String(column.key),
+  required: column.key === 'action',
+  title: String(column.title),
+  visible: true,
+  width: Number(column.width || 120),
+}));
+const columnSettings = reactive(
+  restoreTableColumnSettings(
+    'triobase:table-columns:system-audit-log',
+    defaultColumnSettings,
+  ),
+);
+const columns = computed<TableProps['columns']>(() =>
+  columnSettings
+    .filter((setting) => setting.visible)
+    .map((setting) => ({
+      ...baseColumns.find((column) => String(column.key) === setting.key),
+      fixed: setting.fixed,
+      width: setting.width,
+    })),
+);
 
 async function loadLogs() {
   if (!canQuery.value) {
@@ -87,11 +112,7 @@ async function loadLogs() {
   loading.value = true;
   try {
     const result = await getAuditLogPage({
-      actionId: query.actionId || undefined,
-      actionSource: query.actionSource,
       actionStatus: query.actionStatus,
-      actionTargetId: query.actionTargetId || undefined,
-      actionTargetType: query.actionTargetType || undefined,
       actionType: query.actionType || undefined,
       page: page.value,
       requestPath: query.requestPath || undefined,
@@ -115,14 +136,25 @@ function resetQuery() {
   query.username = '';
   query.requestPath = '';
   query.resultStatus = undefined;
-  query.actionId = '';
   query.actionType = '';
-  query.actionSource = undefined;
   query.actionStatus = undefined;
-  query.actionTargetType = '';
-  query.actionTargetId = '';
   page.value = 1;
   loadLogs();
+}
+
+async function handleToolbarSearch() {
+  page.value = 1;
+  await loadLogs();
+  queryHidden.value = true;
+}
+
+function applyColumnSettings(settings: TableColumnSetting[]) {
+  columnSettings.splice(0, columnSettings.length, ...settings);
+  tableKey.value += 1;
+}
+
+function toggleFullscreen() {
+  blockFullscreen.value = !blockFullscreen.value;
 }
 
 function asAudit(record: Record<string, any>) {
@@ -134,57 +166,62 @@ onMounted(loadLogs);
 
 <template>
   <Page auto-content-height>
-    <BusinessPageScaffold class="audit-page" pattern="single-table">
+    <BusinessPageScaffold
+      class="audit-page"
+      pattern="single-table"
+      :fullscreen="blockFullscreen"
+      :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }"
+    >
       <template #query>
-        <CompactQueryBar :columns="4">
-          <Input v-model:value="query.username" class="query-input" placeholder="用户" allow-clear />
-          <Input v-model:value="query.requestPath" class="query-input path-input" placeholder="路径" allow-clear />
-          <Input v-model:value="query.actionId" class="query-input path-input" placeholder="ActionId" allow-clear />
-          <Input v-model:value="query.actionType" class="query-input path-input" placeholder="Action 类型" allow-clear />
-          <Input v-model:value="query.actionTargetType" class="query-input" placeholder="目标类型" allow-clear />
-          <Input v-model:value="query.actionTargetId" class="query-input" placeholder="目标 ID" allow-clear />
-          <Select
+        <CompactQueryBar v-show="!queryHidden" :collapsed="collapsed" :columns="4">
+          <FormItem label="用户"><Input v-model:value="query.username" allow-clear placeholder="请输入" /></FormItem>
+          <FormItem label="请求路径"><Input v-model:value="query.requestPath" allow-clear placeholder="请输入" /></FormItem>
+          <FormItem label="Action 类型"><Input v-model:value="query.actionType" allow-clear placeholder="请输入" /></FormItem>
+          <FormItem v-if="!collapsed" label="结果">
+<Select
             v-model:value="query.resultStatus"
             allow-clear
-            class="query-select"
             :options="[
               { label: '成功', value: 'SUCCESS' },
               { label: '失败', value: 'FAILURE' },
             ]"
-            placeholder="结果"
+            placeholder="请选择"
           />
-          <Select
-            v-model:value="query.actionSource"
-            allow-clear
-            class="query-select"
-            :options="['GUI','LUI','AGENT','API','EVENT','SCHEDULER','WORKFLOW','SYSTEM'].map((value) => ({ label: value, value }))"
-            placeholder="Action 来源"
-          />
-          <Select
+</FormItem>
+          <FormItem v-if="!collapsed" label="Action 状态">
+<Select
             v-model:value="query.actionStatus"
             allow-clear
-            class="query-select"
             :options="['CREATED','VALIDATING','REJECTED','AUTHORIZED','ACCEPTED','RUNNING','SUCCEEDED','FAILED','CANCELLED','COMPENSATING','COMPENSATED'].map((value) => ({ label: value, value }))"
-            placeholder="Action 状态"
+            placeholder="请选择"
           />
+</FormItem>
           <template #actions>
-          <Button v-if="canQuery" type="primary" @click="page = 1; loadLogs()">查询</Button>
-          <Button v-if="canQuery" @click="resetQuery">重置</Button>
-        <Tooltip v-if="canQuery" title="刷新">
-          <Button shape="circle" @click="loadLogs">
-            <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
-          </Button>
-        </Tooltip>
+            <Button v-if="canQuery" @click="resetQuery">重置</Button>
+            <Button v-if="canQuery" type="primary" @click="page = 1; loadLogs()">搜索</Button>
+            <Button type="link" @click="collapsed = !collapsed">
+              {{ collapsed ? '展开' : '收起' }}
+              <IconifyIcon :icon="collapsed ? ERP_TOOLBAR_ICONS.expand : ERP_TOOLBAR_ICONS.collapse" class="ml-1 size-4" />
+            </Button>
           </template>
         </CompactQueryBar>
       </template>
 
       <template #toolbar>
-        <CompactToolbar title="审计日志" subtitle="按用户、请求、Action 和 TraceId 追踪操作链路" />
+        <CompactToolbar>
+          <template #title><div class="list-title"><h2>审计日志</h2><Button v-if="queryHidden" type="link" @click="queryHidden = false">展开搜索</Button></div></template>
+          <Space :size="8">
+            <Tooltip v-if="canQuery" title="查询并隐藏搜索栏"><Button shape="circle" type="primary" @click="handleToolbarSearch"><i aria-hidden="true" class="vxe-button--item vxe-table-icon-search"></i></Button></Tooltip>
+            <Tooltip v-if="canQuery" title="刷新"><Button shape="circle" @click="loadLogs"><i aria-hidden="true" class="vxe-button--item vxe-table-icon-refresh"></i></Button></Tooltip>
+            <Tooltip :title="blockFullscreen ? '还原' : '全屏'"><Button shape="circle" @click="toggleFullscreen"><i aria-hidden="true" class="vxe-button--item vxe-button--prefix-icon" :class="blockFullscreen ? 'vxe-table-icon-minimize' : 'vxe-table-icon-fullscreen'"></i></Button></Tooltip>
+            <TableColumnSettings :defaults="defaultColumnSettings" :model-value="columnSettings" storage-key="triobase:table-columns:system-audit-log" @apply="applyColumnSettings" />
+          </Space>
+        </CompactToolbar>
       </template>
 
       <CompactTableFrame>
         <Table
+          :key="tableKey"
           row-key="id"
           :columns="columns"
           :data-source="logs"
@@ -192,7 +229,7 @@ onMounted(loadLogs);
           :pagination="false"
           :scroll="{ x: 1575 }"
           size="small"
-          :sticky="{ offsetScroll: 0 }"
+          table-layout="fixed"
         >
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'resultStatus'">
@@ -209,20 +246,20 @@ onMounted(loadLogs);
             </template>
           </template>
         </Table>
-      </CompactTableFrame>
-
-      <div class="pager">
-        <Pagination
-          v-model:current="page"
-          v-model:page-size="size"
-          size="small"
-          show-quick-jumper
-          show-size-changer
-          :show-total="paginationTotal"
-          :total="total"
+        <template #footer>
+          <div class="table-total">共 {{ total }} 条记录</div>
+          <Pagination
+            v-model:current="page"
+            v-model:page-size="size"
+            :page-size-options="['10', '20', '50', '100']"
+            size="small"
+            :total="total"
+            show-less-items
+            show-size-changer
           @change="loadLogs"
-        />
-      </div>
+          />
+        </template>
+      </CompactTableFrame>
     </BusinessPageScaffold>
 
     <Drawer v-model:open="detailOpen" title="审计详情" width="720px">

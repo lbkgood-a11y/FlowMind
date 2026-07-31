@@ -19,6 +19,9 @@ public class SysAuthResource extends BaseEntity {
     private String displayName;
     private String lifecycleStatus;
     private Short globalFlag;
+    private Short readHideEnforced;
+    private Short readMaskEnforced;
+    private Short writeDenyEnforced;
     private String metadataJson;
     private LocalDateTime lastSyncedAt;
 }

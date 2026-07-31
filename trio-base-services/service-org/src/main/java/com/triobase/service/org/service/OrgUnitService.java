@@ -1,6 +1,7 @@
 package com.triobase.service.org.service;
 
 import com.triobase.common.core.context.SecurityContextHolder;
+import com.triobase.common.dto.internal.OrgOwnershipResponse;
 import com.triobase.common.core.util.StringHelpers;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -329,6 +330,39 @@ public class OrgUnitService {
                     );
                 })
                 .toList();
+    }
+
+    public OrgOwnershipResponse resolvePrimaryOwnership(String tenantId, String userId) {
+        if (!StringUtils.hasText(tenantId) || !StringUtils.hasText(userId)) {
+            throw new BizException(40049, "ORG_OWNERSHIP_TENANT_USER_REQUIRED");
+        }
+        String normalizedTenant = tenantId.trim();
+        SysOrgDimension dimension = orgDimensionMapper.selectOne(
+                new LambdaQueryWrapper<SysOrgDimension>()
+                        .eq(SysOrgDimension::getTenantId, normalizedTenant)
+                        .eq(SysOrgDimension::getDimensionCode, DEFAULT_DIMENSION_CODE)
+                        .eq(SysOrgDimension::getStatus, (short) 1)
+                        .last("LIMIT 1"));
+        if (dimension == null) {
+            return new OrgOwnershipResponse(normalizedTenant, userId.trim(), null, false);
+        }
+        LocalDate today = LocalDate.now();
+        SysUserOrgUnit ownership = userOrgUnitMapper.selectOne(
+                new LambdaQueryWrapper<SysUserOrgUnit>()
+                        .eq(SysUserOrgUnit::getTenantId, normalizedTenant)
+                        .eq(SysUserOrgUnit::getUserId, userId.trim())
+                        .eq(SysUserOrgUnit::getDimensionId, dimension.getId())
+                        .eq(SysUserOrgUnit::getStatus, (short) 1)
+                        .and(query -> query.isNull(SysUserOrgUnit::getEffectiveFrom)
+                                .or().le(SysUserOrgUnit::getEffectiveFrom, today))
+                        .and(query -> query.isNull(SysUserOrgUnit::getEffectiveTo)
+                                .or().ge(SysUserOrgUnit::getEffectiveTo, today))
+                        .orderByDesc(SysUserOrgUnit::getIsPrimary)
+                        .orderByAsc(SysUserOrgUnit::getCreatedAt)
+                        .last("LIMIT 1"));
+        String orgUnitId = ownership != null ? ownership.getOrgUnitId() : null;
+        return new OrgOwnershipResponse(normalizedTenant, userId.trim(), orgUnitId,
+                StringUtils.hasText(orgUnitId));
     }
 
     public List<OrgUnitUserResponse> listOrgUnitUsers(String orgUnitId, String dimensionCode) {

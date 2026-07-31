@@ -27,6 +27,9 @@ public class AuthorizationResourceTreeResponse {
         private String businessObjectId;
         private String displayName;
         private String lifecycleStatus;
+        private Boolean readHideEnforced;
+        private Boolean readMaskEnforced;
+        private Boolean writeDenyEnforced;
         private LocalDateTime lastSyncedAt;
         private List<ActionNode> actions = new ArrayList<>();
         private List<FieldNode> fields = new ArrayList<>();

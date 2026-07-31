@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 /**
  * End-to-end composite test verifying the full sync → grant → decide pipeline
@@ -61,7 +62,9 @@ class AuthorizationDecisionIntegrationTest {
     @Mock private UserRoleMapper userRoleMapper;
     @Mock private RoleMapper roleMapper;
     @Mock private DataPolicyService dataPolicyService;
+    @Mock private RoleAuthorizationDataService roleAuthorizationDataService;
     @Mock private AuthorizationVersionService versionService;
+    @Mock private ActiveReleaseEvidenceService activeReleaseEvidenceService;
 
     private AuthorizationRegistryService registryService;
     private AuthorizationDecisionService decisionService;
@@ -80,8 +83,11 @@ class AuthorizationDecisionIntegrationTest {
                 resourceMapper, actionMapper, grantMapper,
                 fieldMapper, fieldPolicyMapper, guardTemplateMapper,
                 decisionLogMapper, userMapper, userRoleMapper,
-                roleMapper, dataPolicyService, versionService, new ObjectMapper());
+                roleMapper, dataPolicyService, roleAuthorizationDataService,
+                versionService, activeReleaseEvidenceService, new ObjectMapper());
         when(versionService.current(anyString())).thenReturn(1L);
+        lenient().when(activeReleaseEvidenceService.supportsGrant(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(true);
     }
 
     @Test
@@ -188,7 +194,8 @@ class AuthorizationDecisionIntegrationTest {
         // data policy: all data
         var dimension = new com.triobase.service.auth.dto.DataPolicyDimensionResponse();
         dimension.setDimensionCode("DEFAULT");
-        dimension.setScopeType("ALL");
+        dimension.setScopeType("ASSIGNED_ORGS");
+        dimension.setOrgUnitIds(List.of("ORG_FINANCE"));
         var policy = new com.triobase.service.auth.dto.DataPolicyResponse();
         policy.setId("DP_ALL");
         policy.setEffect("ALLOW");
@@ -210,11 +217,26 @@ class AuthorizationDecisionIntegrationTest {
         guardTemplate.setStatus((short) 1);
         when(guardTemplateMapper.selectList(any())).thenReturn(List.of(guardTemplate));
 
+        var maskedAmount = new com.triobase.service.auth.entity.SysAuthFieldPolicy();
+        maskedAmount.setId("FP_AMOUNT");
+        maskedAmount.setTenantId(TENANT);
+        maskedAmount.setSubjectType("USER");
+        maskedAmount.setSubjectId(USER_ID);
+        maskedAmount.setResourceCode(RESOURCE_CODE);
+        maskedAmount.setFieldKey("amount");
+        maskedAmount.setReadMode("MASKED");
+        maskedAmount.setWriteMode("READ_ONLY");
+        maskedAmount.setMaskStrategy("LAST4");
+        maskedAmount.setEffect("ALLOW");
+        maskedAmount.setStatus((short) 1);
+        when(fieldPolicyMapper.selectList(any())).thenReturn(List.of(maskedAmount));
+
         AuthorizationDecisionRequest decideReq = new AuthorizationDecisionRequest();
         decideReq.setTenantId(TENANT);
         decideReq.setUserId(USER_ID);
         decideReq.setResourceCode(RESOURCE_CODE);
         decideReq.setActionCode("VIEW");
+        decideReq.setFieldKeys(List.of("amount"));
 
         AuthorizationDecisionResponse decideResp = decisionService.decide(decideReq);
 
@@ -222,6 +244,10 @@ class AuthorizationDecisionIntegrationTest {
         assertThat(decideResp.getGuardRequirements())
                 .extracting("guardCode")
                 .contains("WORKFLOW_CANDIDATE");
+        assertThat(decideResp.getDataScope().getOrgUnitIds()).contains("ORG_FINANCE");
+        assertThat(decideResp.getFieldRules())
+                .extracting("fieldKey", "readMode", "writeMode")
+                .contains(org.assertj.core.groups.Tuple.tuple("amount", "MASKED", "READ_ONLY"));
     }
 
     @Test

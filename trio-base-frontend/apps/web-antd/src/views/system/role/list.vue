@@ -8,6 +8,7 @@ import type {
   SystemMenuApi,
   SystemOrgApi,
   SystemRoleApi,
+  SystemUserApi,
 } from '#/api';
 import type { TableColumnSetting } from '#/shared';
 
@@ -58,12 +59,12 @@ import {
   getRoleAuthorizationProfile,
   getRoleDetail,
   getRolePage,
+  getUserList,
   previewAuthorizationDecision,
+  previewRoleAuthorizationDecision,
   replaceRoleFunctionGrants,
   roleCodeExists,
   saveAuthorizationFieldPolicy,
-  saveAuthorizationGuardTemplate,
-  updateAuthorizationGuardTemplateStatus,
   updateRole,
   updateRoleStatus,
 } from '#/api';
@@ -73,6 +74,9 @@ import {
   restoreTableColumnSettings,
   TableColumnSettings,
 } from '#/shared';
+import AuthorizationStageNavigation from './components/AuthorizationStageNavigation.vue';
+import FieldEnforcementCapabilities from './components/FieldEnforcementCapabilities.vue';
+import PageCapabilityAuthorizationWorkbench from './components/PageCapabilityAuthorizationWorkbench.vue';
 
 const RangePicker = DatePicker.RangePicker;
 const TabPane = Tabs.TabPane;
@@ -281,7 +285,11 @@ const tableKey = ref(0);
 const editingRole = ref<SystemRoleApi.RoleDetail>();
 const detailRole = ref<SystemRoleApi.RoleDetail>();
 const selectedRoleViewKey = ref<RoleViewKey>('all');
-const activeAuthorizationTab = ref<AuthorizationTabKey>('menu');
+const guidedAuthorizationWorkbench =
+  import.meta.env.VITE_ROLE_AUTHORIZATION_WORKBENCH !== 'legacy';
+const activeAuthorizationTab = ref<AuthorizationTabKey>(
+  guidedAuthorizationWorkbench ? 'function' : 'menu',
+);
 const authorizationTree = ref<SystemAuthorizationApi.ResourceTree>();
 const authorizationOptions = ref<SystemAuthorizationApi.AdminOptions>();
 const authorizationProfile = ref<SystemAuthorizationApi.RoleAuthorizationProfile>();
@@ -290,6 +298,7 @@ const orgOptionsMap = ref<Record<string, { label: string; value: string }[]>>({}
 const functionGrantCheckedKeys = ref<CheckedKeysValue>([]);
 const originalFunctionGrantIds = ref<Record<string, string>>({});
 const previewResult = ref<SystemAuthorizationApi.DecisionPreview>();
+const previewUsers = ref<SystemUserApi.SystemUser[]>([]);
 const { hasAccessByCodes } = useAccess();
 
 const canQuery = computed(() => hasAccessByCodes([ROLE_PERMISSIONS.query]));
@@ -366,15 +375,8 @@ const previewForm = reactive({
   businessObjectId: '',
   resourceCode: '',
   userId: '',
-});
-const guardDrawerOpen = ref(false);
-const guardSaving = ref(false);
-const guardForm = reactive({
-  guardCode: '',
-  ownerService: '',
-  supportedResourceTypes: '',
-  description: '',
-  configSchemaJson: '',
+  mode: 'actual' as 'actual' | 'simulation',
+  organizationIds: [] as string[],
 });
 
 const menuTree = computed(() => buildMenuTree(menus.value, true));
@@ -467,11 +469,69 @@ const dimensionOptions = computed(() =>
 const assignedOrgOptions = computed(
   () => orgOptionsMap.value[dataPolicyForm.dimensionCode] ?? [],
 );
+const selectedFieldResource = computed(() =>
+  resourceList.value.find(
+    (resource) => resource.resourceCode === fieldPolicyForm.resourceCode,
+  ),
+);
+const previewUserOptions = computed(() =>
+  previewUsers.value.map((user) => ({
+    label: `${user.username} (${user.id})`,
+    value: user.id,
+  })),
+);
+const selectedPreviewUser = computed(() =>
+  previewUsers.value.find((user) => user.id === previewForm.userId),
+);
+const previewUserHasRole = computed(() =>
+  Boolean(
+    editingRole.value &&
+      selectedPreviewUser.value?.roles?.includes(editingRole.value.roleCode),
+  ),
+);
+const menuMappingWarnings = computed(() =>
+  menus.value.filter(
+    (menu) =>
+      menu.status !== 0 &&
+      menu.menuType !== 'catalog' &&
+      menu.authorizationMappingStatus &&
+      menu.authorizationMappingStatus !== 'VALID',
+  ),
+);
+const dataScopeSummary = computed(() => {
+  const resource = findResource(dataPolicyForm.resourceCode);
+  const scope = dataScopeLabel(dataPolicyForm.scopeType);
+  const organizations = dataPolicyForm.orgUnitIds.length
+    ? `${dataPolicyForm.orgUnitIds.length} 个指定组织`
+    : scope;
+  return resource
+    ? `${resource.displayName || resource.resourceCode} / ${dataPolicyForm.actionCode || '请选择动作'}：${organizations}`
+    : '请选择资源、动作和数据范围。';
+});
+const authorizationCompletedStages = computed<AuthorizationTabKey[]>(() => {
+  const completed: AuthorizationTabKey[] = [];
+  if (selectedFunctionGrantCount.value > 0) completed.push('function');
+  if (dataPolicyRows.value.length > 0) completed.push('data');
+  if (fieldPolicyRows.value.length > 0) completed.push('field');
+  if (resourceGuardRows.value.length >= 0) completed.push('guard');
+  if (previewResult.value) completed.push('preview');
+  return completed;
+});
 const fieldReadModeOptions = computed(() =>
-  (authorizationOptions.value?.fieldReadModes ?? []).map(toSelectOption),
+  (authorizationOptions.value?.fieldReadModes ?? []).map((item) => ({
+    ...toSelectOption(item),
+    disabled:
+      (item.code === 'HIDDEN' && !selectedFieldResource.value?.readHideEnforced) ||
+      (item.code === 'MASKED' && !selectedFieldResource.value?.readMaskEnforced),
+  })),
 );
 const fieldWriteModeOptions = computed(() =>
-  (authorizationOptions.value?.fieldWriteModes ?? []).map(toSelectOption),
+  (authorizationOptions.value?.fieldWriteModes ?? []).map((item) => ({
+    ...toSelectOption(item),
+    disabled:
+      ['DENIED', 'READ_ONLY'].includes(item.code) &&
+      !selectedFieldResource.value?.writeDenyEnforced,
+  })),
 );
 const maskStrategyOptions = computed(() =>
   (authorizationOptions.value?.maskStrategies ?? []).map(toSelectOption),
@@ -963,7 +1023,7 @@ function selectRoleView(keys: Array<number | string>) {
 function resetForm() {
   editingRole.value = undefined;
   permissionOnly.value = false;
-  activeAuthorizationTab.value = canQueryAuthz.value ? 'function' : 'menu';
+  activeAuthorizationTab.value = guidedAuthorizationWorkbench ? 'function' : 'menu';
   formModel.description = '';
   formModel.roleCode = '';
   formModel.roleName = '';
@@ -983,6 +1043,9 @@ async function openEdit(record: SystemRoleApi.SystemRole, onlyPermissions = fals
   await Promise.all([
     loadMenusForAuthorization(true),
     loadAuthorizationWorkbench(record.id),
+    getUserList({ page: 1, size: 100, status: 1 }).then((result) => {
+      previewUsers.value = result.items;
+    }),
   ]);
   const detail = await getRoleDetail(record.id);
   editingRole.value = detail;
@@ -1148,64 +1211,17 @@ async function removeFieldPolicy(policy: SystemAuthorizationApi.FieldPolicy) {
   await refreshAuthorizationProfile();
 }
 
-function openGuardDrawer() {
-  guardForm.guardCode = '';
-  guardForm.ownerService = '';
-  guardForm.supportedResourceTypes = '';
-  guardForm.description = '';
-  guardForm.configSchemaJson = '';
-  guardDrawerOpen.value = true;
-}
-
-async function handleSaveGuard() {
-  if (!guardForm.guardCode || !guardForm.ownerService) {
-    message.warning('请填写守卫代码和所属服务');
-    return;
-  }
-  guardSaving.value = true;
-  try {
-    await saveAuthorizationGuardTemplate({
-      guardCode: guardForm.guardCode,
-      ownerService: guardForm.ownerService,
-      supportedResourceTypes: guardForm.supportedResourceTypes || undefined,
-      description: guardForm.description || undefined,
-      configSchemaJson: guardForm.configSchemaJson || undefined,
-    });
-    message.success('守卫模板已创建');
-    guardDrawerOpen.value = false;
-    authorizationOptions.value = await getAuthorizationAdminOptions();
-  } catch {
-    message.error('创建守卫模板失败');
-  } finally {
-    guardSaving.value = false;
-  }
-}
-
-async function toggleGuardTemplate(
-  template: SystemAuthorizationApi.GuardTemplate,
-  checked: boolean,
-) {
-  if (!template.id) return;
-  if (!canUpdateAuthz.value) {
-    message.warning('当前账号没有更新业务规则的权限');
-    return;
-  }
-  await updateAuthorizationGuardTemplateStatus(template.id, checked ? 1 : 0);
-  message.success('业务规则状态已更新');
-  if (authorizationOptions.value) {
-    authorizationOptions.value.guardTemplates =
-      authorizationOptions.value.guardTemplates.map((item) =>
-        item.id === template.id ? { ...item, status: checked ? 1 : 0 } : item,
-      );
-  }
-}
-
 async function runDecisionPreview() {
   if (!canCreateAuthz.value) {
     message.warning('当前账号没有决策预览权限');
     return;
   }
-  if (!previewForm.userId.trim() || !previewForm.resourceCode || !previewForm.actionCode) {
+  if (
+    (previewForm.mode === 'actual' && !previewForm.userId.trim()) ||
+    !previewForm.resourceCode ||
+    !previewForm.actionCode ||
+    (previewForm.mode === 'simulation' && !editingRole.value?.id)
+  ) {
     message.warning('请输入预览用户并选择资源动作');
     return;
   }
@@ -1213,14 +1229,24 @@ async function runDecisionPreview() {
   previewLoading.value = true;
   previewResult.value = undefined;
   try {
-    previewResult.value = await previewAuthorizationDecision({
+    const payload = {
       actionCode: previewForm.actionCode,
       businessObjectId: previewForm.businessObjectId.trim() || undefined,
       fieldKeys: (resource?.fields ?? []).map((field) => field.fieldKey),
       ownerService: resource?.ownerService,
       resourceCode: previewForm.resourceCode,
-      userId: previewForm.userId.trim(),
-    });
+    };
+    previewResult.value =
+      previewForm.mode === 'simulation'
+        ? await previewRoleAuthorizationDecision({
+            ...payload,
+            organizationIds: previewForm.organizationIds,
+            roleId: editingRole.value!.id,
+          })
+        : await previewAuthorizationDecision({
+            ...payload,
+            userId: previewForm.userId.trim(),
+          });
   } finally {
     previewLoading.value = false;
   }
@@ -1265,7 +1291,7 @@ async function submitForm() {
       if (!permissionOnly.value) {
         await updateRole(editingRole.value.id, payload);
       }
-      if (!(await syncFunctionGrants(editingRole.value.id))) {
+      if (!guidedAuthorizationWorkbench && !(await syncFunctionGrants(editingRole.value.id))) {
         return;
       }
       message.success(permissionOnly.value ? '角色授权已更新' : '角色已更新');
@@ -1575,7 +1601,7 @@ onMounted(() => {
       v-model:open="formOpen"
       :class="{ 'role-authorization-drawer': permissionOnly }"
       :title="permissionOnly ? '角色授权' : editingRole ? '编辑角色' : '新增角色'"
-      width="760"
+      width="1180"
       :destroy-on-close="false"
     >
       <Form
@@ -1622,13 +1648,38 @@ onMounted(() => {
           </FormItem>
         </div>
 
+        <PageCapabilityAuthorizationWorkbench
+          v-if="guidedAuthorizationWorkbench && editingRole && canQueryAuthz"
+          :can-manage="canUpdateAuthz"
+          :role-id="editingRole.id"
+          @published="refreshRoleProjection(editingRole.id)"
+        />
+
+        <div
+          v-if="!guidedAuthorizationWorkbench && ((canQueryMenus && editingRole) || canQueryAuthz)"
+          class="authorization-workbench-layout"
+        >
+          <aside
+            v-if="guidedAuthorizationWorkbench && editingRole && canQueryAuthz"
+            class="authorization-stage-sidebar"
+          >
+            <div class="authorization-stage-heading">角色授权实施</div>
+            <p>按顺序完成配置，并在最后验证有效权限。</p>
+            <AuthorizationStageNavigation
+              :active-key="activeAuthorizationTab"
+              :completed-keys="authorizationCompletedStages"
+              @change="(key) => (activeAuthorizationTab = key)"
+            />
+          </aside>
+          <main class="authorization-stage-content">
         <Tabs
           v-if="(canQueryMenus && editingRole) || canQueryAuthz"
           v-model:active-key="activeAuthorizationTab"
           class="authorization-tabs"
+          :tab-bar-style="guidedAuthorizationWorkbench ? { display: 'none' } : undefined"
           size="small"
         >
-          <TabPane v-if="canQueryMenus && editingRole" key="menu" tab="菜单可见性">
+          <TabPane v-if="!guidedAuthorizationWorkbench" key="menu" tab="菜单可见性">
             <div class="authorization-toolbar">
               <span>由功能授权自动推导</span>
               <Tag color="blue">{{ visibleMenuCount }} 项</Tag>
@@ -1651,7 +1702,11 @@ onMounted(() => {
             key="function"
             tab="功能授权"
           >
-            <div v-if="editingRole" class="authorization-tab-body">
+            <div v-if="editingRole" class="authorization-tab-body function-menu-stage">
+              <section class="authorization-stage-panel">
+                <div class="authorization-stage-panel-heading">
+                  <div><strong>1. 选择功能</strong><p>功能授权是菜单可见性的唯一来源。</p></div>
+                </div>
               <div class="authorization-toolbar">
                 <span>资源动作</span>
                 <Space :size="8">
@@ -1678,12 +1733,61 @@ onMounted(() => {
                   :loading="authorizationLoading"
                 />
               </div>
+              </section>
+              <section class="authorization-stage-panel">
+              <div class="authorization-stage-panel-heading">
+                <div><strong>2. 确认派生菜单</strong><p>蓝色为直接授权，灰色为保持导航结构而补齐的祖先。</p></div>
+              </div>
+              <div class="authorization-toolbar">
+                <span>菜单由功能授权自动推导，不再单独保存。</span>
+                <Tag color="blue">{{ visibleMenuCount }} 项</Tag>
+              </div>
+              <div v-if="menuMappingWarnings.length" class="decision-reasons denied">
+                <div v-for="menu in menuMappingWarnings" :key="menu.id">
+                  <Tag color="error">{{ menu.authorizationMappingStatus }}</Tag>
+                  <span>{{ menu.menuName }}：{{ menu.authorizationMappingMessage }}</span>
+                </div>
+              </div>
+              <div v-if="editingRole.menuProjection?.length" class="authorization-list">
+                <div
+                  v-for="projection in editingRole.menuProjection"
+                  :key="projection.menuId"
+                  class="authorization-list-item"
+                >
+                  <span>{{ projection.menuName || projection.menuId }}</span>
+                  <Space :size="4">
+                    <Tag :color="projection.derivation === 'DIRECT_GRANT' ? 'blue' : 'default'">
+                      {{ projection.derivation }}
+                    </Tag>
+                    <Tag v-if="projection.resourceCode">
+                      {{ projection.resourceCode }} / {{ projection.actionCode }}
+                    </Tag>
+                  </Space>
+                </div>
+              </div>
+              <div class="permission-panel">
+                <Tree
+                  :selected-keys="formModel.visibleMenuIds"
+                  :tree-data="menuTree"
+                  block-node
+                  default-expand-all
+                  :loading="loadingMenus"
+                />
+              </div>
+              </section>
             </div>
             <Empty v-else description="保存角色后配置功能授权" />
           </TabPane>
 
           <TabPane v-if="canQueryAuthz" key="data" :disabled="!editingRole" tab="数据范围">
             <div v-if="editingRole" class="authorization-tab-body">
+              <div class="authorization-stage-title">
+                <div><span>第 2 步</span><h3>配置数据范围</h3></div>
+                <p>先选择资源与动作，再确定范围、组织维度和指定组织。</p>
+              </div>
+              <div class="authorization-toolbar">
+                <span>{{ dataScopeSummary }}</span>
+              </div>
               <div class="authorization-inline-form">
                 <Select
                   v-model:value="dataPolicyForm.resourceCode"
@@ -1768,6 +1872,18 @@ onMounted(() => {
 
           <TabPane v-if="canQueryAuthz" key="field" :disabled="!editingRole" tab="字段规则">
             <div v-if="editingRole" class="authorization-tab-body">
+              <div class="authorization-stage-title">
+                <div><span>第 3 步</span><h3>配置字段访问</h3></div>
+                <p>只允许配置 Owner 服务已经验证并在服务端执行的规则。</p>
+              </div>
+              <div class="authorization-toolbar">
+                <span>运行时执行能力</span>
+                <FieldEnforcementCapabilities
+                  :read-hide="selectedFieldResource?.readHideEnforced"
+                  :read-mask="selectedFieldResource?.readMaskEnforced"
+                  :write-deny="selectedFieldResource?.writeDenyEnforced"
+                />
+              </div>
               <div class="authorization-inline-form">
                 <Select
                   v-model:value="fieldPolicyForm.resourceCode"
@@ -1848,11 +1964,13 @@ onMounted(() => {
 
           <TabPane v-if="canQueryAuthz" key="guard" :disabled="!editingRole" tab="业务规则">
             <div v-if="editingRole" class="authorization-tab-body">
+              <div class="authorization-stage-title">
+                <div><span>第 4 步</span><h3>确认业务约束</h3></div>
+                <p>约束由所选动作自动带出，本页面只确认，不在角色内维护模板。</p>
+              </div>
               <div class="authorization-section-title">
-                模板状态
-                <Button v-if="canCreateAuthz" size="small" type="link" @click="openGuardDrawer">
-                  <Plus class="size-3.5" />新建守卫
-                </Button>
+                业务约束由资源动作自动带出
+                <Button href="/system/authz" size="small" type="link">前往授权中心维护模板</Button>
               </div>
               <div v-if="guardTemplateRows.length > 0" class="authorization-list">
                 <div
@@ -1870,13 +1988,9 @@ onMounted(() => {
                       </Tag>
                     </Space>
                   </div>
-                  <Switch
-                    :checked="template.status !== 0"
-                    :disabled="!canUpdateAuthz"
-                    checked-children="启用"
-                    un-checked-children="停用"
-                    @change="(checked) => toggleGuardTemplate(template, checked as boolean)"
-                  />
+                  <Tag :color="template.status !== 0 ? 'success' : 'default'">
+                    {{ template.status !== 0 ? '已启用' : '已停用' }}
+                  </Tag>
                 </div>
               </div>
               <Empty v-else description="暂无业务规则模板" />
@@ -1906,13 +2020,30 @@ onMounted(() => {
 
           <TabPane v-if="canQueryAuthz" key="preview" :disabled="!editingRole" tab="决策预览">
             <div v-if="editingRole" class="authorization-tab-body">
+              <div class="authorization-stage-title">
+                <div><span>第 5 步</span><h3>验证有效权限</h3></div>
+                <p>选择实际用户验证真实结果，或直接模拟当前角色而不创建成员关系。</p>
+              </div>
               <div class="authorization-inline-form">
-                <Input
+                <RadioGroup v-model:value="previewForm.mode" button-style="solid">
+                  <Radio value="actual">实际用户</Radio>
+                  <Radio value="simulation">当前角色模拟</Radio>
+                </RadioGroup>
+                <Select
+                  v-if="previewForm.mode === 'actual'"
                   v-model:value="previewForm.userId"
                   class="auth-user-input"
                   allow-clear
-                  placeholder="用户 ID"
+                  :options="previewUserOptions"
+                  placeholder="搜索并选择实际用户"
+                  show-search
                 />
+                <Tag
+                  v-if="previewForm.mode === 'actual' && previewForm.userId && !previewUserHasRole"
+                  color="warning"
+                >
+                  该用户当前未持有正在编辑的角色，结果将按其真实角色计算
+                </Tag>
                 <Select
                   v-model:value="previewForm.resourceCode"
                   class="auth-resource-select"
@@ -1948,6 +2079,7 @@ onMounted(() => {
                 :class="{ denied: !previewResult.allowed }"
               >
                 <div class="decision-preview-header">
+                  <Tag color="processing">{{ previewResult.evaluationMode || 'ACTUAL_USER' }}</Tag>
                   <Tag :color="previewResult.allowed ? 'success' : 'error'">
                     {{ previewResult.allowed ? '允许' : '拒绝' }}
                   </Tag>
@@ -2007,12 +2139,17 @@ onMounted(() => {
             <Empty v-else description="保存角色后进行决策预览" />
           </TabPane>
         </Tabs>
+          </main>
+        </div>
       </Form>
 
       <template #footer>
         <Space>
-          <Button @click="formOpen = false">取消</Button>
+          <Button @click="formOpen = false">
+            {{ permissionOnly && guidedAuthorizationWorkbench ? '关闭' : '取消' }}
+          </Button>
           <Button
+            v-if="!permissionOnly || !guidedAuthorizationWorkbench"
             :disabled="!canSaveRole"
             :loading="saving"
             type="primary"
@@ -2021,33 +2158,6 @@ onMounted(() => {
             保存
           </Button>
         </Space>
-      </template>
-    </Drawer>
-
-    <Drawer v-model:open="guardDrawerOpen" title="创建守卫模板" :width="500">
-      <Form layout="vertical">
-        <FormItem label="守卫代码" required>
-          <Input v-model:value="guardForm.guardCode" placeholder="如 NO_SELF_APPROVAL" />
-        </FormItem>
-        <FormItem label="所属服务" required>
-          <Input v-model:value="guardForm.ownerService" placeholder="如 service-workflow-engine" />
-        </FormItem>
-        <FormItem label="支持资源类型">
-          <Input
-            v-model:value="guardForm.supportedResourceTypes"
-            placeholder="如 LOWCODE_FORM,WORKFLOW_TASK"
-          />
-        </FormItem>
-        <FormItem label="描述">
-          <Textarea v-model:value="guardForm.description" :rows="2" />
-        </FormItem>
-        <FormItem label="配置 JSON Schema">
-          <Textarea v-model:value="guardForm.configSchemaJson" :rows="3" placeholder="选填" />
-        </FormItem>
-      </Form>
-      <template #footer>
-        <Button @click="guardDrawerOpen = false">取消</Button>
-        <Button type="primary" :loading="guardSaving" @click="handleSaveGuard">保存</Button>
       </template>
     </Drawer>
 
@@ -2072,6 +2182,107 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.authorization-workbench-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 650px;
+  margin-top: 12px;
+  overflow: hidden;
+  background: var(--ant-color-bg-container, #fff);
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+}
+
+.authorization-stage-sidebar {
+  padding: 20px 16px;
+  background: var(--ant-color-fill-quaternary, #fafafa);
+  border-right: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.authorization-stage-heading {
+  margin-bottom: 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.authorization-stage-sidebar > p {
+  margin-bottom: 24px;
+  color: var(--ant-color-text-secondary, #666);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.authorization-stage-content {
+  min-width: 0;
+  padding: 20px 24px;
+}
+
+.authorization-stage-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.authorization-stage-title span {
+  color: var(--ant-color-primary, #1677ff);
+  font-size: 12px;
+}
+
+.authorization-stage-title h3 {
+  margin: 2px 0 0;
+  font-size: 18px;
+}
+
+.authorization-stage-title p,
+.authorization-stage-panel-heading p {
+  margin: 2px 0 0;
+  color: var(--ant-color-text-secondary, #666);
+}
+
+.function-menu-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.authorization-stage-panel {
+  min-width: 0;
+  padding: 16px;
+  background: var(--ant-color-fill-quaternary, #fafafa);
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+}
+
+.authorization-stage-panel-heading {
+  min-height: 48px;
+  margin-bottom: 12px;
+}
+
+.authorization-stage-panel-heading strong {
+  font-size: 15px;
+}
+
+.authorization-stage-panel .permission-panel {
+  height: 430px;
+  overflow: auto;
+  background: var(--ant-color-bg-container, #fff);
+}
+
+@media (max-width: 1000px) {
+  .authorization-workbench-layout,
+  .function-menu-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .authorization-stage-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  }
+}
+
 .role-page {
   display: flex;
   flex-direction: column;

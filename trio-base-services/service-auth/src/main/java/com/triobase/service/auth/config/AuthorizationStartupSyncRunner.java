@@ -87,13 +87,17 @@ public class AuthorizationStartupSyncRunner {
                 logger.warn("Skipping null or service-less manifest");
                 continue;
             }
+            if (!StringUtils.hasText(manifest.getTenantId())) {
+                logger.warn("Skipping authorization manifest for service '{}': explicit tenant is required",
+                        manifest.getServiceName());
+                continue;
+            }
             List<AuthorizationResourceSyncRequest.Resource> resources = toResources(manifest);
             if (resources.isEmpty()) {
                 continue;
             }
             AuthorizationResourceSyncRequest request = new AuthorizationResourceSyncRequest();
-            request.setTenantId(StringUtils.hasText(manifest.getTenantId())
-                    ? manifest.getTenantId().trim() : "default");
+            request.setTenantId(manifest.getTenantId().trim());
             request.setOwnerService(manifest.getServiceName().trim());
             request.setResources(resources);
             try {
@@ -126,6 +130,9 @@ public class AuthorizationStartupSyncRunner {
             resource.setBusinessObjectId(doc.getBusinessObjectId());
             resource.setLifecycleStatus(StringUtils.hasText(doc.getLifecycleStatus())
                     ? doc.getLifecycleStatus().trim().toUpperCase() : "ACTIVE");
+            resource.setReadHideEnforced(doc.getReadHideEnforced());
+            resource.setReadMaskEnforced(doc.getReadMaskEnforced());
+            resource.setWriteDenyEnforced(doc.getWriteDenyEnforced());
             resource.setMetadataJson(doc.getMetadataJson());
 
             if (doc.getActions() != null) {

@@ -21,13 +21,41 @@ This document covers the first production rollout of TrioBase enterprise authori
 3. Deploy `service-lowcode`; newly published forms and apps synchronize resources before becoming runtime-visible.
 4. Publish or republish lowcode forms and applications to populate resources, actions, fields, and guard metadata.
 5. Deploy handwritten services with custom document manifests. Start with `triobase.authorization.custom-doc.sync-enabled=false`, then enable per service after validation.
-6. Use the role authorization drawer to grant function actions, data ranges, field rules, and preview decisions for sample users.
-7. Watch decision logs for deny spikes, unknown-resource reasons, and unresolved data-scope results.
+6. Synchronize and activate the page capability catalog, then inspect readiness in the administrator-only mapping diagnostic tab.
+7. Keep the tenant in `MIGRATION`, generate review-required drafts, and resolve every partial, ambiguous, or unmapped legacy grant.
+8. Use the role authorization workbench to select page access, read capabilities, business operations, scopes, verified field rules, and constraints.
+9. Validate with actual users and the current online role, publish immutable releases, and confirm decision equivalence.
+10. Switch the tenant to `PAGE_CAPABILITY` only after zero unintended permission expansion is confirmed; legacy role-grant writes are then blocked.
+
+## Production Acceptance Gate
+
+Use the administrator **上线验收** tab before cutover. `GET /api/v1/authz/compatibility-dashboard`
+recalculates its result from the active catalog, active role releases, immutable compiled
+evidence, current runtime grants, migration reviews, drift records, publication failures,
+and rollbacks. The screen is evidence, not a manually editable checklist.
+
+Cutover is allowed only when all of the following are true:
+
+- every active page capability is `READY`;
+- every enabled role has an active published release;
+- each role's current runtime grants exactly match its active release evidence;
+- no runtime grant exists outside the active release (zero unintended expansion);
+- every detected migration expansion has been explicitly reviewed;
+- no mapping drift remains open.
+
+`PUT /api/v1/authz/management-mode?mode=PAGE_CAPABILITY` repeats the same server-side
+assessment atomically. A disabled button cannot be bypassed by calling the API directly.
+After successful cutover, switching back to `LEGACY` or `MIGRATION` is rejected so two
+management paths cannot write permissions concurrently.
+
+The acceptance contract also verifies read-only roles, create without history-read,
+separate read/operation scopes, owner-side approval guards, field masking and denied writes,
+export denial, stale projection rejection, direct API bypass, and tenant boundaries.
 
 ## Compatibility Rules
 
-- Menu navigation remains separate from function authorization.
-- `sys_auth_grant` is the only stored function authorization fact.
+- Menu navigation is projected from the active role release; page access, read, and operations remain distinct business intents.
+- `sys_auth_grant` remains the runtime enforcement fact, while immutable page-capability intent and compiled evidence are the management and audit facts.
 - `sys_menu.permission_code` is used only to project menu visibility from grants.
 - Existing `@RequirePermission` and `@RequireDataScope` declarations remain valid code-level guards, but they do not create a second grant source.
 - Lowcode runtime must use registered resource/action codes and fail closed when a resource/action is missing.
@@ -38,7 +66,7 @@ This document covers the first production rollout of TrioBase enterprise authori
 
 - Keep the database migrations in place; V60/V64/V65 are required for the single authorization source.
 - Disable custom document startup sync with `triobase.authorization.custom-doc.sync-enabled=false`.
-- Revoke new role grants or field policies from the authorization drawer if a role receives too much access.
+- Restore the last known-good immutable role release if a role receives too much access; never reconstruct rollback from current mappings.
 - If a published lowcode resource sync is wrong, fix metadata and republish; resource sync is idempotent.
 - If decision API availability is degraded, document operations should fail closed; do not reintroduce legacy permission fallback.
 

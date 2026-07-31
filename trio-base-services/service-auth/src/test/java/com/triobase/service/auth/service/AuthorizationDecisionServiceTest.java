@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.dto.authz.AuthorizationDecisionRequest;
 import com.triobase.common.dto.authz.AuthorizationDecisionResponse;
 import com.triobase.common.dto.authz.AuthzGuardResult;
+import com.triobase.common.dto.authz.RoleSimulationDecisionRequest;
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.service.auth.dto.DataPolicyDimensionResponse;
 import com.triobase.service.auth.dto.DataPolicyResponse;
 import com.triobase.service.auth.dto.EffectiveDataPolicyResponse;
@@ -28,6 +30,7 @@ import com.triobase.service.auth.mapper.UserMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -38,9 +41,12 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,9 +69,27 @@ class AuthorizationDecisionServiceTest {
     @Mock private UserRoleMapper userRoleMapper;
     @Mock private RoleMapper roleMapper;
     @Mock private DataPolicyService dataPolicyService;
+    @Mock private RoleAuthorizationDataService roleAuthorizationDataService;
     @Mock private AuthorizationVersionService versionService;
+    @Mock private ActiveReleaseEvidenceService activeReleaseEvidenceService;
 
     private AuthorizationDecisionService service;
+
+    @Test
+    void pageCapabilityModeRejectsRoleGrantWithoutActiveReleaseEvidence() {
+        givenSubject("U001", "tenant-a", "R_MANAGER", "MANAGER");
+        givenRegisteredAction("tenant-a", "LOWCODE_FORM:EXPENSE", "VIEW", null);
+        when(grantMapper.selectList(any())).thenReturn(List.of(
+                grant("G_ROLE_ALLOW", "ROLE", "R_MANAGER", "ALLOW")));
+        when(activeReleaseEvidenceService.supportsGrant(
+                "tenant-a", "R_MANAGER", "LOWCODE_FORM:EXPENSE", "VIEW")).thenReturn(false);
+
+        AuthorizationDecisionResponse response = service.decide(
+                request("tenant-a", "U001", "LOWCODE_FORM:EXPENSE", "VIEW"));
+
+        assertThat(response.isAllowed()).isFalse();
+        assertThat(response.getDisabledReason()).isEqualTo("AUTHZ_GRANT_NOT_FOUND");
+    }
 
     @BeforeEach
     void setUp() {
@@ -81,9 +105,128 @@ class AuthorizationDecisionServiceTest {
                 userRoleMapper,
                 roleMapper,
                 dataPolicyService,
+                roleAuthorizationDataService,
                 versionService,
+                activeReleaseEvidenceService,
                 new ObjectMapper());
-        when(versionService.current(anyString())).thenReturn(1L);
+        lenient().when(versionService.current(anyString())).thenReturn(1L);
+        lenient().when(activeReleaseEvidenceService.supportsGrant(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(true);
+        lenient().when(dataPolicyService.resolveSubjectOrganizationIds(anyString(), anyString()))
+                .thenReturn(List.of());
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clear();
+    }
+
+    @Test
+    void simulateRoleUsesProductionPipelineWithoutUserAssignment() {
+        SysRole role = new SysRole();
+        role.setId("R_MANAGER");
+        role.setRoleCode("MANAGER");
+        role.setStatus((short) 1);
+        when(roleMapper.selectOne(any())).thenReturn(role);
+        givenRegisteredAction("tenant-a", "LOWCODE_FORM:EXPENSE", "VIEW", null);
+        when(grantMapper.selectList(any())).thenReturn(List.of(
+                grant("G_ALLOW", "ROLE", "R_MANAGER", "ALLOW")));
+        when(fieldPolicyMapper.selectList(any())).thenReturn(List.of());
+        when(dataPolicyService.resolveEffectiveForRoles(
+                "tenant-a", "SIMULATION:R_MANAGER", List.of("R_MANAGER"), List.of("ORG-1"),
+                "LOWCODE_FORM:EXPENSE", "VIEW")).thenReturn(allDataScope());
+        when(roleAuthorizationDataService.menuProjectionForRole("tenant-a", "R_MANAGER")).thenReturn(List.of());
+        RoleSimulationDecisionRequest request = new RoleSimulationDecisionRequest();
+        request.setTenantId("tenant-a");
+        request.setRoleId("R_MANAGER");
+        request.setOrganizationIds(List.of("ORG-1"));
+        request.setResourceCode("LOWCODE_FORM:EXPENSE");
+        request.setActionCode("VIEW");
+        request.setFieldKeys(List.of("amount"));
+
+        AuthorizationDecisionResponse response = service.simulateRole(request);
+
+        assertThat(response.isAllowed()).isTrue();
+        assertThat(response.getEvaluationMode()).isEqualTo("SIMULATION");
+        assertThat(response.getSimulatedRoleId()).isEqualTo("R_MANAGER");
+        assertThat(response.getSuppliedOrganizationIds()).containsExactly("ORG-1");
+        verify(userRoleMapper, never()).selectList(any());
+        verifyNoInteractions(decisionLogMapper);
+    }
+
+    @Test
+    void simulateRoleDeniesCrossTenantPreview() {
+        SecurityContextHolder.set(new SecurityContextHolder.SecurityContext(
+                "ADMIN", "admin", "tenant-a", List.of("ADMIN"), List.of(),
+                null, null, null, null, null, null));
+        RoleSimulationDecisionRequest request = new RoleSimulationDecisionRequest();
+        request.setTenantId("tenant-b");
+        request.setRoleId("R_MANAGER");
+        request.setResourceCode("LOWCODE_FORM:EXPENSE");
+        request.setActionCode("VIEW");
+
+        assertThatThrownBy(() -> service.simulateRole(request))
+                .isInstanceOf(com.triobase.common.core.exception.BizException.class)
+                .hasMessageContaining("AUTHZ_CROSS_TENANT_DENIED");
+        verify(roleMapper, never()).selectOne(any());
+    }
+
+    @Test
+    void decisionWithoutAuthenticatedOrExplicitTenantFailsClosed() {
+        SysUser user = new SysUser();
+        user.setId("U001");
+        user.setTenantId("tenant-a");
+        when(userMapper.selectById("U001")).thenReturn(user);
+        AuthorizationDecisionRequest request = new AuthorizationDecisionRequest();
+        request.setUserId("U001");
+        request.setResourceCode("LOWCODE_FORM:EXPENSE");
+        request.setActionCode("VIEW");
+
+        assertThatThrownBy(() -> service.decide(request))
+                .isInstanceOf(com.triobase.common.core.exception.BizException.class)
+                .hasMessageContaining("AUTHZ_TENANT_REQUIRED");
+        verify(grantMapper, never()).selectList(any());
+    }
+
+    @Test
+    void equivalentActualUserAndRoleSimulationReturnSameCoreDecision() {
+        SysRole role = new SysRole();
+        role.setId("R_MANAGER");
+        role.setRoleCode("MANAGER");
+        role.setStatus((short) 1);
+        when(roleMapper.selectOne(any())).thenReturn(role);
+        givenSubject("U001", "tenant-a", "R_MANAGER", "MANAGER");
+        givenRegisteredAction("tenant-a", "LOWCODE_FORM:EXPENSE", "VIEW", null);
+        when(grantMapper.selectList(any())).thenReturn(List.of(
+                grant("G_ALLOW", "ROLE", "R_MANAGER", "ALLOW")));
+        when(fieldPolicyMapper.selectList(any())).thenReturn(List.of(maskedFieldPolicy()));
+        when(dataPolicyService.resolveEffective(
+                "tenant-a", "U001", "LOWCODE_FORM:EXPENSE", "VIEW")).thenReturn(allDataScope());
+        when(dataPolicyService.resolveEffectiveForRoles(
+                "tenant-a", "SIMULATION:R_MANAGER", List.of("R_MANAGER"), List.of(),
+                "LOWCODE_FORM:EXPENSE", "VIEW")).thenReturn(allDataScope());
+        when(roleAuthorizationDataService.menuProjectionForRole("tenant-a", "R_MANAGER")).thenReturn(List.of());
+        AuthorizationDecisionRequest actualRequest = request(
+                "tenant-a", "U001", "LOWCODE_FORM:EXPENSE", "VIEW");
+        actualRequest.setFieldKeys(List.of("amount"));
+        RoleSimulationDecisionRequest simulationRequest = new RoleSimulationDecisionRequest();
+        simulationRequest.setTenantId("tenant-a");
+        simulationRequest.setRoleId("R_MANAGER");
+        simulationRequest.setResourceCode("LOWCODE_FORM:EXPENSE");
+        simulationRequest.setActionCode("VIEW");
+        simulationRequest.setFieldKeys(List.of("amount"));
+
+        AuthorizationDecisionResponse actual = service.decide(actualRequest);
+        AuthorizationDecisionResponse simulated = service.simulateRole(simulationRequest);
+
+        assertThat(simulated.isAllowed()).isEqualTo(actual.isAllowed());
+        assertThat(simulated.getEffect()).isEqualTo(actual.getEffect());
+        assertThat(simulated.getMatchedGrantId()).isEqualTo(actual.getMatchedGrantId());
+        assertThat(simulated.getFieldRules())
+                .extracting("fieldKey", "readMode", "writeMode")
+                .containsExactlyElementsOf(actual.getFieldRules().stream()
+                        .map(rule -> tuple(rule.getFieldKey(), rule.getReadMode(), rule.getWriteMode()))
+                        .toList());
     }
 
     @Test

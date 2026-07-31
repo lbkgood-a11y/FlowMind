@@ -18,6 +18,9 @@ public class CustomDocumentAuthorizationManifest {
         private String displayName;
         private String businessObjectId;
         private String lifecycleStatus = "ACTIVE";
+        private Boolean readHideEnforced;
+        private Boolean readMaskEnforced;
+        private Boolean writeDenyEnforced;
         private String metadataJson;
         private List<Action> actions = new ArrayList<>();
         private List<Field> fields = new ArrayList<>();

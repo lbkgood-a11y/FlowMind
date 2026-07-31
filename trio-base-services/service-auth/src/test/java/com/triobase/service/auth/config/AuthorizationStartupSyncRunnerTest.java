@@ -41,6 +41,9 @@ class AuthorizationStartupSyncRunnerTest {
         doc.setDocumentType("CUSTOM_DOC");
         doc.setDisplayName("Invoice");
         doc.setBusinessObjectId("billing/invoice");
+        doc.setReadHideEnforced(true);
+        doc.setReadMaskEnforced(true);
+        doc.setWriteDenyEnforced(false);
 
         CustomDocumentAuthorizationManifest.Action view = new CustomDocumentAuthorizationManifest.Action();
         view.setActionCode("VIEW");
@@ -82,6 +85,12 @@ class AuthorizationStartupSyncRunnerTest {
         assertThat(request.getOwnerService()).isEqualTo("service-billing");
         assertThat(request.getResources()).hasSize(1);
         assertThat(request.getResources().get(0).getResourceCode()).isEqualTo("CUSTOM_DOC:INVOICE");
+        assertThat(request.getResources().get(0).getReadHideEnforced()).isEqualTo(
+                invoiceManifest.getDocuments().get(0).getReadHideEnforced());
+        assertThat(request.getResources().get(0).getReadMaskEnforced()).isEqualTo(
+                invoiceManifest.getDocuments().get(0).getReadMaskEnforced());
+        assertThat(request.getResources().get(0).getWriteDenyEnforced()).isEqualTo(
+                invoiceManifest.getDocuments().get(0).getWriteDenyEnforced());
         assertThat(request.getResources().get(0).getActions()).hasSize(2);
         assertThat(request.getResources().get(0).getFields()).hasSize(1);
         assertThat(request.getResources().get(0).getGuards()).hasSize(1);

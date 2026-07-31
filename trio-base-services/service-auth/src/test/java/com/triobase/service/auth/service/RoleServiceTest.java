@@ -7,6 +7,9 @@ import com.triobase.service.auth.entity.SysRole;
 import com.triobase.service.auth.mapper.RoleMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import com.triobase.common.core.context.SecurityContextHolder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -38,6 +41,17 @@ class RoleServiceTest {
 
     @InjectMocks
     private RoleService roleService;
+
+    @BeforeEach
+    void setContext() {
+        SecurityContextHolder.set(new SecurityContextHolder.SecurityContext(
+                "U001", "alice", "tenant-a", List.of(), List.of(), null, null, null));
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clear();
+    }
 
     @Test
     void create_shouldPersistRoleOnly_whenRequestValid() {
@@ -91,7 +105,7 @@ class RoleServiceTest {
         role.setId("R001");
         role.setRoleCode("TENANT_ADMIN");
 
-        when(roleMapper.selectById("R001")).thenReturn(role);
+        when(roleMapper.selectOne(any())).thenReturn(role);
         when(roleMapper.updateById(role)).thenReturn(1);
 
         SysRole updated = roleService.update("R001", request);
@@ -106,7 +120,7 @@ class RoleServiceTest {
         role.setId("R001");
         role.setStatus((short) 1);
 
-        when(roleMapper.selectById("R001")).thenReturn(role);
+        when(roleMapper.selectOne(any())).thenReturn(role);
 
         SysRole updated = roleService.updateStatus("R001", 0);
 
@@ -119,14 +133,14 @@ class RoleServiceTest {
         SysRole role = new SysRole();
         role.setId("R001");
 
-        when(roleMapper.selectById("R001")).thenReturn(role);
+        when(roleMapper.selectOne(any())).thenReturn(role);
         when(userRoleMapper.selectCount(any())).thenReturn(1L);
 
         BizException ex = assertThrows(BizException.class, () -> roleService.delete("R001"));
 
         assertEquals(40043, ex.getCode());
         verify(roleMapper, never()).deleteById("R001");
-        verify(roleAuthorizationDataService, never()).deleteRoleAuthorizationData("R001");
+        verify(roleAuthorizationDataService, never()).deleteRoleAuthorizationData("tenant-a", "R001");
     }
 
     @Test
@@ -134,12 +148,12 @@ class RoleServiceTest {
         SysRole role = new SysRole();
         role.setId("R099");
 
-        when(roleMapper.selectById("R099")).thenReturn(role);
+        when(roleMapper.selectOne(any())).thenReturn(role);
         when(userRoleMapper.selectCount(any())).thenReturn(0L);
 
         roleService.delete("R099");
 
-        verify(roleAuthorizationDataService).deleteRoleAuthorizationData("R099");
+        verify(roleAuthorizationDataService).deleteRoleAuthorizationData("tenant-a", "R099");
         verify(roleMapper).deleteById("R099");
     }
 }

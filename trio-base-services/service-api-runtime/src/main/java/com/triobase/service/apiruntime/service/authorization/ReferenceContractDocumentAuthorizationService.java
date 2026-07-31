@@ -12,6 +12,7 @@ import org.springframework.util.StringUtils;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +21,7 @@ public class ReferenceContractDocumentAuthorizationService {
     private static final String DEFAULT_TENANT_ID = "default";
 
     private final CustomDocumentDecisionClient decisionClient;
+    private final ReferenceContractFieldAuthorizationAdapter fieldAuthorizationAdapter;
 
     public ReferenceContractAuthorizationResult authorize(
             ReferenceContractDocument document,
@@ -40,6 +42,22 @@ public class ReferenceContractDocumentAuthorizationService {
         ReferenceContractAuthorizationResult result = authorize(document, actionCode, fieldKeys);
         if (!result.isAllowed()) {
             throw new BizException(40390, "CUSTOM_DOC_AUTHZ_DECISION_DENIED");
+        }
+    }
+
+    public Map<String, Object> filterReadableFields(ReferenceContractDocument document,
+                                                     AuthorizationDecisionResponse decision) {
+        return fieldAuthorizationAdapter.filterRead(document,
+                decision != null ? decision.getFieldRules() : List.of());
+    }
+
+    public void validateWritableFields(Map<String, Object> changes,
+                                       AuthorizationDecisionResponse decision) {
+        try {
+            fieldAuthorizationAdapter.validateWrite(changes,
+                    decision != null ? decision.getFieldRules() : List.of());
+        } catch (IllegalArgumentException exception) {
+            throw new BizException(40391, "CUSTOM_DOC_FIELD_WRITE_DENIED");
         }
     }
 
@@ -70,6 +88,11 @@ public class ReferenceContractDocumentAuthorizationService {
     private List<AuthzGuardResult> localGuards(ReferenceContractDocument document, String actionCode) {
         if (document == null) {
             return List.of(denied("DOCUMENT_STATUS", "CUSTOM_DOC_NOT_FOUND", "合同不存在"));
+        }
+        if (!StringUtils.hasText(document.getTenantId())
+                || !currentTenantId().equals(document.getTenantId())) {
+            return List.of(denied("TENANT_BOUNDARY", "CUSTOM_DOC_CROSS_TENANT_DENIED",
+                    "当前租户不能访问该合同"));
         }
         String status = normalize(document.getStatus());
         if (List.of("EDIT", "DELETE", "SUBMIT").contains(actionCode) && "ARCHIVED".equals(status)) {

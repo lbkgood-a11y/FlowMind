@@ -246,6 +246,7 @@ public class AuthService {
 
     private String findDefaultRoleId() {
         SysRole defaultRole = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getTenantId, DEFAULT_TENANT_ID)
                 .eq(SysRole::getRoleCode, DEFAULT_ROLE_CODE));
         if (defaultRole == null) {
             throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);

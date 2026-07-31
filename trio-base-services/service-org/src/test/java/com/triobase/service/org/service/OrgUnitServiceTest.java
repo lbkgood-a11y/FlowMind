@@ -50,6 +50,28 @@ class OrgUnitServiceTest {
     private OrgUnitService orgUnitService;
 
     @Test
+    void primaryOwnershipUsesExplicitTenantAndPrimaryAssignment() {
+        SysOrgDimension dimension = new SysOrgDimension();
+        dimension.setId("ORG_DIM_ADMIN_TA");
+        dimension.setTenantId("tenant-a");
+        dimension.setDimensionCode("ADMIN");
+        SysUserOrgUnit ownership = new SysUserOrgUnit();
+        ownership.setTenantId("tenant-a");
+        ownership.setUserId("U001");
+        ownership.setOrgUnitId("ORG-PRIMARY");
+        ownership.setIsPrimary((short) 1);
+        ownership.setStatus((short) 1);
+        when(orgDimensionMapper.selectOne(any())).thenReturn(dimension);
+        when(userOrgUnitMapper.selectOne(any())).thenReturn(ownership);
+
+        var result = orgUnitService.resolvePrimaryOwnership("tenant-a", "U001");
+
+        assertEquals("tenant-a", result.getTenantId());
+        assertEquals("ORG-PRIMARY", result.getPrimaryOrgUnitId());
+        assertEquals(true, result.isResolved());
+    }
+
+    @Test
     void createOrgUnit_shouldRejectDuplicateUnitCode() {
         CreateOrgUnitRequest request = new CreateOrgUnitRequest();
         request.setUnitCode("TECH");

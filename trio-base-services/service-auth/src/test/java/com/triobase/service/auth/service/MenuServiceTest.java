@@ -5,6 +5,8 @@ import com.triobase.service.auth.dto.CreateMenuRequest;
 import com.triobase.service.auth.dto.MenuRouteResponse;
 import com.triobase.service.auth.dto.UpdateMenuRequest;
 import com.triobase.service.auth.entity.SysMenu;
+import com.triobase.service.auth.entity.SysAuthAction;
+import com.triobase.service.auth.entity.SysAuthResource;
 import com.triobase.service.auth.mapper.AuthActionMapper;
 import com.triobase.service.auth.mapper.AuthResourceMapper;
 import com.triobase.service.auth.mapper.MenuMapper;
@@ -79,6 +81,48 @@ class MenuServiceTest {
 
         assertEquals(1, menus.size());
         assertEquals("system", menus.get(0).getMenuGroup());
+        assertEquals("MISSING", menus.get(0).getAuthorizationMappingStatus());
+    }
+
+    @Test
+    void list_shouldExposeValidNormalizedAuthorizationMapping() {
+        SysMenu menu = new SysMenu();
+        menu.setId("M_USERS");
+        menu.setPermissionCode(" /api/v1/users:GET ");
+        SysAuthResource resource = new SysAuthResource();
+        resource.setResourceCode("/api/v1/users");
+        resource.setLifecycleStatus("ACTIVE");
+        SysAuthAction action = new SysAuthAction();
+        action.setResourceCode("/api/v1/users");
+        action.setActionCode("GET");
+        action.setStatus((short) 1);
+        when(menuMapper.selectList(any())).thenReturn(List.of(menu));
+        when(authResourceMapper.selectList(any())).thenReturn(List.of(resource));
+        when(authActionMapper.selectList(any())).thenReturn(List.of(action));
+
+        SysMenu result = menuService.list().getFirst();
+
+        assertEquals("/api/v1/users", result.getAuthorizationResourceCode());
+        assertEquals("GET", result.getAuthorizationActionCode());
+        assertEquals("VALID", result.getAuthorizationMappingStatus());
+    }
+
+    @Test
+    void list_shouldClassifyInvalidAndUnregisteredMappings() {
+        SysMenu malformed = new SysMenu();
+        malformed.setId("M_BAD");
+        malformed.setPermissionCode("not-a-permission");
+        SysMenu unregistered = new SysMenu();
+        unregistered.setId("M_UNKNOWN");
+        unregistered.setPermissionCode("UNKNOWN:VIEW");
+        when(menuMapper.selectList(any())).thenReturn(List.of(malformed, unregistered));
+        when(authResourceMapper.selectList(any())).thenReturn(List.of());
+        when(authActionMapper.selectList(any())).thenReturn(List.of());
+
+        List<SysMenu> result = menuService.list();
+
+        assertEquals("INVALID_FORMAT", result.get(0).getAuthorizationMappingStatus());
+        assertEquals("RESOURCE_NOT_FOUND", result.get(1).getAuthorizationMappingStatus());
     }
 
     @Test

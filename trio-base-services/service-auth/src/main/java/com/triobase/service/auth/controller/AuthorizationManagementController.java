@@ -6,6 +6,7 @@ import com.triobase.common.core.result.R;
 import com.triobase.common.dto.authz.AuthorizationBatchDecisionRequest;
 import com.triobase.common.dto.authz.AuthorizationBatchDecisionResponse;
 import com.triobase.common.dto.authz.AuthorizationDecisionRequest;
+import com.triobase.common.dto.authz.RoleSimulationDecisionRequest;
 import com.triobase.common.dto.authz.AuthorizationDecisionResponse;
 import com.triobase.common.dto.authz.AuthorizationResourceSyncRequest;
 import com.triobase.service.auth.dto.AuthorizationAdminOptionsResponse;
@@ -24,6 +25,7 @@ import com.triobase.service.auth.dto.SaveFieldPolicyRequest;
 import com.triobase.service.auth.dto.SaveGuardTemplateRequest;
 import com.triobase.service.auth.service.AuthorizationDecisionService;
 import com.triobase.service.auth.service.AuthorizationRegistryService;
+import com.triobase.service.auth.service.AuthorizationManagementModeService;
 import com.triobase.service.auth.service.DataPolicyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -48,6 +50,7 @@ public class AuthorizationManagementController {
     private final AuthorizationRegistryService registryService;
     private final AuthorizationDecisionService decisionService;
     private final DataPolicyService dataPolicyService;
+    private final AuthorizationManagementModeService managementModeService;
 
     @GetMapping("/resources")
     @RequirePermission("/api/v1/authz/**:GET")
@@ -95,6 +98,7 @@ public class AuthorizationManagementController {
     public R<ReplaceRoleFunctionGrantsResponse> replaceRoleFunctionGrants(
             @PathVariable String roleId,
             @RequestBody ReplaceRoleFunctionGrantsRequest request) {
+        managementModeService.requireLegacyWriteAllowed(request != null ? request.getTenantId() : null);
         return R.ok(registryService.replaceRoleFunctionGrants(roleId, request));
     }
 
@@ -140,6 +144,15 @@ public class AuthorizationManagementController {
         request.setPreviewMode(true);
         request.setEnforcementMode(false);
         return R.ok(decisionService.decide(request));
+    }
+
+    @PostMapping("/decisions/role-simulation")
+    @RequirePermission("/api/v1/authz/**:POST")
+    public R<AuthorizationDecisionResponse> roleSimulation(
+            @RequestBody RoleSimulationDecisionRequest request) {
+        request.setPreviewMode(true);
+        request.setEnforcementMode(false);
+        return R.ok(decisionService.simulateRole(request));
     }
 
     @PostMapping("/decisions/batch-preview")

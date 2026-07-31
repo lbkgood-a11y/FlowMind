@@ -39,6 +39,10 @@ export namespace SystemMenuApi {
     status?: 0 | 1;
     updatedAt?: string;
     visible?: 0 | 1;
+    authorizationActionCode?: string;
+    authorizationMappingMessage?: string;
+    authorizationMappingStatus?: string;
+    authorizationResourceCode?: string;
   }
 
   export interface SaveMenuParams {

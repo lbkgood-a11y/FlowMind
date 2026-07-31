@@ -45,7 +45,6 @@ import java.util.stream.Collectors;
 public class DataPolicyService {
 
     private static final Logger log = LoggerFactory.getLogger(DataPolicyService.class);
-    private static final String DEFAULT_TENANT = "default";
     private static final String SUBJECT_TYPE_ROLE = "ROLE";
     private static final String ADMIN_ROLE_CODE = "ADMIN";
     private static final String ADMIN_ALL_POLICY_ID = "SYSTEM_ADMIN_ALL";
@@ -136,23 +135,39 @@ public class DataPolicyService {
         if (!StringUtils.hasText(userId) || !StringUtils.hasText(resourceCode) || !StringUtils.hasText(actionCode)) {
             throw new BizException(40061, "DATA_POLICY_QUERY_REQUIRED");
         }
-        String effectiveTenant = StringUtils.hasText(tenantId) ? tenantId.trim() : DEFAULT_TENANT;
+        String effectiveTenant = requiredTenant(tenantId);
         List<String> roleIds = userRoleMapper.selectList(new LambdaQueryWrapper<SysUserRole>()
                         .eq(SysUserRole::getUserId, userId))
                 .stream()
                 .map(SysUserRole::getRoleId)
                 .toList();
-        String adminRoleId = findAdminRoleId(roleIds);
+        return resolveEffectiveForRoles(effectiveTenant, userId, roleIds, List.of(), resourceCode, actionCode);
+    }
+
+    public EffectiveDataPolicyResponse resolveEffectiveForRoles(String tenantId,
+                                                                 String subjectId,
+                                                                 List<String> roleIds,
+                                                                 List<String> organizationIds,
+                                                                 String resourceCode,
+                                                                 String actionCode) {
+        if (!StringUtils.hasText(subjectId) || !StringUtils.hasText(resourceCode)
+                || !StringUtils.hasText(actionCode)) {
+            throw new BizException(40061, "DATA_POLICY_QUERY_REQUIRED");
+        }
+        String effectiveTenant = requiredTenant(tenantId);
+        List<String> effectiveRoleIds = roleIds != null ? roleIds.stream()
+                .filter(StringUtils::hasText).map(String::trim).distinct().toList() : List.of();
+        String adminRoleId = findAdminRoleId(effectiveRoleIds);
         if (StringUtils.hasText(adminRoleId)) {
-            return adminAllResponse(userId, resourceCode, actionCode, roleIds, adminRoleId);
+            return adminAllResponse(subjectId, resourceCode, actionCode, effectiveRoleIds, adminRoleId);
         }
 
-        List<SysDataPolicy> policies = roleIds.isEmpty()
+        List<SysDataPolicy> policies = effectiveRoleIds.isEmpty()
                 ? List.of()
                 : dataPolicyMapper.selectList(new LambdaQueryWrapper<SysDataPolicy>()
                 .eq(SysDataPolicy::getTenantId, effectiveTenant)
                 .eq(SysDataPolicy::getSubjectType, SUBJECT_TYPE_ROLE)
-                .in(SysDataPolicy::getSubjectId, roleIds)
+                .in(SysDataPolicy::getSubjectId, effectiveRoleIds)
                 .eq(SysDataPolicy::getResourceCode, resourceCode)
                 .eq(SysDataPolicy::getActionCode, actionCode)
                 .eq(SysDataPolicy::getStatus, (short) 1)
@@ -160,12 +175,13 @@ public class DataPolicyService {
                 .orderByAsc(SysDataPolicy::getSubjectId));
 
         EffectiveDataPolicyResponse response = new EffectiveDataPolicyResponse();
-        response.setUserId(userId);
+        response.setUserId(subjectId);
         response.setResourceCode(resourceCode);
         response.setActionCode(actionCode);
-        response.setRoleIds(roleIds);
+        response.setRoleIds(effectiveRoleIds);
         List<DataPolicyResponse> policyResponses = toResponses(policies);
-        boolean orgContextResolved = resolveOrgContext(effectiveTenant, userId, policyResponses);
+        boolean orgContextResolved = organizationIds != null && !organizationIds.isEmpty()
+                || resolveOrgContext(effectiveTenant, subjectId, policyResponses);
         response.setPolicies(policyResponses);
         response.setRestrictive(policies.isEmpty());
         response.setOrgContextResolved(orgContextResolved);
@@ -273,6 +289,18 @@ public class DataPolicyService {
             return List.of();
         }
         return List.copyOf(orgUnitIds);
+    }
+
+    /**
+     * Returns the authenticated subject's organizations in owner-service order
+     * (primary organization first). Callers must persist only this governed
+     * evidence and never accept organization ownership from a client payload.
+     */
+    public List<String> resolveSubjectOrganizationIds(String tenantId, String userId) {
+        if (!StringUtils.hasText(tenantId) || !StringUtils.hasText(userId)) {
+            return List.of();
+        }
+        return resolveOwnOrgUnitIds(tenantId.trim(), userId.trim(), "ADMIN");
     }
 
     private void fillPolicy(SysDataPolicy policy, SaveDataPolicyRequest request) {
@@ -410,7 +438,13 @@ public class DataPolicyService {
 
 
     private String currentTenantId() {
-        String tenantId = SecurityContextHolder.getTenantId();
-        return StringUtils.hasText(tenantId) ? tenantId : DEFAULT_TENANT;
+        return requiredTenant(SecurityContextHolder.getTenantId());
+    }
+
+    private String requiredTenant(String tenantId) {
+        if (!StringUtils.hasText(tenantId)) {
+            throw new BizException(40069, "DATA_POLICY_TENANT_REQUIRED");
+        }
+        return tenantId.trim();
     }
 }

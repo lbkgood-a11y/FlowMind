@@ -7,6 +7,9 @@ import com.triobase.service.auth.mapper.AuthGrantMapper;
 import com.triobase.service.auth.mapper.DataPolicyMapper;
 import com.triobase.service.auth.mapper.MenuMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import com.triobase.common.core.context.SecurityContextHolder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -19,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class RoleAuthorizationDataServiceTest {
@@ -38,8 +42,23 @@ class RoleAuthorizationDataServiceTest {
     @Mock
     private AuthorizationVersionService versionService;
 
+    @Mock
+    private ActiveReleaseEvidenceService activeReleaseEvidenceService;
+
     @InjectMocks
     private RoleAuthorizationDataService dataService;
+
+    @BeforeEach
+    void allowLegacyEvidence() {
+        lenient().when(activeReleaseEvidenceService.hasAnyGrantEvidence(any(), any())).thenReturn(true);
+        SecurityContextHolder.set(new SecurityContextHolder.SecurityContext(
+                "U001", "alice", "tenant-a", List.of(), List.of(), null, null, null));
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clear();
+    }
 
     @Test
     void menuIdsForRole_shouldDeriveSelectedMenusFromEffectiveGrantsAndAncestors() {
@@ -62,6 +81,31 @@ class RoleAuthorizationDataServiceTest {
         assertTrue(menuIds.contains("ROOT"));
         assertTrue(menuIds.contains("M001"));
         assertEquals(2, menuIds.size());
+    }
+
+    @Test
+    void menuProjectionForRole_shouldExplainDirectAndAncestorDerivation() {
+        SysMenu root = menu("ROOT", null, "System");
+        SysMenu userMenu = menu("M001", "/api/v1/users:GET", "Users");
+        userMenu.setParentId("ROOT");
+        when(menuMapper.selectList(any())).thenReturn(List.of(root, userMenu));
+        when(grantMapper.selectList(any())).thenReturn(List.of(
+                grant("G_USER_ALLOW", "/api/v1/users", "GET", "Users")));
+
+        var projection = dataService.menuProjectionForRole("R001");
+
+        assertEquals("DIRECT_GRANT", projection.get(0).getDerivation());
+        assertEquals("/api/v1/users", projection.get(0).getResourceCode());
+        assertEquals("ANCESTOR", projection.get(1).getDerivation());
+        assertEquals(List.of("M001"), projection.get(1).getDerivedFromMenuIds());
+    }
+
+    @Test
+    void menuProjectionFailsClosedWhenCutoverRoleHasNoActiveEvidence() {
+        when(activeReleaseEvidenceService.hasAnyGrantEvidence("tenant-a", "R001")).thenReturn(false);
+
+        assertTrue(dataService.menuProjectionForRole("R001").isEmpty());
+        verify(grantMapper, org.mockito.Mockito.never()).selectList(any());
     }
 
     @Test

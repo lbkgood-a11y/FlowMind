@@ -18,6 +18,7 @@ import com.triobase.service.lowcode.mapper.ApplicationVersionMapper;
 import com.triobase.service.lowcode.mapper.FormDefinitionMapper;
 import com.triobase.service.lowcode.mapper.FormRelationMapper;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -40,6 +41,11 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ApplicationServiceTest {
+
+    @BeforeAll
+    static void initMybatisPlusMetadata() {
+        MybatisPlusTestMetadata.initialize();
+    }
 
     @Mock
     private ApplicationMapper applicationMapper;

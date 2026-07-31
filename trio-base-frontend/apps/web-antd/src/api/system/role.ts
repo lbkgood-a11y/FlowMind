@@ -3,6 +3,17 @@ import { requestClient } from '#/api/request';
 export namespace SystemRoleApi {
   export interface RoleDetail extends SystemRole {
     menuIds: string[];
+    menuProjection?: RoleMenuProjection[];
+  }
+
+  export interface RoleMenuProjection {
+    actionCode?: string;
+    derivation: 'ANCESTOR' | 'DIRECT_GRANT';
+    derivedFromMenuIds?: string[];
+    menuId: string;
+    menuName?: string;
+    permissionCode?: string;
+    resourceCode?: string;
   }
 
   export interface RoleListParams {

@@ -12,12 +12,14 @@ import com.triobase.common.dto.authz.AuthorizationBatchDecisionRequest;
 import com.triobase.common.dto.authz.AuthorizationBatchDecisionResponse;
 import com.triobase.common.dto.authz.AuthorizationDecisionRequest;
 import com.triobase.common.dto.authz.AuthorizationDecisionResponse;
+import com.triobase.common.dto.authz.RoleSimulationDecisionRequest;
 import com.triobase.common.dto.authz.AuthzDataScopeResult;
 import com.triobase.common.dto.authz.AuthzBusinessActionCodes;
 import com.triobase.common.dto.authz.AuthzDecisionReason;
 import com.triobase.common.dto.authz.AuthzFieldRule;
 import com.triobase.common.dto.authz.AuthzGuardRequirement;
 import com.triobase.common.dto.authz.AuthzGuardResult;
+import com.triobase.common.dto.authz.AuthzMenuDerivation;
 import com.triobase.service.auth.dto.DataPolicyResponse;
 import com.triobase.service.auth.dto.EffectiveDataPolicyResponse;
 import com.triobase.service.auth.entity.SysAuthAction;
@@ -59,7 +61,6 @@ import java.util.regex.Pattern;
 public class AuthorizationDecisionService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthorizationDecisionService.class);
-    private static final String DEFAULT_TENANT = "default";
     private static final String ADMIN_ROLE_CODE = "ADMIN";
     private static final String SUBJECT_ROLE = "ROLE";
     private static final String SUBJECT_USER = "USER";
@@ -75,7 +76,9 @@ public class AuthorizationDecisionService {
     private final UserRoleMapper userRoleMapper;
     private final RoleMapper roleMapper;
     private final DataPolicyService dataPolicyService;
+    private final RoleAuthorizationDataService roleAuthorizationDataService;
     private final AuthorizationVersionService versionService;
+    private final ActiveReleaseEvidenceService activeReleaseEvidenceService;
     private final ObjectMapper objectMapper;
 
     public AuthorizationDecisionResponse decide(AuthorizationDecisionRequest request) {
@@ -84,6 +87,52 @@ public class AuthorizationDecisionService {
             throw new BizException(40084, "AUTHZ_DECISION_REQUIRED");
         }
         SubjectSnapshot subject = subject(request);
+        return decide(request, subject);
+    }
+
+    public AuthorizationDecisionResponse simulateRole(RoleSimulationDecisionRequest request) {
+        if (request == null || !StringUtils.hasText(request.getRoleId())
+                || !StringUtils.hasText(request.getResourceCode())
+                || !StringUtils.hasText(request.getActionCode())) {
+            throw new BizException(40086, "AUTHZ_SIMULATION_ROLE_REQUIRED");
+        }
+        String requestedTenant = requiredTenant(request.getTenantId(), null);
+        String callerTenant = SecurityContextHolder.getTenantId();
+        if (StringUtils.hasText(callerTenant) && !callerTenant.equals(requestedTenant)) {
+            throw new BizException(40386, "AUTHZ_SIMULATION_CROSS_TENANT_DENIED");
+        }
+        SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getId, request.getRoleId().trim())
+                .eq(SysRole::getTenantId, requestedTenant));
+        if (role == null || role.getStatus() == null || role.getStatus() != 1) {
+            throw new BizException(40486, "AUTHZ_SIMULATION_ROLE_NOT_FOUND");
+        }
+        boolean admin = ADMIN_ROLE_CODE.equals(role.getRoleCode());
+        SubjectSnapshot subject = new SubjectSnapshot(
+                "SIMULATION:" + role.getId(), requestedTenant, List.of(role.getId()), List.of(role),
+                admin, admin ? role.getId() : null, true,
+                request.getOrganizationIds() != null ? request.getOrganizationIds().stream()
+                        .filter(StringUtils::hasText).map(String::trim).distinct().toList() : List.of());
+        AuthorizationDecisionResponse response = decide(request, subject);
+        response.setEvaluationMode("SIMULATION");
+        response.setSimulatedRoleId(role.getId());
+        response.setSuppliedOrganizationIds(subject.organizationIds());
+        response.setMenuDerivation(roleAuthorizationDataService.menuProjectionForRole(requestedTenant, role.getId()).stream()
+                .map(item -> {
+                    AuthzMenuDerivation derivation = new AuthzMenuDerivation();
+                    derivation.setMenuId(item.getMenuId());
+                    derivation.setMenuName(item.getMenuName());
+                    derivation.setDerivation(item.getDerivation());
+                    derivation.setPermissionCode(item.getPermissionCode());
+                    derivation.setResourceCode(item.getResourceCode());
+                    derivation.setActionCode(item.getActionCode());
+                    derivation.setDerivedFromMenuIds(item.getDerivedFromMenuIds());
+                    return derivation;
+                }).toList());
+        return response;
+    }
+
+    private AuthorizationDecisionResponse decide(AuthorizationDecisionRequest request, SubjectSnapshot subject) {
         String requestedResource = request.getResourceCode().trim();
         String actionCode = normalizeAction(request.getActionCode());
 
@@ -161,6 +210,7 @@ public class AuthorizationDecisionService {
         response.setActionCode(actionCode);
         response.setOwnerService(request.getOwnerService());
         response.setBusinessObjectId(request.getBusinessObjectId());
+        response.setSuppliedOrganizationIds(subject.organizationIds());
         response.setAuthorizationVersion(versionService.current(AuthorizationVersionService.AUTHORIZATION));
         response.setRoleVersion(versionService.current(AuthorizationVersionService.GRANT));
         response.setDataPolicyVersion(versionService.current(AuthorizationVersionService.DATA_POLICY));
@@ -180,13 +230,7 @@ public class AuthorizationDecisionService {
             throw new BizException(40085, "AUTHZ_USER_REQUIRED");
         }
         SysUser user = userMapper.selectById(userId);
-        String tenantId = StringUtils.hasText(request.getTenantId())
-                ? request.getTenantId().trim()
-                : user != null && StringUtils.hasText(user.getTenantId())
-                ? user.getTenantId()
-                : StringUtils.hasText(SecurityContextHolder.getTenantId())
-                ? SecurityContextHolder.getTenantId()
-                : DEFAULT_TENANT;
+        String tenantId = requiredTenant(request.getTenantId(), user);
         List<String> roleIds = userRoleMapper.selectList(new LambdaQueryWrapper<SysUserRole>()
                         .eq(SysUserRole::getUserId, userId))
                 .stream()
@@ -196,13 +240,36 @@ public class AuthorizationDecisionService {
                 ? List.of()
                 : roleMapper.selectList(new LambdaQueryWrapper<SysRole>()
                 .in(SysRole::getId, roleIds)
+                .eq(SysRole::getTenantId, tenantId)
                 .eq(SysRole::getStatus, (short) 1));
         String adminRoleId = roles.stream()
                 .filter(role -> ADMIN_ROLE_CODE.equals(role.getRoleCode()))
                 .map(SysRole::getId)
                 .findFirst()
                 .orElse(null);
-        return new SubjectSnapshot(userId, tenantId, roleIds, roles, StringUtils.hasText(adminRoleId), adminRoleId);
+        List<String> organizationIds = dataPolicyService.resolveSubjectOrganizationIds(tenantId, userId);
+        return new SubjectSnapshot(userId, tenantId, roleIds, roles,
+                StringUtils.hasText(adminRoleId), adminRoleId, false, organizationIds);
+    }
+
+    private String requiredTenant(String requestedTenantId, SysUser user) {
+        String requestedTenant = StringUtils.hasText(requestedTenantId) ? requestedTenantId.trim() : null;
+        String authenticatedTenant = StringUtils.hasText(SecurityContextHolder.getTenantId())
+                ? SecurityContextHolder.getTenantId().trim() : null;
+        String userTenant = user != null && StringUtils.hasText(user.getTenantId())
+                ? user.getTenantId().trim() : null;
+        if (authenticatedTenant != null && requestedTenant != null
+                && !authenticatedTenant.equals(requestedTenant)) {
+            throw new BizException(40385, "AUTHZ_CROSS_TENANT_DENIED");
+        }
+        String tenantId = requestedTenant != null ? requestedTenant : authenticatedTenant;
+        if (!StringUtils.hasText(tenantId)) {
+            throw new BizException(40087, "AUTHZ_TENANT_REQUIRED");
+        }
+        if (userTenant != null && !userTenant.equals(tenantId)) {
+            throw new BizException(40385, "AUTHZ_CROSS_TENANT_DENIED");
+        }
+        return tenantId;
     }
 
     private MatchedAction findRegisteredAction(String tenantId, String requestedResource, String actionCode) {
@@ -237,14 +304,20 @@ public class AuthorizationDecisionService {
                 .filter(grant -> subjectMatches(subject, grant.getSubjectType(), grant.getSubjectId()))
                 .filter(grant -> actionMatches(grant.getActionCode(), actionCode))
                 .filter(grant -> codeMatches(grant.getResourceCode(), resourceCode))
+                .filter(grant -> !"ROLE".equals(grant.getSubjectType())
+                        || activeReleaseEvidenceService.supportsGrant(subject.tenantId(), grant.getSubjectId(),
+                        resourceCode, actionCode))
                 .toList();
     }
 
     private AuthzDataScopeResult dataScope(SubjectSnapshot subject, String resourceCode, String actionCode) {
         AuthzDataScopeResult result = new AuthzDataScopeResult();
         try {
-            EffectiveDataPolicyResponse effective = dataPolicyService.resolveEffective(
-                    subject.tenantId(), subject.userId(), resourceCode, actionCode);
+            EffectiveDataPolicyResponse effective = subject.simulation()
+                    ? dataPolicyService.resolveEffectiveForRoles(subject.tenantId(), subject.userId(),
+                            subject.roleIds(), subject.organizationIds(), resourceCode, actionCode)
+                    : dataPolicyService.resolveEffective(
+                            subject.tenantId(), subject.userId(), resourceCode, actionCode);
             if (effective == null) {
                 return result;
             }
@@ -272,6 +345,11 @@ public class AuthorizationDecisionService {
             }
             result.setScopeTypes(scopeTypes.stream().filter(StringUtils::hasText).distinct().toList());
             result.setOrgUnitIds(orgUnitIds.stream().filter(StringUtils::hasText).distinct().toList());
+            if (subject.simulation() && !subject.organizationIds().isEmpty()) {
+                result.setOrgUnitIds(java.util.stream.Stream.concat(
+                                result.getOrgUnitIds().stream(), subject.organizationIds().stream())
+                        .distinct().toList());
+            }
             result.setPolicyIds(policyIds.stream().filter(StringUtils::hasText).distinct().toList());
             return result;
         } catch (RuntimeException e) {
@@ -560,6 +638,8 @@ public class AuthorizationDecisionService {
                                    List<String> roleIds,
                                    List<SysRole> roles,
                                    boolean admin,
-                                   String adminRoleId) {
+                                   String adminRoleId,
+                                   boolean simulation,
+                                   List<String> organizationIds) {
     }
 }

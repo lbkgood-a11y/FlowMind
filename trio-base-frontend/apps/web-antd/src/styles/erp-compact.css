@@ -101,6 +101,24 @@ body,
   min-height: 0;
 }
 
+#app .list-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#app .list-title h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+#app .table-total {
+  font-size: 13px;
+  color: #111827;
+}
+
 #__vben_main_content > :where(.relative.flex.h-full.flex-col) {
   overflow: hidden;
 }

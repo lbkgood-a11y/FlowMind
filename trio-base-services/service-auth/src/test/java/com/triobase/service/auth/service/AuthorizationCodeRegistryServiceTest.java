@@ -23,7 +23,7 @@ class AuthorizationCodeRegistryServiceTest {
         when(resourceMapper.selectCount(any())).thenReturn(1L, 0L, 1L);
         when(actionMapper.selectCount(any())).thenReturn(1L, 0L, 1L);
 
-        List<String> missing = service.missingRegisteredCodes(List.of(
+        List<String> missing = service.missingRegisteredCodes("default", List.of(
                 "/api/v1/forms:GET",
                 "FORM:EXPENSE:CREATE",
                 "/api/v1/unknown:GET"));
@@ -33,7 +33,7 @@ class AuthorizationCodeRegistryServiceTest {
 
     @Test
     void missingRegisteredCodesTreatsInvalidCodesAsMissing() {
-        List<String> missing = service.missingRegisteredCodes(List.of("BROKEN"));
+        List<String> missing = service.missingRegisteredCodes("default", List.of("BROKEN"));
 
         assertThat(missing).containsExactly("BROKEN");
     }

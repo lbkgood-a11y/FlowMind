@@ -82,6 +82,31 @@ class LowcodeAuthorizationServiceTest {
     }
 
     @Test
+    void orgScopeAllowsOnlyVerifiedMatchingOwnership() {
+        setUser();
+        LowcodeAuthorizationService service = new LowcodeAuthorizationService(decisionClient, objectMapper);
+        AuthorizationDecisionResponse decision = allowDecision("VIEW", "OWN_ORG");
+        decision.getDataScope().setOrgUnitIds(List.of("ORG-1", "ORG-2"));
+        LcFormInstance matching = new LcFormInstance();
+        matching.setOwnerOrgId("ORG-1");
+        LcFormInstance other = new LcFormInstance();
+        other.setOwnerOrgId("ORG-9");
+
+        assertThat(service.canAccessInstance(decision, matching)).isTrue();
+        assertThat(service.canAccessInstance(decision, other)).isFalse();
+    }
+
+    @Test
+    void createUsesPrimaryOrganizationOnlyFromGovernedDecisionEvidence() {
+        LowcodeAuthorizationService service = new LowcodeAuthorizationService(decisionClient, objectMapper);
+        AuthorizationDecisionResponse decision = allowDecision("CREATE", "OWN_ORG");
+        decision.setSuppliedOrganizationIds(List.of("ORG-PRIMARY", "ORG-SECONDARY"));
+
+        assertThat(service.allowsCreate(decision)).isTrue();
+        assertThat(service.primarySubjectOrganizationId(decision)).isEqualTo("ORG-PRIMARY");
+    }
+
+    @Test
     void unknownDataScopeStillFailsClosed() {
         LowcodeAuthorizationService service = new LowcodeAuthorizationService(decisionClient, objectMapper);
         AuthorizationDecisionResponse decision = allowDecision("VIEW", "CUSTOM_SCOPE_X");

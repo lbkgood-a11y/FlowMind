@@ -1,5 +1,6 @@
 package com.triobase.service.auth.service;
 
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.service.auth.dto.DataPolicyDimensionRequest;
 import com.triobase.service.auth.dto.EffectiveDataPolicyResponse;
@@ -15,8 +16,10 @@ import com.triobase.service.auth.mapper.DataPolicyMapper;
 import com.triobase.service.auth.mapper.OrgScopeMapper;
 import com.triobase.service.auth.mapper.RoleMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -26,8 +29,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -39,6 +42,18 @@ class DataPolicyServiceTest {
     @BeforeAll
     static void initMybatisPlusMetadata() {
         MybatisPlusTestMetadata.initialize();
+    }
+
+    @BeforeEach
+    void setTenantContext() {
+        SecurityContextHolder.set(new SecurityContextHolder.SecurityContext(
+                "U001", "admin", "default", List.of("ADMIN"), List.of("*"), List.of(),
+                null, null, null, null, null, null));
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        SecurityContextHolder.clear();
     }
 
     @Mock

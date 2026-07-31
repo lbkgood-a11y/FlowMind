@@ -29,5 +29,35 @@
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-redis</artifactId></dependency>
         <dependency><groupId>com.triobase</groupId><artifactId>common-archunit</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
     </dependencies>
+    <profiles>
+        <profile>
+            <id>production-acceptance</id>
+            <properties>
+                <triobase.acceptance.required>true</triobase.acceptance.required>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <includes>
+                                <include>**/ProductionAuthorizationAcceptanceTest.java</include>
+                            </includes>
+                            <systemPropertyVariables>
+                                <triobase.acceptance.required>${triobase.acceptance.required}</triobase.acceptance.required>
+                                <triobase.acceptance.jdbc-url>${env.AUTH_ACCEPTANCE_DB_URL}</triobase.acceptance.jdbc-url>
+                                <triobase.acceptance.username>${env.AUTH_ACCEPTANCE_DB_USERNAME}</triobase.acceptance.username>
+                                <triobase.acceptance.password>${env.AUTH_ACCEPTANCE_DB_PASSWORD}</triobase.acceptance.password>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

@@ -2,6 +2,7 @@ package com.triobase.service.auth.service;
 
 import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.util.StringHelpers;
+import com.triobase.common.core.exception.BizException;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.triobase.service.auth.entity.SysAuthAction;
@@ -21,7 +22,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AuthorizationCodeRegistryService {
 
-    private static final String DEFAULT_TENANT = "default";
     private static final String ACTIVE = "ACTIVE";
     private static final short STATUS_ENABLED = 1;
 
@@ -37,7 +37,7 @@ public class AuthorizationCodeRegistryService {
         if (requested.isEmpty()) {
             return List.of();
         }
-        String effectiveTenant = StringUtils.hasText(tenantId) ? tenantId.trim() : DEFAULT_TENANT;
+        String effectiveTenant = requiredTenant(tenantId);
         return requested.stream()
                 .filter(code -> !isRegistered(effectiveTenant, code))
                 .toList();
@@ -61,8 +61,14 @@ public class AuthorizationCodeRegistryService {
     }
 
     private String currentTenantId() {
-        String tenantId = SecurityContextHolder.getTenantId();
-        return StringUtils.hasText(tenantId) ? tenantId : DEFAULT_TENANT;
+        return requiredTenant(SecurityContextHolder.getTenantId());
+    }
+
+    private String requiredTenant(String tenantId) {
+        if (!StringUtils.hasText(tenantId)) {
+            throw new BizException(40082, "AUTHZ_TENANT_REQUIRED");
+        }
+        return tenantId.trim();
     }
 
     private PermissionKey parsePermissionCode(String permissionCode) {

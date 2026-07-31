@@ -64,6 +64,9 @@ export namespace SystemAuthorizationApi {
     ownerService?: string;
     resourceCode: string;
     resourceType: string;
+    readHideEnforced?: boolean;
+    readMaskEnforced?: boolean;
+    writeDenyEnforced?: boolean;
   }
 
   export interface ResourceGroup {
@@ -246,6 +249,174 @@ export namespace SystemAuthorizationApi {
     roleVersion?: number;
     tenantId?: string;
     userId?: string;
+    evaluationMode?: 'ACTUAL_USER' | 'SIMULATION';
+    simulatedRoleId?: string;
+    suppliedOrganizationIds?: string[];
+    menuDerivation?: MenuDerivation[];
+  }
+
+  export interface MenuDerivation {
+    actionCode?: string;
+    derivation: 'ANCESTOR' | 'DIRECT_GRANT';
+    derivedFromMenuIds?: string[];
+    menuId: string;
+    menuName?: string;
+    permissionCode?: string;
+    resourceCode?: string;
+  }
+
+  export interface RoleSimulationPreviewRequest extends DecisionPreviewRequest {
+    organizationIds?: string[];
+    roleId: string;
+  }
+
+  export type PageCapabilityCategory = 'ACCESS' | 'OPERATION' | 'READ';
+
+  export interface PageCapability {
+    availableFields?: Array<{ fieldKey: string; fieldLabel?: string }>;
+    category: PageCapabilityCategory;
+    capabilityName: string;
+    constraintConfigurable?: boolean;
+    fieldRestrictionConfigurable?: boolean;
+    helpText?: string;
+    id: string;
+    pageCode: string;
+    pageName: string;
+    readiness: 'BROKEN' | 'PARTIAL' | 'READY' | 'UNMAPPED';
+    readinessMessage?: string;
+    requiredCapabilityIds?: string[];
+    scopeConfigurable?: boolean;
+    sortOrder?: number;
+  }
+
+  export interface RoleCapabilitySelection {
+    capabilityId: string;
+    capabilityName?: string;
+    category?: PageCapabilityCategory;
+    defaultScopeIds?: string[];
+    defaultScopeType?: string;
+    effectiveScopeSummary?: string;
+    fieldIntentJson?: string;
+    operationScopeIds?: string[];
+    operationScopeType?: string;
+    selectionSource?: 'DEPENDENCY' | 'EXPLICIT' | 'MIGRATION';
+  }
+
+  export interface RoleAuthorizationDraft {
+    basedReleaseId?: string;
+    catalogId: string;
+    draftId: string;
+    roleId: string;
+    selections: RoleCapabilitySelection[];
+    status: 'DRAFT' | 'FAILED' | 'PUBLISHED' | 'PUBLISHING' | 'VALIDATED';
+    validatedAt?: string;
+    validationExpiresAt?: string;
+    version: number;
+  }
+
+  export interface CompilationPlan {
+    businessSummary: string;
+    dataPolicies: unknown[];
+    fieldPolicies: unknown[];
+    grants: unknown[];
+    guards: unknown[];
+  }
+
+  export interface RoleAuthorizationValidation {
+    affectedUserCount: number;
+    blockingErrors: string[];
+    businessSummary: string;
+    compilation: CompilationPlan;
+    expiresAt: string;
+    validationToken: string;
+    warnings: string[];
+  }
+
+  export interface RoleAuthorizationRelease {
+    businessSummary: string;
+    catalogVersion: number;
+    intentVersion: number;
+    publishedAt: string;
+    publishedBy: string;
+    releaseId: string;
+    releaseNumber: number;
+    roleId: string;
+  }
+
+  export interface PageCapabilitySimulation {
+    allowed: boolean;
+    capabilityName: string;
+    dataScopeSummary: string;
+    evaluationMode: string;
+    fieldSummaries: string[];
+    guardSummaries: string[];
+    outcome: string;
+    pageName: string;
+    reasons: string[];
+  }
+
+  export interface PageCapabilityDiagnostic {
+    capabilityCode: string;
+    capabilityId: string;
+    catalogId: string;
+    catalogVersion: number;
+    pageCode: string;
+    readiness: 'BROKEN' | 'PARTIAL' | 'READY' | 'UNMAPPED';
+    readinessMessage?: string;
+    requiredCapabilityCodes: string[];
+    targets: Array<{
+      actionCode: string;
+      active: boolean;
+      required: boolean;
+      resourceCode: string;
+      targetKind: string;
+    }>;
+    tenantId: string;
+  }
+
+  export interface RoleAuthorizationDrift {
+    affectedUserCount: number;
+    capabilityCode: string;
+    detectedAt: string;
+    driftId: string;
+    driftType: string;
+    impactSummary: string;
+    roleId: string;
+    status: string;
+  }
+
+  export interface AuthorizationManagementMode {
+    managementMode: 'LEGACY' | 'MIGRATION' | 'PAGE_CAPABILITY';
+    tenantId: string;
+    updatedAt?: string;
+    updatedBy?: string;
+  }
+
+  export interface AuthorizationCompatibilityDashboard {
+    blockers: string[];
+    catalogCapabilityCount: number;
+    catalogNotReadyCount: number;
+    catalogReadyCount: number;
+    cutoverReady: boolean;
+    decisionEquivalentRoleCount: number;
+    decisionMismatchRoleCount: number;
+    missingProjectionCount: number;
+    openDriftCount: number;
+    pendingMigrationRoleCount: number;
+    publicationFailureCount: number;
+    publishedRoleCount: number;
+    roleStatuses: Array<{
+      missingProjectionCount: number;
+      roleId: string;
+      roleName: string;
+      status: 'EQUIVALENT' | 'MISMATCH' | 'PENDING_MIGRATION';
+      unintendedExpansionCount: number;
+    }>;
+    rollbackCount: number;
+    tenantId: string;
+    totalRoleCount: number;
+    unintendedExpansionCount: number;
+    unresolvedExpansionReviewCount: number;
   }
 }
 
@@ -339,16 +510,164 @@ async function previewAuthorizationDecision(
   );
 }
 
+async function previewRoleAuthorizationDecision(
+  data: SystemAuthorizationApi.RoleSimulationPreviewRequest,
+) {
+  return requestClient.post<SystemAuthorizationApi.DecisionPreview>(
+    '/authz/decisions/role-simulation',
+    data,
+  );
+}
+
+async function getPageCapabilities(tenantId?: string) {
+  return requestClient.get<SystemAuthorizationApi.PageCapability[]>(
+    '/authz/page-capabilities',
+    { params: { tenantId } },
+  );
+}
+
+async function getPageCapabilityDiagnostics(tenantId?: string) {
+  return requestClient.get<SystemAuthorizationApi.PageCapabilityDiagnostic[]>(
+    '/authz/page-capabilities/diagnostics',
+    { params: { tenantId } },
+  );
+}
+
+async function getAuthorizationCompatibilityDashboard(tenantId?: string) {
+  return requestClient.get<SystemAuthorizationApi.AuthorizationCompatibilityDashboard>(
+    '/authz/compatibility-dashboard',
+    { params: { tenantId } },
+  );
+}
+
+async function getAuthorizationManagementMode(tenantId?: string) {
+  return requestClient.get<SystemAuthorizationApi.AuthorizationManagementMode>(
+    '/authz/management-mode',
+    { params: { tenantId } },
+  );
+}
+
+async function updateAuthorizationManagementMode(
+  mode: SystemAuthorizationApi.AuthorizationManagementMode['managementMode'],
+  tenantId?: string,
+) {
+  return requestClient.put<SystemAuthorizationApi.AuthorizationManagementMode>(
+    '/authz/management-mode',
+    undefined,
+    { params: { mode, tenantId } },
+  );
+}
+
+async function getOrCreateRoleAuthorizationDraft(roleId: string, tenantId?: string) {
+  return requestClient.post<SystemAuthorizationApi.RoleAuthorizationDraft>(
+    `/authz/roles/${roleId}/authorization-drafts`,
+    undefined,
+    { params: { tenantId } },
+  );
+}
+
+async function replaceRoleCapabilityIntent(
+  draftId: string,
+  data: {
+    expectedVersion: number;
+    removedCapabilityIds?: string[];
+    selections: SystemAuthorizationApi.RoleCapabilitySelection[];
+    tenantId?: string;
+  },
+) {
+  return requestClient.put<SystemAuthorizationApi.RoleAuthorizationDraft>(
+    `/authz/role-authorization-drafts/${draftId}/intent`,
+    data,
+  );
+}
+
+async function validateRoleAuthorizationDraft(
+  draftId: string,
+  data: { expectedVersion: number; tenantId?: string },
+) {
+  return requestClient.post<SystemAuthorizationApi.RoleAuthorizationValidation>(
+    `/authz/role-authorization-drafts/${draftId}/validate`,
+    data,
+  );
+}
+
+async function publishRoleAuthorizationDraft(
+  draftId: string,
+  data: { expectedVersion: number; tenantId?: string; validationToken: string },
+) {
+  return requestClient.post<SystemAuthorizationApi.RoleAuthorizationRelease>(
+    `/authz/role-authorization-drafts/${draftId}/publish`,
+    data,
+  );
+}
+
+async function getRoleAuthorizationReleases(roleId: string, tenantId?: string) {
+  return requestClient.get<SystemAuthorizationApi.RoleAuthorizationRelease[]>(
+    `/authz/roles/${roleId}/authorization-releases`,
+    { params: { tenantId } },
+  );
+}
+
+async function getRoleAuthorizationDrifts(roleId: string, tenantId?: string) {
+  return requestClient.get<SystemAuthorizationApi.RoleAuthorizationDrift[]>(
+    '/authz/page-capabilities/drifts',
+    { params: { roleId, tenantId } },
+  );
+}
+
+async function rollbackRoleAuthorizationRelease(
+  roleId: string,
+  releaseId: string,
+  tenantId?: string,
+) {
+  return requestClient.post<SystemAuthorizationApi.RoleAuthorizationRelease>(
+    `/authz/roles/${roleId}/authorization-releases/${releaseId}/rollback`,
+    undefined,
+    { params: { tenantId } },
+  );
+}
+
+async function simulatePageCapability(
+  capabilityId: string,
+  data: {
+    businessObjectId?: string;
+    mode: 'ROLE' | 'USER';
+    organizationIds?: string[];
+    roleId?: string;
+    tenantId?: string;
+    userId?: string;
+  },
+) {
+  return requestClient.post<SystemAuthorizationApi.PageCapabilitySimulation>(
+    `/authz/page-capabilities/${capabilityId}/simulate`,
+    data,
+  );
+}
+
 export {
   deleteAuthorizationFieldPolicy,
   deleteAuthorizationGrant,
   getAuthorizationAdminOptions,
+  getAuthorizationCompatibilityDashboard,
+  getAuthorizationManagementMode,
   getAuthorizationResourceTree,
+  getOrCreateRoleAuthorizationDraft,
+  getPageCapabilities,
+  getPageCapabilityDiagnostics,
+  getRoleAuthorizationReleases,
+  getRoleAuthorizationDrifts,
   getRoleAuthorizationProfile,
   previewAuthorizationDecision,
+  previewRoleAuthorizationDecision,
+  publishRoleAuthorizationDraft,
+  replaceRoleCapabilityIntent,
   replaceRoleFunctionGrants,
   saveAuthorizationFieldPolicy,
   saveAuthorizationGrant,
   saveAuthorizationGuardTemplate,
+  rollbackRoleAuthorizationRelease,
+  simulatePageCapability,
   updateAuthorizationGuardTemplateStatus,
+  updateAuthorizationManagementMode,
+  validateRoleAuthorizationDraft,
 };

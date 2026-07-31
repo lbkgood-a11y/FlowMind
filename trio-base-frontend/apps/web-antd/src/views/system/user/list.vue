@@ -30,6 +30,7 @@ import {
   RadioGroup,
   Select,
   Space,
+  Spin,
   Switch,
   Table,
   Tag,
@@ -59,6 +60,13 @@ import {
   restoreTableColumnSettings,
   TableColumnSettings,
 } from '#/shared';
+
+import {
+  isValidEmail,
+  isValidPhone,
+  mapWithConcurrency,
+  pageAfterDelete,
+} from './user-list-utils';
 
 const RangePicker = DatePicker.RangePicker;
 
@@ -132,6 +140,7 @@ const loading = ref(false);
 const saving = ref(false);
 const formOpen = ref(false);
 const detailOpen = ref(false);
+const detailLoading = ref(false);
 const collapsed = ref(false);
 const queryHidden = ref(false);
 const blockFullscreen = ref(false);
@@ -142,6 +151,8 @@ const activeOrgDimension = ref('ADMIN');
 const assignmentOrgUnitIds = ref<string[]>([]);
 const primaryOrgUnitId = ref<string>();
 const assignmentPosition = ref('');
+let userListRequestId = 0;
+let detailRequestId = 0;
 const { hasAccessByCodes } = useAccess();
 
 const canQuery = computed(() => hasAccessByCodes([USER_PERMISSIONS.query]));
@@ -344,17 +355,26 @@ async function ensureOrgContext() {
 
 async function loadUserOrgAssignmentsForList(
   sourceUsers = users.value,
+  requestId = userListRequestId,
 ) {
   if (!canQueryOrg.value || !activeOrgDimension.value || sourceUsers.length === 0) {
     userOrgAssignmentMap.value = {};
     return;
   }
-  const results = await Promise.allSettled(
-    sourceUsers.map(async (user) => ({
-      assignments: await getUserOrgAssignments(user.id, activeOrgDimension.value),
+  if (!columnSettings.some((item) => item.key === 'orgs' && item.visible)) {
+    userOrgAssignmentMap.value = {};
+    return;
+  }
+  const dimensionCode = activeOrgDimension.value;
+  const results = await mapWithConcurrency(
+    sourceUsers,
+    6,
+    async (user) => ({
+      assignments: await getUserOrgAssignments(user.id, dimensionCode),
       userId: user.id,
-    })),
+    }),
   );
+  if (requestId !== userListRequestId || dimensionCode !== activeOrgDimension.value) return;
   const nextMap: Record<string, SystemOrgApi.UserOrgAssignmentResponse[]> = {};
   results.forEach((result) => {
     if (result.status === 'fulfilled') {
@@ -365,9 +385,11 @@ async function loadUserOrgAssignmentsForList(
 }
 
 async function loadUsers(page = pagination.current) {
+  const requestId = ++userListRequestId;
   if (!canQuery.value) {
     users.value = [];
     pagination.total = 0;
+    loading.value = false;
     return;
   }
   loading.value = true;
@@ -385,12 +407,13 @@ async function loadUsers(page = pagination.current) {
       status: queryForm.status,
       username: queryForm.username?.trim() || undefined,
     });
+    if (requestId !== userListRequestId) return;
     users.value = result.items;
     pagination.current = page;
     pagination.total = result.total;
-    await loadUserOrgAssignmentsForList(result.items);
+    await loadUserOrgAssignmentsForList(result.items, requestId);
   } finally {
-    loading.value = false;
+    if (requestId === userListRequestId) loading.value = false;
   }
 }
 
@@ -408,12 +431,21 @@ async function handleToolbarSearch() {
 }
 
 function applyColumnSettings(settings: TableColumnSetting[]) {
+  const wasOrgVisible = columnSettings.some(
+    (item) => item.key === 'orgs' && item.visible,
+  );
   columnSettings.splice(
     0,
     columnSettings.length,
     ...(settings as UserColumnSetting[]),
   );
   tableKey.value += 1;
+  const isOrgVisible = columnSettings.some(
+    (item) => item.key === 'orgs' && item.visible,
+  );
+  if (!wasOrgVisible && isOrgVisible) {
+    void loadUserOrgAssignmentsForList(users.value);
+  }
 }
 
 function resetForm() {
@@ -458,14 +490,21 @@ async function openEdit(record: SystemUserApi.SystemUser) {
 }
 
 async function openDetail(record: SystemUserApi.SystemUser) {
+  const requestId = ++detailRequestId;
   editingUser.value = undefined;
   detailUser.value = record;
-  detailAssignments.value = userOrgAssignmentMap.value[record.id] ?? [];
+  detailAssignments.value = [];
   detailOpen.value = true;
-  await ensureOrgContext();
-  detailAssignments.value = canQueryOrg.value
-    ? await getUserOrgAssignments(record.id, activeOrgDimension.value)
-    : [];
+  detailLoading.value = true;
+  try {
+    await ensureOrgContext();
+    const assignments = canQueryOrg.value
+      ? await getUserOrgAssignments(record.id, activeOrgDimension.value)
+      : [];
+    if (requestId === detailRequestId) detailAssignments.value = assignments;
+  } finally {
+    if (requestId === detailRequestId) detailLoading.value = false;
+  }
 }
 
 function validatePassword(password: string) {
@@ -494,6 +533,14 @@ async function submitForm() {
     message.warning('密码至少 8 位，且包含大小写字母和数字');
     return;
   }
+  if (formModel.email && !isValidEmail(formModel.email.trim())) {
+    message.warning('请输入正确的邮箱地址');
+    return;
+  }
+  if (formModel.phone && !isValidPhone(formModel.phone.trim())) {
+    message.warning('请输入正确的中国大陆手机号');
+    return;
+  }
   if (
     canUpdateOrgAssignments.value &&
     assignmentOrgUnitIds.value.length > 0 &&
@@ -506,8 +553,8 @@ async function submitForm() {
   saving.value = true;
   try {
     const payload: SystemUserApi.SaveUserParams = {
-      email: formModel.email || undefined,
-      phone: formModel.phone || undefined,
+      email: formModel.email?.trim() || undefined,
+      phone: formModel.phone?.trim() || undefined,
       roleIds: canQueryRoles.value ? formModel.roleIds : undefined,
       status: formModel.status,
     };
@@ -519,15 +566,22 @@ async function submitForm() {
     }
 
     let savedUser: SystemUserApi.SystemUser;
+    const wasEditing = !!editingUser.value;
     if (editingUser.value) {
       savedUser = await updateUser(editingUser.value.id, payload);
-      message.success('用户已更新');
     } else {
       savedUser = await createUser(payload);
-      message.success('用户已创建');
     }
-    await saveUserOrgAssignments(editingUser.value?.id ?? savedUser.id);
+    try {
+      await saveUserOrgAssignments(editingUser.value?.id ?? savedUser.id);
+    } catch {
+      editingUser.value = savedUser;
+      message.warning('用户已保存，但组织归属保存失败；请检查后重新保存');
+      await loadUsers();
+      return;
+    }
 
+    message.success(wasEditing ? '用户已更新' : '用户已创建');
     formOpen.value = false;
     await loadUsers();
   } finally {
@@ -618,9 +672,10 @@ function changeStatus(record: SystemUserApi.SystemUser, checked: boolean) {
 }
 
 async function removeUser(record: SystemUserApi.SystemUser) {
+  const targetPage = pageAfterDelete(pagination.current, users.value.length);
   await deleteUser(record.id);
   message.success('用户已删除');
-  await loadUsers();
+  await loadUsers(targetPage);
 }
 
 function onPageChange(page: number, pageSize: number) {
@@ -975,7 +1030,8 @@ onMounted(async () => {
     </Drawer>
 
     <Drawer v-model:open="detailOpen" :footer="null" title="用户详情" placement="right" width="520">
-      <Descriptions v-if="detailUser" bordered :column="1" size="small">
+      <Spin :spinning="detailLoading">
+        <Descriptions v-if="detailUser" bordered :column="1" size="small">
         <DescriptionsItem label="用户名">{{ detailUser.username }}</DescriptionsItem>
         <DescriptionsItem label="邮箱">{{ detailUser.email || '-' }}</DescriptionsItem>
         <DescriptionsItem label="手机号">{{ detailUser.phone || '-' }}</DescriptionsItem>
@@ -1017,7 +1073,8 @@ onMounted(async () => {
         <DescriptionsItem label="创建时间">
           {{ detailUser.createdAt || '-' }}
         </DescriptionsItem>
-      </Descriptions>
+        </Descriptions>
+      </Spin>
     </Drawer>
   </Page>
 </template>

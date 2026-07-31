@@ -36,7 +36,6 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class FormInstanceService {
-    private static final String DEFAULT_TENANT_ID = "default";
     private static final String GLOBAL_TENANT_ID = "GLOBAL";
     private static final String STATUS_PENDING_WORKFLOW = "PENDING_WORKFLOW";
     private static final Set<String> SUPPORTED_WORKFLOW_STATUSES = Set.of(
@@ -79,6 +78,10 @@ public class FormInstanceService {
         instance.setFormKey(definition.getFormKey());
         instance.setStatus("SUBMITTED");
         instance.setSubmittedBy(userId);
+        String ownerOrgId = authorizationService.primarySubjectOrganizationId(decision);
+        instance.setOwnerOrgId(ownerOrgId);
+        instance.setOwnerOrgProvenance(StringUtils.hasText(ownerOrgId)
+                ? "GOVERNED_AUTHORIZATION_SUBJECT" : "UNRESOLVED");
         instance.setSubmittedAt(LocalDateTime.now());
         instance.setCreatedAt(LocalDateTime.now());
         instance.setCreatedBy(userId);
@@ -111,6 +114,13 @@ public class FormInstanceService {
                 .eq(LcFormInstance::getFormKey, formKey);
         if (accessMode == LowcodeAuthorizationService.DataAccessMode.SELF) {
             query.eq(LcFormInstance::getSubmittedBy, userId);
+        }
+        if (accessMode == LowcodeAuthorizationService.DataAccessMode.ORG) {
+            List<String> orgUnitIds = authorizationService.orgUnitIds(decision);
+            if (orgUnitIds.isEmpty()) {
+                return PageResult.empty(page, size);
+            }
+            query.in(LcFormInstance::getOwnerOrgId, orgUnitIds);
         }
         if (filters != null) {
             filters.forEach((field, value) -> {
@@ -408,7 +418,10 @@ public class FormInstanceService {
 
     private String currentTenantId() {
         String tenantId = SecurityContextHolder.getTenantId();
-        return StringUtils.hasText(tenantId) ? tenantId : DEFAULT_TENANT_ID;
+        if (!StringUtils.hasText(tenantId)) {
+            throw new BizException(40310, "FORM_DATA_TENANT_REQUIRED");
+        }
+        return tenantId.trim();
     }
 
     private FormInstanceResponse toResponse(LcFormInstance instance) {
@@ -422,6 +435,8 @@ public class FormInstanceService {
         response.setStatus(instance.getStatus());
         response.setDataJson(instance.getDataJson());
         response.setSubmittedBy(instance.getSubmittedBy());
+        response.setOwnerOrgId(instance.getOwnerOrgId());
+        response.setOwnerOrgProvenance(instance.getOwnerOrgProvenance());
         response.setProcessKey(instance.getProcessKey());
         response.setProcessInstanceId(instance.getProcessInstanceId());
         response.setWorkflowStatus(instance.getWorkflowStatus());

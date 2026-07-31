@@ -19,6 +19,9 @@ public class AuthorizationResourceSyncRequest {
         private String businessObjectId;
         private String lifecycleStatus;
         private Boolean globalResource;
+        private Boolean readHideEnforced;
+        private Boolean readMaskEnforced;
+        private Boolean writeDenyEnforced;
         private String metadataJson;
         private List<Action> actions = new ArrayList<>();
         private List<Field> fields = new ArrayList<>();

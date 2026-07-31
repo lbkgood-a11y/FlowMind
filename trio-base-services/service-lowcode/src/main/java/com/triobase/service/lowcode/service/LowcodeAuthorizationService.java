@@ -31,7 +31,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class LowcodeAuthorizationService {
 
-    private static final String DEFAULT_TENANT_ID = "default";
     private static final String OWNER_SERVICE = "service-lowcode";
 
     private final AuthorizationDecisionClient decisionClient;
@@ -111,7 +110,8 @@ public class LowcodeAuthorizationService {
 
     public boolean allowsCreate(AuthorizationDecisionResponse decision) {
         DataAccessMode mode = dataAccessMode(decision);
-        return mode == DataAccessMode.ALL || mode == DataAccessMode.SELF;
+        return mode == DataAccessMode.ALL || mode == DataAccessMode.SELF
+                || (mode == DataAccessMode.ORG && primarySubjectOrganizationId(decision) != null);
     }
 
     public boolean canAccessInstance(AuthorizationDecisionResponse decision, LcFormInstance instance) {
@@ -122,7 +122,11 @@ public class LowcodeAuthorizationService {
         if (mode == DataAccessMode.ORG) {
             // ORG-level row filtering is done at SQL level by DataScopeInnerInterceptor.
             // Instance-level ORG check requires an org column (e.g. org_unit_id) on lc_form_instance — not yet present.
-            return instance != null;
+            // A single-record lookup cannot inherit list-query SQL filtering.
+            // Without verified instance ownership metadata, fail closed.
+            return instance != null
+                    && StringUtils.hasText(instance.getOwnerOrgId())
+                    && orgUnitIds(decision).contains(instance.getOwnerOrgId());
         }
         return mode == DataAccessMode.SELF
                 && instance != null
@@ -134,7 +138,20 @@ public class LowcodeAuthorizationService {
             return List.of();
         }
         List<String> ids = decision.getDataScope().getOrgUnitIds();
-        return ids != null ? ids : List.of();
+        return ids != null
+                ? ids.stream().filter(StringUtils::hasText).map(String::trim).distinct().toList()
+                : List.of();
+    }
+
+    public String primarySubjectOrganizationId(AuthorizationDecisionResponse decision) {
+        if (decision == null || decision.getSuppliedOrganizationIds() == null) {
+            return null;
+        }
+        return decision.getSuppliedOrganizationIds().stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
     }
 
     private static final Set<String> ORG_SCOPE_TYPES = Set.of(
@@ -212,7 +229,10 @@ public class LowcodeAuthorizationService {
 
     private String currentTenantId() {
         String tenantId = SecurityContextHolder.getTenantId();
-        return StringUtils.hasText(tenantId) ? tenantId : DEFAULT_TENANT_ID;
+        if (!StringUtils.hasText(tenantId)) {
+            throw new BizException(40310, "FORM_DATA_TENANT_REQUIRED");
+        }
+        return tenantId.trim();
     }
 
     private String requireCurrentUser() {

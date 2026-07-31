@@ -1,6 +1,7 @@
 package com.triobase.service.lowcode.service;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.action.enums.ActionActorType;
 import com.triobase.common.action.enums.ActionSource;
@@ -28,6 +29,7 @@ import com.triobase.service.lowcode.entity.LcApplication;
 import com.triobase.service.lowcode.entity.LcApplicationAction;
 import com.triobase.service.lowcode.entity.LcApplicationPage;
 import com.triobase.service.lowcode.entity.LcApplicationVersion;
+import com.triobase.service.lowcode.entity.LcFormRelation;
 import com.triobase.service.lowcode.mapper.ApplicationActionMapper;
 import com.triobase.service.lowcode.mapper.ApplicationMapper;
 import com.triobase.service.lowcode.mapper.ApplicationPageMapper;
@@ -35,12 +37,15 @@ import com.triobase.service.lowcode.mapper.ApplicationVersionMapper;
 import com.triobase.service.lowcode.mapper.FormDefinitionMapper;
 import com.triobase.service.lowcode.mapper.FormRelationMapper;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.ibatis.session.Configuration;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -60,6 +65,16 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ApplicationRuntimeServiceTest {
+
+    @BeforeAll
+    static void initializeMybatisMetadata() {
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(new Configuration(), "");
+        assistant.setCurrentNamespace("application-runtime-test");
+        TableInfoHelper.initTableInfo(assistant, LcApplicationVersion.class);
+        TableInfoHelper.initTableInfo(assistant, LcApplicationPage.class);
+        TableInfoHelper.initTableInfo(assistant, LcApplicationAction.class);
+        TableInfoHelper.initTableInfo(assistant, LcFormRelation.class);
+    }
 
     @Mock
     private ApplicationMapper applicationMapper;

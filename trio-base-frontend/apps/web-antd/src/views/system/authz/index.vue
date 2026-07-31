@@ -29,13 +29,17 @@ import {
   deleteAuthorizationFieldPolicy,
   deleteAuthorizationGrant,
   getAuthorizationAdminOptions,
+  getAuthorizationCompatibilityDashboard,
+  getAuthorizationManagementMode,
   getAuthorizationResourceTree,
+  getPageCapabilityDiagnostics,
   getRoleAuthorizationProfile,
   previewAuthorizationDecision,
   saveAuthorizationFieldPolicy,
   saveAuthorizationGrant,
   saveAuthorizationGuardTemplate,
   updateAuthorizationGuardTemplateStatus,
+  updateAuthorizationManagementMode,
 } from '#/api';
 import { getRoleList } from '#/api/system/role';
 import {
@@ -70,12 +74,31 @@ const saving = ref(false);
 const resourceTree = ref<SystemAuthorizationApi.ResourceTree>();
 const adminOptions = ref<SystemAuthorizationApi.AdminOptions>();
 const roleList = ref<{ id: string; roleName: string; roleCode: string }[]>([]);
+const capabilityDiagnostics = ref<SystemAuthorizationApi.PageCapabilityDiagnostic[]>([]);
+const compatibilityDashboard = ref<SystemAuthorizationApi.AuthorizationCompatibilityDashboard>();
+const managementMode = ref<SystemAuthorizationApi.AuthorizationManagementMode>();
 const selectedRoleId = ref<string>('');
 
 const resourceGroups = computed(() => resourceTree.value?.groups ?? []);
 const resourceList = computed(() =>
   resourceGroups.value.flatMap((group) => group.resources ?? []),
 );
+
+const diagnosticColumns: TableProps['columns'] = [
+  { title: '页面', dataIndex: 'pageCode', key: 'pageCode', width: 180 },
+  { title: '页面功能', dataIndex: 'capabilityCode', key: 'capabilityCode', width: 220 },
+  { title: '就绪状态', dataIndex: 'readiness', key: 'readiness', width: 110 },
+  { title: '后台连接', key: 'targets', width: 380 },
+  { title: '依赖功能', key: 'dependencies', width: 240 },
+  { title: '说明', dataIndex: 'readinessMessage', key: 'readinessMessage', width: 260 },
+];
+
+const acceptanceColumns: TableProps['columns'] = [
+  { title: '角色', dataIndex: 'roleName', key: 'roleName' },
+  { title: '验收状态', dataIndex: 'status', key: 'status', width: 150 },
+  { title: '缺少已发布权限', dataIndex: 'missingProjectionCount', key: 'missingProjectionCount', width: 150 },
+  { title: '版本外权限', dataIndex: 'unintendedExpansionCount', key: 'unintendedExpansionCount', width: 130 },
+];
 
 const clientPagination: TableProps['pagination'] = {
   pageSize: 20,
@@ -155,6 +178,45 @@ async function loadResources() {
     message.warning('授权资源加载失败');
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadCapabilityDiagnostics() {
+  if (!canQuery.value) return;
+  loading.value = true;
+  try {
+    capabilityDiagnostics.value = await getPageCapabilityDiagnostics();
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function loadCompatibilityDashboard() {
+  if (!canQuery.value) return;
+  loading.value = true;
+  try {
+    const [dashboard, mode] = await Promise.all([
+      getAuthorizationCompatibilityDashboard(),
+      getAuthorizationManagementMode(),
+    ]);
+    compatibilityDashboard.value = dashboard;
+    managementMode.value = mode;
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function enablePageCapabilityMode() {
+  if (!compatibilityDashboard.value?.cutoverReady) return;
+  saving.value = true;
+  try {
+    managementMode.value = await updateAuthorizationManagementMode('PAGE_CAPABILITY');
+    message.success('已切换为页面功能授权；旧授权入口已停止写入');
+    await loadCompatibilityDashboard();
+  } catch {
+    message.error('切换失败，请刷新验收结果并处理阻断项');
+  } finally {
+    saving.value = false;
   }
 }
 
@@ -522,6 +584,8 @@ function onTabChange(key: number | string) {
   if (nextKey === 'function') loadGrants();
   if (nextKey === 'field') loadFieldPolicies();
   if (nextKey === 'guard') loadGuards();
+  if (nextKey === 'mapping') loadCapabilityDiagnostics();
+  if (nextKey === 'acceptance') loadCompatibilityDashboard();
 }
 
 function onRoleChange() {
@@ -791,6 +855,139 @@ function onRoleChange() {
               </div>
             </div>
           </div>
+        </TabPane>
+
+        <TabPane key="acceptance" tab="上线验收">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <div class="font-medium">页面功能授权生产验收</div>
+              <div class="text-muted-foreground text-sm">
+                所有结果均根据当前目录、已发布版本和运行时权限实时计算，不能手工勾选通过。
+              </div>
+            </div>
+            <Space>
+              <Tag color="blue">当前模式：{{ managementMode?.managementMode || '-' }}</Tag>
+              <Button class="!h-8 !w-8" @click="loadCompatibilityDashboard">
+                <IconifyIcon icon="lucide:refresh-cw" />
+              </Button>
+              <Button
+                v-if="canUpdate && managementMode?.managementMode !== 'PAGE_CAPABILITY'"
+                type="primary"
+                :disabled="!compatibilityDashboard?.cutoverReady"
+                :loading="saving"
+                @click="enablePageCapabilityMode"
+              >
+                验收通过并切换
+              </Button>
+            </Space>
+          </div>
+
+          <div v-if="compatibilityDashboard" class="space-y-4">
+            <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <div class="rounded border p-3">
+                <div class="text-muted-foreground text-xs">目录就绪</div>
+                <div class="mt-1 text-lg font-semibold">
+                  {{ compatibilityDashboard.catalogReadyCount }}/{{ compatibilityDashboard.catalogCapabilityCount }}
+                </div>
+              </div>
+              <div class="rounded border p-3">
+                <div class="text-muted-foreground text-xs">角色已发布</div>
+                <div class="mt-1 text-lg font-semibold">
+                  {{ compatibilityDashboard.publishedRoleCount }}/{{ compatibilityDashboard.totalRoleCount }}
+                </div>
+              </div>
+              <div class="rounded border p-3">
+                <div class="text-muted-foreground text-xs">决策一致角色</div>
+                <div class="mt-1 text-lg font-semibold">{{ compatibilityDashboard.decisionEquivalentRoleCount }}</div>
+              </div>
+              <div class="rounded border p-3">
+                <div class="text-muted-foreground text-xs">版本外权限</div>
+                <div class="mt-1 text-lg font-semibold">{{ compatibilityDashboard.unintendedExpansionCount }}</div>
+              </div>
+              <div class="rounded border p-3">
+                <div class="text-muted-foreground text-xs">开放漂移</div>
+                <div class="mt-1 text-lg font-semibold">{{ compatibilityDashboard.openDriftCount }}</div>
+              </div>
+              <div class="rounded border p-3">
+                <div class="text-muted-foreground text-xs">发布失败 / 回滚</div>
+                <div class="mt-1 text-lg font-semibold">
+                  {{ compatibilityDashboard.publicationFailureCount }} / {{ compatibilityDashboard.rollbackCount }}
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="rounded border p-3 text-sm"
+              :class="compatibilityDashboard.cutoverReady ? 'border-green-300 bg-green-50 text-green-800' : 'border-orange-300 bg-orange-50 text-orange-900'"
+            >
+              <template v-if="compatibilityDashboard.cutoverReady">
+                已通过上线门禁：目录映射、角色迁移、运行时决策、扩权复核和漂移检查均无阻断项。
+              </template>
+              <template v-else>
+                <div class="mb-1 font-medium">切换被阻止，请先处理：</div>
+                <ul class="list-disc space-y-1 pl-5">
+                  <li v-for="blocker in compatibilityDashboard.blockers" :key="blocker">{{ blocker }}</li>
+                </ul>
+              </template>
+            </div>
+
+            <CompactTableFrame>
+              <Table
+                :columns="acceptanceColumns"
+                :data-source="compatibilityDashboard.roleStatuses"
+                :pagination="clientPagination"
+                row-key="roleId"
+                size="small"
+                bordered
+              >
+                <template #bodyCell="{ column, record }: any">
+                  <template v-if="column.key === 'status'">
+                    <Tag :color="record.status === 'EQUIVALENT' ? 'success' : record.status === 'MISMATCH' ? 'error' : 'warning'">
+                      {{ record.status === 'EQUIVALENT' ? '决策一致' : record.status === 'MISMATCH' ? '运行时不一致' : '待迁移发布' }}
+                    </Tag>
+                  </template>
+                </template>
+              </Table>
+            </CompactTableFrame>
+          </div>
+        </TabPane>
+
+        <TabPane key="mapping" tab="页面功能映射诊断">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-muted-foreground text-sm">仅供平台管理员排查页面功能与后台权限连接，角色实施人员无需理解这些代码</span>
+            <Button class="!w-8 !h-8" @click="loadCapabilityDiagnostics">
+              <IconifyIcon icon="lucide:refresh-cw" />
+            </Button>
+          </div>
+          <CompactTableFrame>
+            <Table
+              :columns="diagnosticColumns"
+              :data-source="capabilityDiagnostics"
+              :loading="loading"
+              :pagination="clientPagination"
+              row-key="capabilityId"
+              size="small"
+              bordered
+            >
+              <template #bodyCell="{ column, record }: any">
+                <template v-if="column.key === 'readiness'">
+                  <Tag :color="record.readiness === 'READY' ? 'success' : record.readiness === 'PARTIAL' ? 'warning' : 'error'">
+                    {{ record.readiness }}
+                  </Tag>
+                </template>
+                <template v-else-if="column.key === 'targets'">
+                  <Space wrap :size="4">
+                    <Tag v-for="target in record.targets" :key="`${target.resourceCode}:${target.actionCode}`" :color="target.active ? 'blue' : 'error'">
+                      {{ target.resourceCode }} / {{ target.actionCode }}
+                    </Tag>
+                  </Space>
+                </template>
+                <template v-else-if="column.key === 'dependencies'">
+                  <Space wrap :size="4"><Tag v-for="dependency in record.requiredCapabilityCodes" :key="dependency">{{ dependency }}</Tag></Space>
+                </template>
+              </template>
+            </Table>
+          </CompactTableFrame>
         </TabPane>
       </Tabs>
     </BusinessPageScaffold>

@@ -2,7 +2,9 @@ package com.triobase.service.auth.service;
 
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.triobase.common.core.exception.BizException;
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.service.auth.dto.ReplaceRoleFunctionGrantsRequest;
+import com.triobase.common.dto.authz.AuthorizationResourceSyncRequest;
 import com.triobase.service.auth.entity.SysAuthAction;
 import com.triobase.service.auth.entity.SysAuthField;
 import com.triobase.service.auth.entity.SysAuthGuardTemplate;
@@ -20,6 +22,7 @@ import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -93,6 +96,9 @@ class AuthorizationRegistryServiceTest {
                 .containsExactly("LOWCODE_FORM", "CUSTOM_DOC");
         var customDoc = tree.getGroups().get(1).getResources().getFirst();
         assertThat(customDoc.getResourceCode()).isEqualTo("CUSTOM_DOC:CONTRACT");
+        assertThat(customDoc.getReadHideEnforced()).isFalse();
+        assertThat(customDoc.getReadMaskEnforced()).isFalse();
+        assertThat(customDoc.getWriteDenyEnforced()).isFalse();
         assertThat(customDoc.getActions().getFirst().getGuardCodes())
                 .containsExactly("WORKFLOW_CANDIDATE", "NO_SELF_APPROVAL", "DOCUMENT_STATUS");
         assertThat(customDoc.getFields()).extracting("fieldKey").containsExactly("paymentTerms");
@@ -112,6 +118,52 @@ class AuthorizationRegistryServiceTest {
         assertThat(options.getFieldReadModes()).extracting("code").containsExactly("VISIBLE", "MASKED", "HIDDEN");
         assertThat(options.getFieldWriteModes()).extracting("code").contains("EDITABLE", "READ_ONLY", "DENIED");
         assertThat(options.getGuardTemplates()).extracting("guardCode").containsExactly("NO_SELF_APPROVAL");
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clear();
+    }
+
+    @Test
+    void missingTenantNeverFallsBackToDefault() {
+        BizException exception = assertThrows(BizException.class, () -> service.effectiveTenant(null));
+        assertThat(exception.getMessage()).isEqualTo("AUTHZ_TENANT_REQUIRED");
+    }
+
+    @Test
+    void resourceTreeExposesVerifiedFieldEnforcementCapabilities() {
+        SysAuthResource capable = resource(
+                "R_FORM", "LOWCODE_FORM:EXPENSE", "LOWCODE_FORM", "service-lowcode");
+        capable.setReadHideEnforced((short) 1);
+        capable.setReadMaskEnforced((short) 1);
+        capable.setWriteDenyEnforced((short) 1);
+        when(resourceMapper.selectList(any())).thenReturn(List.of(capable));
+        when(actionMapper.selectList(any())).thenReturn(List.of());
+        when(fieldMapper.selectList(any())).thenReturn(List.of());
+        when(guardTemplateMapper.selectList(any())).thenReturn(List.of());
+
+        var node = service.resourceTree("tenant-a", null)
+                .getGroups().getFirst().getResources().getFirst();
+
+        assertThat(node.getReadHideEnforced()).isTrue();
+        assertThat(node.getReadMaskEnforced()).isTrue();
+        assertThat(node.getWriteDenyEnforced()).isTrue();
+    }
+
+    @Test
+    void synchronizeRejectsUnverifiedFieldCapabilityAdvertisement() {
+        AuthorizationResourceSyncRequest.Resource resource = new AuthorizationResourceSyncRequest.Resource();
+        resource.setResourceCode("CUSTOM_DOC:UNVERIFIED");
+        resource.setResourceType("CUSTOM_DOC");
+        resource.setReadHideEnforced(true);
+        AuthorizationResourceSyncRequest request = new AuthorizationResourceSyncRequest();
+        request.setTenantId("tenant-a");
+        request.setOwnerService("service-unverified");
+        request.setResources(List.of(resource));
+
+        assertThrows(BizException.class, () -> service.synchronize(request));
+        verify(resourceMapper, never()).insert(any(SysAuthResource.class));
     }
 
     @Test

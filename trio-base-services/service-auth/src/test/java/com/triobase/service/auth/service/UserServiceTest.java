@@ -79,7 +79,7 @@ class UserServiceTest {
         role.setId("R002");
         role.setStatus((short) 1);
         when(userMapper.selectById("U001")).thenReturn(user);
-        when(roleMapper.selectById("R002")).thenReturn(role);
+        when(roleMapper.selectOne(any())).thenReturn(role);
         setContext("default", List.of("ADMIN"));
 
         userService.assignRoles("U001", List.of("R002"));

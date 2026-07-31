@@ -1,5 +1,6 @@
 package com.triobase.service.auth.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.triobase.common.core.entity.BaseEntity;
 import lombok.Data;
@@ -33,4 +34,13 @@ public class SysMenu extends BaseEntity {
     private String badgeVariant;
     private String permissionCode;
     private String description;
+
+    @TableField(exist = false)
+    private String authorizationResourceCode;
+    @TableField(exist = false)
+    private String authorizationActionCode;
+    @TableField(exist = false)
+    private String authorizationMappingStatus;
+    @TableField(exist = false)
+    private String authorizationMappingMessage;
 }

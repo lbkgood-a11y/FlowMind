@@ -277,7 +277,9 @@ public class UserService {
             return;
         }
         for (String roleId : roleIds) {
-            SysRole role = roleMapper.selectById(roleId);
+            SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
+                    .eq(SysRole::getId, roleId)
+                    .eq(SysRole::getTenantId, tenantId));
             if (role == null) {
                 throw new BizException(AuthErrorCode.ROLE_NOT_FOUND);
             }

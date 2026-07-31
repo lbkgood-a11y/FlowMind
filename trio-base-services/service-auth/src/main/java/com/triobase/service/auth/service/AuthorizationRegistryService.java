@@ -61,6 +61,9 @@ public class AuthorizationRegistryService {
     private static final String ACTIVE = "ACTIVE";
     private static final Set<String> SUBJECT_TYPES = Set.of("ROLE", "USER");
     private static final Set<String> EFFECTS = Set.of("ALLOW", "DENY");
+    private static final Set<String> VERIFIED_FIELD_ADAPTERS = Set.of(
+            "service-lowcode|LOWCODE_FORM",
+            "service-api-runtime|CUSTOM_DOC:CONTRACT");
 
     private final AuthResourceMapper resourceMapper;
     private final AuthActionMapper actionMapper;
@@ -352,7 +355,11 @@ public class AuthorizationRegistryService {
                 ? request.getDisplayName().trim() : resourceCode);
         resource.setLifecycleStatus(StringUtils.hasText(request.getLifecycleStatus())
                 ? normalize(request.getLifecycleStatus()) : ACTIVE);
+        validateFieldEnforcementCapabilities(ownerService, resourceCode, resource.getResourceType(), request);
         resource.setGlobalFlag(Boolean.TRUE.equals(request.getGlobalResource()) ? (short) 1 : (short) 0);
+        resource.setReadHideEnforced(toFlag(request.getReadHideEnforced()));
+        resource.setReadMaskEnforced(toFlag(request.getReadMaskEnforced()));
+        resource.setWriteDenyEnforced(toFlag(request.getWriteDenyEnforced()));
         resource.setMetadataJson(StringHelpers.normalizeBlank(request.getMetadataJson()));
         resource.setLastSyncedAt(LocalDateTime.now());
         if (resource.getCreatedAt() == null) {
@@ -468,6 +475,9 @@ public class AuthorizationRegistryService {
         node.setBusinessObjectId(resource.getBusinessObjectId());
         node.setDisplayName(resource.getDisplayName());
         node.setLifecycleStatus(resource.getLifecycleStatus());
+        node.setReadHideEnforced(enabled(resource.getReadHideEnforced()));
+        node.setReadMaskEnforced(enabled(resource.getReadMaskEnforced()));
+        node.setWriteDenyEnforced(enabled(resource.getWriteDenyEnforced()));
         node.setLastSyncedAt(resource.getLastSyncedAt());
         node.setActions(actions.stream().map(this::actionNode).toList());
         node.setFields(fields.stream().map(this::fieldNode).toList());
@@ -562,7 +572,10 @@ public class AuthorizationRegistryService {
             }
             return requestedTenant != null ? requestedTenant : authenticatedTenant;
         }
-        return requestedTenant != null ? requestedTenant : DEFAULT_TENANT;
+        if (requestedTenant == null) {
+            throw new BizException(40082, "AUTHZ_TENANT_REQUIRED");
+        }
+        return requestedTenant;
     }
 
     public long currentGrantVersion() {
@@ -650,6 +663,33 @@ public class AuthorizationRegistryService {
 
     private Short toStatus(Integer status) {
         return status != null && status == 0 ? (short) 0 : (short) 1;
+    }
+
+    private void validateFieldEnforcementCapabilities(
+            String ownerService,
+            String resourceCode,
+            String resourceType,
+            AuthorizationResourceSyncRequest.Resource request) {
+        boolean advertised = Boolean.TRUE.equals(request.getReadHideEnforced())
+                || Boolean.TRUE.equals(request.getReadMaskEnforced())
+                || Boolean.TRUE.equals(request.getWriteDenyEnforced());
+        if (!advertised) {
+            return;
+        }
+        String owner = ownerService != null ? ownerService.trim() : "";
+        boolean verified = VERIFIED_FIELD_ADAPTERS.contains(owner + "|" + resourceType)
+                || VERIFIED_FIELD_ADAPTERS.contains(owner + "|" + resourceCode);
+        if (!verified) {
+            throw new BizException(40088, "AUTHZ_FIELD_ADAPTER_NOT_VERIFIED");
+        }
+    }
+
+    private Short toFlag(Boolean enabled) {
+        return Boolean.TRUE.equals(enabled) ? (short) 1 : (short) 0;
+    }
+
+    private boolean enabled(Short value) {
+        return value != null && value == 1;
     }
 
     public List<FieldPolicyResponse> listFieldPolicies(String tenantId,

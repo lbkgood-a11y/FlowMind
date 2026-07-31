@@ -40,11 +40,13 @@ triobase:
   integrations:
     auth:
       base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+    org:
+      base-url: ${ORG_SERVICE_URL:http://localhost:8082}
     workflow:
       base-url: ${WORKFLOW_SERVICE_URL:http://localhost:8086}
   internal:
     token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
-    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-auth}
 
 logging:
   level:

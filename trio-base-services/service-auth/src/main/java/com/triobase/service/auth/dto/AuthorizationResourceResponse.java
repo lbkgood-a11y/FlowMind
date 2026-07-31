@@ -16,6 +16,9 @@ public class AuthorizationResourceResponse {
     private String displayName;
     private String lifecycleStatus;
     private Boolean globalResource;
+    private Boolean readHideEnforced;
+    private Boolean readMaskEnforced;
+    private Boolean writeDenyEnforced;
     private LocalDateTime lastSyncedAt;
 
     public static AuthorizationResourceResponse from(SysAuthResource resource) {
@@ -29,7 +32,14 @@ public class AuthorizationResourceResponse {
         response.setDisplayName(resource.getDisplayName());
         response.setLifecycleStatus(resource.getLifecycleStatus());
         response.setGlobalResource(resource.getGlobalFlag() != null && resource.getGlobalFlag() == 1);
+        response.setReadHideEnforced(enabled(resource.getReadHideEnforced()));
+        response.setReadMaskEnforced(enabled(resource.getReadMaskEnforced()));
+        response.setWriteDenyEnforced(enabled(resource.getWriteDenyEnforced()));
         response.setLastSyncedAt(resource.getLastSyncedAt());
         return response;
+    }
+
+    private static boolean enabled(Short value) {
+        return value != null && value == 1;
     }
 }
