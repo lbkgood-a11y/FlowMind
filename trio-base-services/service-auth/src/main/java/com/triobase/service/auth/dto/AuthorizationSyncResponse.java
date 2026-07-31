@@ -7,6 +7,9 @@ import java.util.List;
 
 @Data
 public class AuthorizationSyncResponse {
+    private String eventId;
+    private String snapshotHash;
+    private boolean replayed;
     private String tenantId;
     private String ownerService;
     private int resourceCount;

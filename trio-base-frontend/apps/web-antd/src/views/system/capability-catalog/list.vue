@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { SystemAuthorizationApi } from '#/api/system/authorization';
 
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
@@ -13,6 +13,7 @@ import {
   Descriptions,
   DescriptionsItem,
   Empty,
+  Pagination,
   Row,
   Select,
   Space,
@@ -27,7 +28,11 @@ import {
   getPageCapabilityCatalogs,
   getPageCapabilityDiagnostics,
 } from '#/api/system/authorization';
-import { BusinessPageScaffold, CompactToolbar } from '#/shared/page';
+import {
+  BusinessPageScaffold,
+  CompactTableFrame,
+  CompactToolbar,
+} from '#/shared/page';
 
 const loading = ref(false);
 const errorMessage = ref('');
@@ -54,6 +59,14 @@ const pageCount = computed(
 const diagnosticById = computed(
   () => new Map(diagnostics.value.map((item) => [item.capabilityId, item])),
 );
+const pagination = reactive({
+  current: 1,
+  pageSize: 20,
+});
+const pagedCapabilities = computed(() => {
+  const start = (pagination.current - 1) * pagination.pageSize;
+  return capabilities.value.slice(start, start + pagination.pageSize);
+});
 
 const columns = [
   { dataIndex: 'pageName', key: 'pageName', title: '页面', width: 170 },
@@ -135,6 +148,19 @@ async function loadCatalogs() {
 }
 
 watch(selectedCatalogId, () => void loadCatalogContent());
+watch(capabilities, () => {
+  pagination.current = 1;
+});
+
+function handlePageChange(page: number, pageSize: number) {
+  if (pageSize !== pagination.pageSize) {
+    pagination.pageSize = pageSize;
+    pagination.current = 1;
+    return;
+  }
+  pagination.current = page;
+}
+
 onMounted(() => void loadCatalogs());
 </script>
 
@@ -187,97 +213,115 @@ onMounted(() => void loadCatalogs());
             size="small"
             bordered
           >
-            <DescriptionsItem label="租户">{{
-              selectedCatalog.tenantId
-            }}</DescriptionsItem>
-            <DescriptionsItem label="目录编码">{{
-              selectedCatalog.catalogCode
-            }}</DescriptionsItem>
-            <DescriptionsItem label="版本"
-              >v{{ selectedCatalog.catalogVersion }}</DescriptionsItem
-            >
-            <DescriptionsItem label="来源">{{
-              selectedCatalog.sourceType
-            }}</DescriptionsItem>
-            <DescriptionsItem label="来源引用">{{
-              selectedCatalog.sourceRef || '-'
-            }}</DescriptionsItem>
-            <DescriptionsItem label="激活时间">{{
-              selectedCatalog.activatedAt || '-'
-            }}</DescriptionsItem>
+            <DescriptionsItem label="租户">
+              {{ selectedCatalog.tenantId }}
+            </DescriptionsItem>
+            <DescriptionsItem label="目录编码">
+              {{ selectedCatalog.catalogCode }}
+            </DescriptionsItem>
+            <DescriptionsItem label="版本">
+              v{{ selectedCatalog.catalogVersion }}
+            </DescriptionsItem>
+            <DescriptionsItem label="来源">
+              {{ selectedCatalog.sourceType }}
+            </DescriptionsItem>
+            <DescriptionsItem label="来源引用">
+              {{ selectedCatalog.sourceRef || '-' }}
+            </DescriptionsItem>
+            <DescriptionsItem label="激活时间">
+              {{ selectedCatalog.activatedAt || '-' }}
+            </DescriptionsItem>
           </Descriptions>
         </Card>
 
         <Row class="mb-3" :gutter="12">
-          <Col :span="8"
-            ><Card size="small"
-              ><Statistic title="页面数" :value="pageCount" /></Card
-          ></Col>
-          <Col :span="8"
-            ><Card size="small"
-              ><Statistic title="能力总数" :value="capabilities.length" /></Card
-          ></Col>
-          <Col :span="8"
-            ><Card size="small"
-              ><Statistic title="READY 能力" :value="readyCount" /></Card
-          ></Col>
+          <Col :span="8">
+            <Card size="small">
+              <Statistic title="页面数" :value="pageCount" />
+            </Card>
+          </Col>
+          <Col :span="8">
+            <Card size="small">
+              <Statistic title="能力总数" :value="capabilities.length" />
+            </Card>
+          </Col>
+          <Col :span="8">
+            <Card size="small">
+              <Statistic title="READY 能力" :value="readyCount" />
+            </Card>
+          </Col>
         </Row>
 
-        <Table
-          v-if="capabilities.length"
-          :columns="columns"
-          :data-source="capabilities"
-          :pagination="{ pageSize: 20, showSizeChanger: true }"
-          :scroll="{ x: 1600 }"
-          row-key="id"
-          size="small"
-        >
-          <template #bodyCell="{ column, record }">
-            <Tag v-if="column.key === 'category'" color="blue">{{
-              record.category
-            }}</Tag>
-            <Tag
-              v-else-if="column.key === 'readiness'"
-              :color="readinessColor(record.readiness)"
-            >
-              {{ record.readiness }}
-            </Tag>
-            <Space v-else-if="column.key === 'dependencies'" wrap>
-              <Tag
-                v-for="code in diagnosticById.get(record.id)
-                  ?.requiredCapabilityCodes || []"
-                :key="code"
-              >
-                {{ code }}
+        <CompactTableFrame v-if="capabilities.length">
+          <Table
+            :columns="columns"
+            :data-source="pagedCapabilities"
+            :pagination="false"
+            :scroll="{ x: 'max-content', y: '100%' }"
+            row-key="id"
+            size="small"
+          >
+            <template #bodyCell="{ column, record }">
+              <Tag v-if="column.key === 'category'" color="blue">
+                {{ record.category }}
               </Tag>
-              <span
-                v-if="
-                  !(
-                    diagnosticById.get(record.id)?.requiredCapabilityCodes || []
-                  ).length
-                "
-                >-</span
+              <Tag
+                v-else-if="column.key === 'readiness'"
+                :color="readinessColor(record.readiness)"
               >
-            </Space>
-            <Space
-              v-else-if="column.key === 'targets'"
-              direction="vertical"
+                {{ record.readiness }}
+              </Tag>
+              <Space v-else-if="column.key === 'dependencies'" wrap>
+                <Tag
+                  v-for="code in diagnosticById.get(record.id)
+                    ?.requiredCapabilityCodes || []"
+                  :key="code"
+                >
+                  {{ code }}
+                </Tag>
+                <span
+                  v-if="
+                    !(
+                      diagnosticById.get(record.id)?.requiredCapabilityCodes ||
+                      []
+                    ).length
+                  "
+                  >-</span>
+              </Space>
+              <Space
+                v-else-if="column.key === 'targets'"
+                direction="vertical"
+                size="small"
+              >
+                <Tag
+                  v-for="target in diagnosticById.get(record.id)?.targets || []"
+                  :key="`${target.resourceCode}:${target.actionCode}`"
+                  :color="target.active ? 'processing' : 'error'"
+                >
+                  {{ target.resourceCode }} : {{ target.actionCode }}
+                </Tag>
+                <span
+                  v-if="!(diagnosticById.get(record.id)?.targets || []).length"
+                  >-</span>
+              </Space>
+            </template>
+          </Table>
+          <template #footer>
+            <div class="table-total">共 {{ capabilities.length }} 条记录</div>
+            <Pagination
+              v-model:current="pagination.current"
+              v-model:page-size="pagination.pageSize"
+              :page-size-options="['10', '20', '50', '100']"
+              :total="capabilities.length"
+              show-less-items
+              show-quick-jumper
+              show-size-changer
               size="small"
-            >
-              <Tag
-                v-for="target in diagnosticById.get(record.id)?.targets || []"
-                :key="`${target.resourceCode}:${target.actionCode}`"
-                :color="target.active ? 'processing' : 'error'"
-              >
-                {{ target.resourceCode }} : {{ target.actionCode }}
-              </Tag>
-              <span
-                v-if="!(diagnosticById.get(record.id)?.targets || []).length"
-                >-</span
-              >
-            </Space>
+              @change="handlePageChange"
+              @show-size-change="handlePageChange"
+            />
           </template>
-        </Table>
+        </CompactTableFrame>
         <Empty v-else-if="!loading" description="当前目录没有页面能力" />
       </Spin>
     </BusinessPageScaffold>

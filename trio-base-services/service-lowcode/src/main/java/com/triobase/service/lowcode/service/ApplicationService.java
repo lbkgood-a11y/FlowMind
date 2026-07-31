@@ -27,8 +27,6 @@ import com.triobase.service.lowcode.mapper.ApplicationVersionMapper;
 import com.triobase.service.lowcode.mapper.FormDefinitionMapper;
 import com.triobase.service.lowcode.mapper.FormRelationMapper;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.DigestUtils;
@@ -42,8 +40,6 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ApplicationService {
-
-    private static final Logger logger = LoggerFactory.getLogger(ApplicationService.class);
 
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_PUBLISHED = "PUBLISHED";
@@ -60,7 +56,7 @@ public class ApplicationService {
     private final ApplicationMetadataValidator metadataValidator;
     private final FormRelationGraphValidator relationGraphValidator;
     private final ApplicationReferenceValidator referenceValidator;
-    private final AuthorizationResourceSyncClient authorizationResourceSyncClient;
+    private final AuthorizationPublicationService authorizationPublicationService;
 
     @Transactional
     public ApplicationResponse create(CreateApplicationRequest request, String operator) {
@@ -243,6 +239,9 @@ public class ApplicationService {
         if (!STATUS_PUBLISHED.equals(form.getStatus())) {
             throw new BizException(40950, "APPLICATION_FORM_NOT_PUBLISHED");
         }
+        if (!AuthorizationPublicationService.SYNCED.equals(form.getAuthorizationStatus())) {
+            throw new BizException(40951, "APPLICATION_FORM_AUTHORIZATION_NOT_READY");
+        }
         List<ApplicationPageRequest> pages = listPages(version.getId()).stream().map(this::toPageRequest).toList();
         List<ApplicationActionRequest> actions = listActions(version.getId()).stream().map(this::toActionRequest).toList();
         List<FormRelationRequest> relations = listRelations(version.getId()).stream().map(this::toRelationRequest).toList();
@@ -250,7 +249,6 @@ public class ApplicationService {
         metadataValidator.validateFieldReferences(form.getSchemaJson(), pages);
         relationGraphValidator.validate(version.getTenantId(), form.getId(), relations);
         referenceValidator.validatePublication(version, actions);
-        authorizationResourceSyncClient.syncPublishedApplication(version, pages, actions);
         LocalDateTime now = LocalDateTime.now();
         String metadataHash = metadataHash(version, pages, actions, relations);
 
@@ -258,9 +256,12 @@ public class ApplicationService {
         version.setFormVersion(form.getVersion());
         version.setSchemaHash(form.getSchemaHash());
         version.setMetadataHash(metadataHash);
+        version.setAuthorizationStatus(AuthorizationPublicationService.PENDING);
+        version.setAuthorizationSnapshotHash(metadataHash);
         version.setPublishedAt(now);
         version.setUpdatedAt(now);
         applicationVersionMapper.updateById(version);
+        authorizationPublicationService.enqueuePublishedApplication(version, pages, actions);
 
         LcApplication application = applicationMapper.selectById(version.getApplicationId());
         application.setStatus(STATUS_PUBLISHED);
@@ -279,6 +280,8 @@ public class ApplicationService {
         }
         LocalDateTime now = LocalDateTime.now();
         version.setStatus(STATUS_OFFLINE);
+        version.setAuthorizationStatus(AuthorizationPublicationService.PENDING);
+        version.setAuthorizationSnapshotHash(version.getMetadataHash());
         version.setOfflineAt(now);
         version.setUpdatedAt(now);
         applicationVersionMapper.updateById(version);
@@ -299,11 +302,7 @@ public class ApplicationService {
         }
         application.setUpdatedAt(now);
         applicationMapper.updateById(application);
-        try {
-            authorizationResourceSyncClient.syncOfflineApplication(version);
-        } catch (RuntimeException e) {
-            logger.warn("Failed to sync offline application authorization resources: {}", e.getMessage());
-        }
+        authorizationPublicationService.enqueueOfflineApplication(version);
         return getVersion(versionId);
     }
 

@@ -66,7 +66,7 @@ class ApplicationServiceTest {
     @Mock
     private ApplicationReferenceValidator referenceValidator;
     @Mock
-    private AuthorizationResourceSyncClient authorizationResourceSyncClient;
+    private AuthorizationPublicationService authorizationPublicationService;
 
     @InjectMocks
     private ApplicationService service;
@@ -147,7 +147,7 @@ class ApplicationServiceTest {
         verify(metadataValidator).validateDraft(any(), any());
         verify(metadataValidator).validateFieldReferences(any(), any());
         verify(referenceValidator).validatePublication(any(), any());
-        verify(authorizationResourceSyncClient).syncPublishedApplication(eq(version), any(), any());
+        verify(authorizationPublicationService).enqueuePublishedApplication(eq(version), any(), any());
     }
 
     @Test
@@ -178,11 +178,11 @@ class ApplicationServiceTest {
 
         assertThat(response.getStatus()).isEqualTo("OFFLINE");
         verify(applicationVersionMapper).updateById(version);
-        verify(authorizationResourceSyncClient).syncOfflineApplication(eq(version));
+        verify(authorizationPublicationService).enqueueOfflineApplication(eq(version));
     }
 
     @Test
-    void offlineContinuesOnSyncFailureAsBestEffort() {
+    void offlineRollsBackWhenOutboxPersistenceFails() {
         setTenantUser();
         LcApplicationVersion version = publishedVersion();
         LcApplication application = application();
@@ -190,11 +190,9 @@ class ApplicationServiceTest {
         when(applicationVersionMapper.selectOne(any())).thenReturn(version);
         when(applicationMapper.selectById("APP001")).thenReturn(application);
         doThrow(new RuntimeException("Auth service unreachable"))
-                .when(authorizationResourceSyncClient).syncOfflineApplication(any());
+                .when(authorizationPublicationService).enqueueOfflineApplication(any());
 
-        var response = service.offline("APPV001");
-
-        assertThat(response.getStatus()).isEqualTo("OFFLINE");
+        assertThrows(RuntimeException.class, () -> service.offline("APPV001"));
         verify(applicationVersionMapper).updateById(version);
     }
 
@@ -217,12 +215,12 @@ class ApplicationServiceTest {
         when(applicationPageMapper.selectList(any(Wrapper.class))).thenReturn(List.of(listPage()));
         when(applicationActionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(submitAction()));
         doThrow(new BizException(50290, "LOWCODE_AUTHZ_SYNC_FAILED"))
-                .when(authorizationResourceSyncClient).syncPublishedApplication(any(), any(), any());
+                .when(authorizationPublicationService).enqueuePublishedApplication(any(), any(), any());
 
         BizException exception = assertThrows(BizException.class, () -> service.publish("APPV001"));
 
         assertEquals("LOWCODE_AUTHZ_SYNC_FAILED", exception.getMessage());
-        verify(applicationVersionMapper, never()).updateById(any(LcApplicationVersion.class));
+        verify(applicationVersionMapper).updateById(any(LcApplicationVersion.class));
         verify(applicationMapper, never()).updateById(any(LcApplication.class));
     }
 
@@ -335,6 +333,8 @@ class ApplicationServiceTest {
         form.setVersion(1);
         form.setStatus(status);
         form.setSchemaHash("hash");
+        form.setAuthorizationSnapshotHash("hash");
+        form.setAuthorizationStatus("PUBLISHED".equals(status) ? "SYNCED" : "NOT_REQUIRED");
         form.setSchemaJson("{\"type\":\"object\",\"properties\":{\"amount\":{\"type\":\"number\"}}}");
         return form;
     }

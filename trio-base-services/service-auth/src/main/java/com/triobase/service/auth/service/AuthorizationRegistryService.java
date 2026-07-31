@@ -30,6 +30,7 @@ import com.triobase.service.auth.entity.SysAuthFieldPolicy;
 import com.triobase.service.auth.entity.SysAuthGrant;
 import com.triobase.service.auth.entity.SysAuthGuardTemplate;
 import com.triobase.service.auth.entity.SysAuthResource;
+import com.triobase.service.auth.entity.SysAuthSyncReceipt;
 import com.triobase.service.auth.mapper.AuthActionMapper;
 import com.triobase.service.auth.mapper.AuthDecisionLogMapper;
 import com.triobase.service.auth.mapper.AuthFieldMapper;
@@ -37,6 +38,7 @@ import com.triobase.service.auth.mapper.AuthFieldPolicyMapper;
 import com.triobase.service.auth.mapper.AuthGrantMapper;
 import com.triobase.service.auth.mapper.AuthGuardTemplateMapper;
 import com.triobase.service.auth.mapper.AuthResourceMapper;
+import com.triobase.service.auth.mapper.SysAuthSyncReceiptMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,7 +74,21 @@ public class AuthorizationRegistryService {
     private final AuthGuardTemplateMapper guardTemplateMapper;
     private final AuthGrantMapper grantMapper;
     private final AuthDecisionLogMapper decisionLogMapper;
+    private final SysAuthSyncReceiptMapper syncReceiptMapper;
     private final AuthorizationVersionService versionService;
+
+    /** Test/source compatibility for callers that do not exercise lifecycle receipts. */
+    AuthorizationRegistryService(AuthResourceMapper resourceMapper,
+                                 AuthActionMapper actionMapper,
+                                 AuthFieldMapper fieldMapper,
+                                 AuthFieldPolicyMapper fieldPolicyMapper,
+                                 AuthGuardTemplateMapper guardTemplateMapper,
+                                 AuthGrantMapper grantMapper,
+                                 AuthDecisionLogMapper decisionLogMapper,
+                                 AuthorizationVersionService versionService) {
+        this(resourceMapper, actionMapper, fieldMapper, fieldPolicyMapper, guardTemplateMapper,
+                grantMapper, decisionLogMapper, null, versionService);
+    }
 
     public PageResult<AuthorizationResourceResponse> pageResources(String tenantId,
                                                                    String ownerService,
@@ -216,7 +232,14 @@ public class AuthorizationRegistryService {
         }
         String tenantId = effectiveTenant(request.getTenantId());
         String ownerService = request.getOwnerService().trim();
+        SysAuthSyncReceipt replay = existingReceipt(tenantId, ownerService, request);
+        if (replay != null) {
+            return replayResponse(replay);
+        }
+        rejectStaleLifecycleEvent(tenantId, ownerService, request);
         AuthorizationSyncResponse response = new AuthorizationSyncResponse();
+        response.setEventId(request.getEventId());
+        response.setSnapshotHash(request.getSnapshotHash());
         response.setTenantId(tenantId);
         response.setOwnerService(ownerService);
         Set<String> resources = new LinkedHashSet<>();
@@ -260,6 +283,108 @@ public class AuthorizationRegistryService {
             response.setGuardTemplateVersion(versionService.current(AuthorizationVersionService.GUARD_TEMPLATE));
         }
         versionService.bump(AuthorizationVersionService.AUTHORIZATION);
+        recordReceipt(request, response);
+        return response;
+    }
+
+    private SysAuthSyncReceipt existingReceipt(String tenantId,
+                                               String ownerService,
+                                               AuthorizationResourceSyncRequest request) {
+        if (!StringUtils.hasText(request.getEventId())) {
+            return null;
+        }
+        requireLifecycleEventMetadata(request);
+        SysAuthSyncReceipt receipt = syncReceiptMapper.selectOne(
+                new LambdaQueryWrapper<SysAuthSyncReceipt>()
+                        .eq(SysAuthSyncReceipt::getTenantId, tenantId)
+                        .eq(SysAuthSyncReceipt::getOwnerService, ownerService)
+                        .eq(SysAuthSyncReceipt::getEventId, request.getEventId().trim())
+                        .last("LIMIT 1"));
+        if (receipt != null && (!receipt.getSnapshotHash().equals(request.getSnapshotHash())
+                || !receipt.getAggregateType().equals(normalize(request.getAggregateType()))
+                || !receipt.getAggregateId().equals(request.getAggregateId()))) {
+            throw new BizException(40980, "AUTHZ_SYNC_EVENT_CONFLICT");
+        }
+        return receipt;
+    }
+
+    private void rejectStaleLifecycleEvent(String tenantId,
+                                           String ownerService,
+                                           AuthorizationResourceSyncRequest request) {
+        if (!StringUtils.hasText(request.getEventId())) {
+            return;
+        }
+        requireLifecycleEventMetadata(request);
+        Long newer = syncReceiptMapper.selectCount(new LambdaQueryWrapper<SysAuthSyncReceipt>()
+                .eq(SysAuthSyncReceipt::getTenantId, tenantId)
+                .eq(SysAuthSyncReceipt::getOwnerService, ownerService)
+                .eq(SysAuthSyncReceipt::getAggregateType, normalize(request.getAggregateType()))
+                .eq(SysAuthSyncReceipt::getAggregateId, request.getAggregateId())
+                .gt(SysAuthSyncReceipt::getAggregateVersion, request.getAggregateVersion()));
+        if (newer != null && newer > 0) {
+            throw new BizException(40981, "AUTHZ_SYNC_STALE_EVENT");
+        }
+        SysAuthSyncReceipt sameVersion = syncReceiptMapper.selectOne(
+                new LambdaQueryWrapper<SysAuthSyncReceipt>()
+                        .eq(SysAuthSyncReceipt::getTenantId, tenantId)
+                        .eq(SysAuthSyncReceipt::getOwnerService, ownerService)
+                        .eq(SysAuthSyncReceipt::getAggregateType, normalize(request.getAggregateType()))
+                        .eq(SysAuthSyncReceipt::getAggregateId, request.getAggregateId())
+                        .eq(SysAuthSyncReceipt::getAggregateVersion, request.getAggregateVersion())
+                        .eq(SysAuthSyncReceipt::getOperation, "OFFLINE")
+                        .orderByDesc(SysAuthSyncReceipt::getAcknowledgedAt)
+                        .last("LIMIT 1"));
+        if (sameVersion != null && !"OFFLINE".equals(normalize(request.getOperation()))) {
+            throw new BizException(40981, "AUTHZ_SYNC_STALE_EVENT");
+        }
+    }
+
+    private void requireLifecycleEventMetadata(AuthorizationResourceSyncRequest request) {
+        if (!StringUtils.hasText(request.getAggregateType())
+                || !StringUtils.hasText(request.getAggregateId())
+                || request.getAggregateVersion() == null
+                || !StringUtils.hasText(request.getOperation())
+                || !StringUtils.hasText(request.getSnapshotHash())) {
+            throw new BizException(40081, "AUTHZ_SYNC_EVENT_METADATA_REQUIRED");
+        }
+    }
+
+    private void recordReceipt(AuthorizationResourceSyncRequest request,
+                               AuthorizationSyncResponse response) {
+        if (!StringUtils.hasText(request.getEventId())) {
+            return;
+        }
+        SysAuthSyncReceipt receipt = new SysAuthSyncReceipt();
+        receipt.setId(UlidGenerator.nextUlid());
+        receipt.setTenantId(response.getTenantId());
+        receipt.setOwnerService(response.getOwnerService());
+        receipt.setEventId(request.getEventId().trim());
+        receipt.setAggregateType(normalize(request.getAggregateType()));
+        receipt.setAggregateId(request.getAggregateId());
+        receipt.setAggregateVersion(request.getAggregateVersion());
+        receipt.setOperation(normalize(request.getOperation()));
+        receipt.setSnapshotHash(request.getSnapshotHash());
+        receipt.setResourceVersion(response.getResourceVersion());
+        receipt.setResourceCodesJson("[\"" + String.join("\",\"", response.getResourceCodes()) + "\"]");
+        receipt.setAcknowledgedAt(LocalDateTime.now());
+        syncReceiptMapper.insert(receipt);
+    }
+
+    private AuthorizationSyncResponse replayResponse(SysAuthSyncReceipt receipt) {
+        AuthorizationSyncResponse response = new AuthorizationSyncResponse();
+        response.setEventId(receipt.getEventId());
+        response.setSnapshotHash(receipt.getSnapshotHash());
+        response.setReplayed(true);
+        response.setTenantId(receipt.getTenantId());
+        response.setOwnerService(receipt.getOwnerService());
+        response.setResourceVersion(receipt.getResourceVersion());
+        String raw = receipt.getResourceCodesJson();
+        if (StringUtils.hasText(raw) && raw.length() >= 4) {
+            response.setResourceCodes(Arrays.stream(raw.substring(2, raw.length() - 2).split("\\\",\\\""))
+                    .filter(StringUtils::hasText)
+                    .toList());
+        }
+        response.setResourceCount(response.getResourceCodes().size());
         return response;
     }
 

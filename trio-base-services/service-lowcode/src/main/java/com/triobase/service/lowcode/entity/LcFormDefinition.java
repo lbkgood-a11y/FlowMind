@@ -20,6 +20,10 @@ public class LcFormDefinition extends BaseEntity {
     private String schemaHash;
     private String schemaJson;
     private String uiSchemaJson;
+    private String authorizationStatus;
+    private String authorizationSnapshotHash;
+    private Long authorizationRevision;
+    private LocalDateTime authorizationSyncedAt;
     private LocalDateTime publishedAt;
     private LocalDateTime offlineAt;
     private String sourceFormDefinitionId;

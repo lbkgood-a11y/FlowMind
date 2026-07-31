@@ -95,6 +95,15 @@ body,
   overflow: hidden;
 }
 
+/* The compact shell padding must retain the space reserved for a fixed
+   layout footer; a static footer already participates in the flex layout. */
+/* stylelint-disable-next-line selector-id-pattern */
+#__vben_main_content:has(+ footer[style*='position: fixed']) {
+  padding-bottom: calc(
+    var(--tb-shell-gap) + var(--vben-footer-height, 32px)
+  ) !important;
+}
+
 #__vben_main_content > :where(.relative.flex.h-full.flex-col),
 #__vben_main_content > :where(.relative.flex.h-full.flex-col) > :where(.h-full) {
   min-width: 0;
@@ -188,6 +197,27 @@ body,
   overflow: hidden;
 }
 
+.tb-business-page__body > .ant-spin-nested-loading {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tb-business-page__body
+  > .ant-spin-nested-loading
+  > .ant-spin-container {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .tb-query-bar__grid {
   display: grid;
   grid-template-columns: repeat(var(--tb-query-columns, 3), minmax(0, 1fr));
@@ -250,8 +280,32 @@ body,
 }
 
 .tb-table-frame__body {
-  min-height: 0;
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tb-table-frame__body > .ant-table-wrapper,
+.tb-table-frame__body > .ant-table-wrapper > .ant-spin-nested-loading,
+.tb-table-frame__body
+  > .ant-table-wrapper
+  > .ant-spin-nested-loading
+  > .ant-spin-container,
+.tb-table-frame__body .ant-table,
+.tb-table-frame__body .ant-table-container {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tb-table-frame__body .ant-table-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none !important;
+  overflow: auto !important;
 }
 
 .tb-table-frame .ant-table-tbody > tr > td,

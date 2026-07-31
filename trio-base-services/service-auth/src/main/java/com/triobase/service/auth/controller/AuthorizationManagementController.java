@@ -10,6 +10,8 @@ import com.triobase.common.dto.authz.RoleSimulationDecisionRequest;
 import com.triobase.common.dto.authz.AuthorizationDecisionResponse;
 import com.triobase.common.dto.authz.AuthorizationResourceSyncRequest;
 import com.triobase.service.auth.dto.AuthorizationAdminOptionsResponse;
+import com.triobase.service.auth.dto.AuthorizationBundleRequest;
+import com.triobase.service.auth.dto.AuthorizationBundleResponse;
 import com.triobase.service.auth.dto.AuthorizationGrantResponse;
 import com.triobase.service.auth.dto.AuthorizationResourceResponse;
 import com.triobase.service.auth.dto.AuthorizationResourceTreeResponse;
@@ -26,6 +28,7 @@ import com.triobase.service.auth.dto.SaveGuardTemplateRequest;
 import com.triobase.service.auth.service.AuthorizationDecisionService;
 import com.triobase.service.auth.service.AuthorizationRegistryService;
 import com.triobase.service.auth.service.AuthorizationManagementModeService;
+import com.triobase.service.auth.service.LowcodeAuthorizationBundleService;
 import com.triobase.service.auth.service.DataPolicyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -51,6 +54,7 @@ public class AuthorizationManagementController {
     private final AuthorizationDecisionService decisionService;
     private final DataPolicyService dataPolicyService;
     private final AuthorizationManagementModeService managementModeService;
+    private final LowcodeAuthorizationBundleService lowcodeAuthorizationBundleService;
 
     @GetMapping("/resources")
     @RequirePermission("/api/v1/authz/**:GET")
@@ -129,6 +133,20 @@ public class AuthorizationManagementController {
     @RequirePermission("/api/v1/authz/**:POST")
     public R<AuthorizationGrantResponse> saveGrant(@RequestBody SaveAuthorizationGrantRequest request) {
         return R.ok(registryService.saveGrant(request));
+    }
+
+    @PostMapping("/lowcode-application-bundles/preview")
+    @RequirePermission("/api/v1/authz/**:POST")
+    public R<AuthorizationBundleResponse> previewLowcodeApplicationBundle(
+            @RequestBody AuthorizationBundleRequest request) {
+        return R.ok(lowcodeAuthorizationBundleService.preview(request));
+    }
+
+    @PostMapping("/lowcode-application-bundles/apply")
+    @RequirePermission("/api/v1/authz/**:POST")
+    public R<AuthorizationBundleResponse> applyLowcodeApplicationBundle(
+            @RequestBody AuthorizationBundleRequest request) {
+        return R.ok(lowcodeAuthorizationBundleService.apply(request));
     }
 
     @DeleteMapping("/grants/{id}")

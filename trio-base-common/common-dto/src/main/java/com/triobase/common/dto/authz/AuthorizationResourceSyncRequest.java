@@ -9,6 +9,12 @@ import java.util.List;
 public class AuthorizationResourceSyncRequest {
     private String tenantId;
     private String ownerService;
+    private String eventId;
+    private String aggregateType;
+    private String aggregateId;
+    private Integer aggregateVersion;
+    private String operation;
+    private String snapshotHash;
     private List<Resource> resources = new ArrayList<>();
 
     @Data

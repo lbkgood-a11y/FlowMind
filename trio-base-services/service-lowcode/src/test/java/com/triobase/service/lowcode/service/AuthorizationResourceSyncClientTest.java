@@ -51,7 +51,7 @@ class AuthorizationResourceSyncClientTest {
                 .andExpect(jsonPath("$.resources[0].fields[0].defaultMaskStrategy").value("LAST4"))
                 .andExpect(jsonPath("$.resources[0].guards[*].guardCode",
                         hasItems("WORKFLOW_CANDIDATE", "NO_SELF_APPROVAL", "DOCUMENT_STATUS", "ARCHIVED_LOCK")))
-                .andRespond(withSuccess("{\"code\":0}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("{\"code\":0,\"data\":{\"resourceVersion\":1}}", MediaType.APPLICATION_JSON));
 
         testClient.client.syncPublishedForm(form(), List.of(field()));
         testClient.client.syncPublishedForm(form(), List.of(field()));
@@ -72,8 +72,8 @@ class AuthorizationResourceSyncClientTest {
                 .andExpect(jsonPath("$.resources[0].actions[*].actionCode",
                         hasItems("VIEW", "DESIGN", "PUBLISH", "OFFLINE")))
                 .andExpect(jsonPath("$.resources[0].metadataJson").value(
-                        "{\"appKey\":\"expense_app\",\"version\":1,\"formKey\":\"expense\",\"pageCount\":1,\"actionCount\":1}"))
-                .andRespond(withSuccess("{\"code\":0}", MediaType.APPLICATION_JSON));
+                        "{\"appKey\":\"expense_app\",\"version\":1,\"formKey\":\"expense\",\"pageCount\":1,\"actionCount\":1,\"authorizationBlueprintVersion\":1,\"authorizationPresets\":[\"APPLICANT\",\"APPROVER\",\"DESIGNER\",\"ADMIN\"]}"))
+                .andRespond(withSuccess("{\"code\":0,\"data\":{\"resourceVersion\":1}}", MediaType.APPLICATION_JSON));
 
         testClient.client.syncPublishedApplication(appVersion(), List.of(page()), List.of(action()));
 
@@ -87,7 +87,7 @@ class AuthorizationResourceSyncClientTest {
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(jsonPath("$.resources[0].lifecycleStatus").value("INACTIVE"))
                 .andExpect(jsonPath("$.resources[0].resourceCode").value("LOWCODE_APP:EXPENSE_APP"))
-                .andRespond(withSuccess("{\"code\":0}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("{\"code\":0,\"data\":{\"resourceVersion\":1}}", MediaType.APPLICATION_JSON));
 
         testClient.client.syncOfflineApplication(appVersion());
 

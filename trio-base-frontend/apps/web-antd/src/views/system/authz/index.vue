@@ -18,6 +18,7 @@ import DiagnosticsTab from './components/DiagnosticsTab.vue';
 import FieldPoliciesTab from './components/FieldPoliciesTab.vue';
 import FunctionGrantsTab from './components/FunctionGrantsTab.vue';
 import GuardTemplatesTab from './components/GuardTemplatesTab.vue';
+import LowcodeBundlesTab from './components/LowcodeBundlesTab.vue';
 
 const TabPane = Tabs.TabPane;
 
@@ -169,6 +170,9 @@ provide('authzContext', {
       </div>
 
       <Tabs default-active-key="function">
+        <TabPane key="lowcode-bundles" tab="低代码应用授权">
+          <LowcodeBundlesTab />
+        </TabPane>
         <TabPane key="function" tab="功能权限">
           <FunctionGrantsTab />
         </TabPane>

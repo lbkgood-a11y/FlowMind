@@ -100,6 +100,9 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
                                             setIfPresent(headers, "X-Authorization-Version", result.getAuthorizationVersion());
                                             setIfPresent(headers, "X-Field-Policy-Version", result.getFieldPolicyVersion());
                                             setIfPresent(headers, "X-Guard-Template-Version", result.getGuardTemplateVersion());
+                                            // Internal service auth for downstream AuditSecurityFilter
+                                            headers.set(InternalServiceTokenFilter.HEADER_SERVICE_NAME, "platform-gateway");
+                                            headers.set(InternalServiceTokenFilter.HEADER_SERVICE_TOKEN, internalServiceToken);
                                         }))
                                         .build();
                                 return chain.filter(mutated);

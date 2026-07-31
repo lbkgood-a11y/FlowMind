@@ -179,6 +179,45 @@ export namespace SystemAuthorizationApi {
     roleId: string;
   }
 
+  export interface LowcodeAuthorizationBundleRequest {
+    applicationResourceCode: string;
+    idempotencyKey?: string;
+    preset: 'ADMIN' | 'APPLICANT' | 'APPROVER' | 'DESIGNER';
+    roleId: string;
+    tenantId?: string;
+  }
+
+  export interface LowcodeAuthorizationBundleResult {
+    applicable: boolean;
+    applicationResourceCode: string;
+    applied: boolean;
+    authorizationVersion: number;
+    changes: Array<{
+      actionCode: string;
+      resourceCode: string;
+      state: 'ADD' | 'UNCHANGED';
+    }>;
+    formResourceCode: string;
+    preset: string;
+    replayed: boolean;
+    roleId: string;
+    tenantId: string;
+  }
+
+  export interface LowcodeAuthorizationPublication {
+    acknowledgedAt?: string;
+    acknowledgedRevision?: number;
+    aggregateId: string;
+    aggregateType: string;
+    aggregateVersion: number;
+    attemptCount: number;
+    eventId: string;
+    lastError?: string;
+    operation: string;
+    snapshotHash: string;
+    status: string;
+  }
+
   export interface SaveGuardTemplate {
     configSchemaJson?: string;
     description?: string;
@@ -489,6 +528,38 @@ async function replaceRoleFunctionGrants(
   );
 }
 
+async function previewLowcodeAuthorizationBundle(
+  data: SystemAuthorizationApi.LowcodeAuthorizationBundleRequest,
+) {
+  return requestClient.post<SystemAuthorizationApi.LowcodeAuthorizationBundleResult>(
+    '/authz/lowcode-application-bundles/preview',
+    data,
+  );
+}
+
+async function applyLowcodeAuthorizationBundle(
+  data: SystemAuthorizationApi.LowcodeAuthorizationBundleRequest,
+) {
+  return requestClient.post<SystemAuthorizationApi.LowcodeAuthorizationBundleResult>(
+    '/authz/lowcode-application-bundles/apply',
+    data,
+  );
+}
+
+async function getLowcodeAuthorizationPublications() {
+  return requestClient.get<SystemAuthorizationApi.LowcodeAuthorizationPublication[]>(
+    '/lowcode-authorization-publications',
+  );
+}
+
+async function retryLowcodeAuthorizationPublication(eventId: string) {
+  return requestClient.post(`/lowcode-authorization-publications/${eventId}/retry`);
+}
+
+async function reconcileLowcodeAuthorizationPublication(eventId: string) {
+  return requestClient.post(`/lowcode-authorization-publications/${eventId}/reconcile`);
+}
+
 async function saveAuthorizationFieldPolicy(
   data: SystemAuthorizationApi.SaveFieldPolicy,
 ) {
@@ -681,12 +752,14 @@ async function simulatePageCapability(
 }
 
 export {
+  applyLowcodeAuthorizationBundle,
   deleteAuthorizationFieldPolicy,
   deleteAuthorizationGrant,
   getAuthorizationAdminOptions,
   getAuthorizationCompatibilityDashboard,
   getAuthorizationManagementMode,
   getAuthorizationResourceTree,
+  getLowcodeAuthorizationPublications,
   getOrCreateRoleAuthorizationDraft,
   getPageCapabilities,
   getPageCapabilityCatalogs,
@@ -695,10 +768,13 @@ export {
   getRoleAuthorizationDrifts,
   getRoleAuthorizationProfile,
   previewAuthorizationDecision,
+  previewLowcodeAuthorizationBundle,
   previewRoleAuthorizationDecision,
   publishRoleAuthorizationDraft,
   replaceRoleCapabilityIntent,
   replaceRoleFunctionGrants,
+  reconcileLowcodeAuthorizationPublication,
+  retryLowcodeAuthorizationPublication,
   saveAuthorizationFieldPolicy,
   saveAuthorizationGrant,
   saveAuthorizationGuardTemplate,

@@ -6,7 +6,6 @@ import com.triobase.common.action.enums.ActionStatus;
 import com.triobase.common.action.model.ActionError;
 import com.triobase.common.action.model.GlobalActionRequest;
 import com.triobase.common.action.model.GlobalActionResult;
-import com.triobase.common.dto.authz.AuthzDecisionReason;
 import com.triobase.common.dto.authz.AuthzFieldRule;
 import com.triobase.common.dto.authz.AuthorizationBatchDecisionResponse;
 import com.triobase.common.dto.authz.AuthorizationDecisionRequest;
@@ -58,7 +57,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -90,6 +88,7 @@ public class ApplicationRuntimeService {
         applicationVersionMapper.selectList(new LambdaQueryWrapper<LcApplicationVersion>()
                         .in(LcApplicationVersion::getTenantId, visibleTenantIds())
                         .eq(LcApplicationVersion::getStatus, STATUS_PUBLISHED)
+                        .eq(LcApplicationVersion::getAuthorizationStatus, AuthorizationPublicationService.SYNCED)
                         .orderByDesc(LcApplicationVersion::getVersion))
                 .stream()
                 .sorted(runtimeVersionComparator())
@@ -412,7 +411,8 @@ public class ApplicationRuntimeService {
         LambdaQueryWrapper<LcApplicationVersion> query = new LambdaQueryWrapper<LcApplicationVersion>()
                 .in(LcApplicationVersion::getTenantId, visibleTenantIds())
                 .eq(LcApplicationVersion::getAppKey, appKey.trim())
-                .eq(LcApplicationVersion::getStatus, STATUS_PUBLISHED);
+                .eq(LcApplicationVersion::getStatus, STATUS_PUBLISHED)
+                .eq(LcApplicationVersion::getAuthorizationStatus, AuthorizationPublicationService.SYNCED);
         if (version != null) {
             query.eq(LcApplicationVersion::getVersion, version);
         }
@@ -431,7 +431,7 @@ public class ApplicationRuntimeService {
     private boolean canView(LcApplicationVersion version) {
         AuthorizationDecisionResponse decision = authorizationService.decideResource(
                 authorizationService.appResourceCode(version.getAppKey()), "VIEW", version.getId(), List.of());
-        return decisionAllowedWithLegacyFallback(decision, version.getViewPermissionCode());
+        return decision != null && decision.isAllowed();
     }
 
     private boolean actionAllowed(LcApplicationVersion version, LcApplicationAction action) {
@@ -444,28 +444,7 @@ public class ApplicationRuntimeService {
         }
         AuthorizationDecisionResponse decision = authorizationService.decideForm(
                 version.getFormKey(), authorizationActionCode, action.getFormDefinitionId(), List.of());
-        return decisionAllowedWithLegacyFallback(decision, action.getPermissionCode());
-    }
-
-    private boolean hasPermission(String required) {
-        List<String> permissions = SecurityContextHolder.getPermissions();
-        if (permissions == null || permissions.isEmpty()) {
-            return false;
-        }
-        return permissions.stream()
-                .filter(StringUtils::hasText)
-                .anyMatch(granted -> grantedMatches(granted, required));
-    }
-
-    private boolean grantedMatches(String granted, String required) {
-        if (granted.equals(required)) {
-            return true;
-        }
-        if (!granted.contains("*")) {
-            return false;
-        }
-        String regex = Pattern.quote(granted).replace("*", "\\E.*\\Q");
-        return Pattern.compile(regex).matcher(required).matches();
+        return decision != null && decision.isAllowed();
     }
 
     private LcApplicationPage requirePage(String versionId, String pageType) {
@@ -597,7 +576,7 @@ public class ApplicationRuntimeService {
         List<ApplicationPageResponse> allowedPages = new ArrayList<>();
         for (int i = 0; i < pages.size(); i++) {
             AuthorizationDecisionResponse decision = decisionAt(decisions, pageDecisionStart + i);
-            if (decisionAllowedWithLegacyFallback(decision, version.getViewPermissionCode())) {
+            if (decision != null && decision.isAllowed()) {
                 ApplicationPageResponse pageResponse = toPageResponse(pages.get(i));
                 pageResponse.setAllowed(true);
                 pageResponse.setAuthorizationActionCode("VIEW");
@@ -608,7 +587,7 @@ public class ApplicationRuntimeService {
         for (int i = 0; i < actions.size(); i++) {
             LcApplicationAction action = actions.get(i);
             AuthorizationDecisionResponse decision = decisionAt(decisions, actionDecisionStart + i);
-            if (decisionAllowedWithLegacyFallback(decision, action.getPermissionCode())) {
+            if (decision != null && decision.isAllowed()) {
                 ApplicationActionResponse actionResponse = toActionResponse(action);
                 actionResponse.setAllowed(true);
                 actionResponse.setAuthorizationActionCode(
@@ -626,25 +605,6 @@ public class ApplicationRuntimeService {
 
     private AuthorizationDecisionResponse decisionAt(List<AuthorizationDecisionResponse> decisions, int index) {
         return index >= 0 && index < decisions.size() ? decisions.get(index) : null;
-    }
-
-    private boolean decisionAllowedWithLegacyFallback(AuthorizationDecisionResponse decision, String legacyPermissionCode) {
-        if (decision != null && decision.isAllowed()) {
-            return true;
-        }
-        if (hasExplicitDeny(decision)) {
-            return false;
-        }
-        return StringUtils.hasText(legacyPermissionCode) && hasPermission(legacyPermissionCode);
-    }
-
-    private boolean hasExplicitDeny(AuthorizationDecisionResponse decision) {
-        if (decision == null || decision.getReasons() == null) {
-            return false;
-        }
-        return decision.getReasons().stream()
-                .map(AuthzDecisionReason::getCode)
-                .anyMatch("AUTHZ_DENY_GRANT_MATCHED"::equals);
     }
 
     private List<RuntimeFieldAuthorizationResponse> fieldRules(AuthorizationDecisionResponse decision) {

@@ -24,6 +24,10 @@ public class LcApplicationVersion extends BaseEntity {
     private String schemaHash;
     private String viewPermissionCode;
     private String metadataHash;
+    private String authorizationStatus;
+    private String authorizationSnapshotHash;
+    private Long authorizationRevision;
+    private LocalDateTime authorizationSyncedAt;
     private LocalDateTime publishedAt;
     private LocalDateTime offlineAt;
     private String sourceApplicationVersionId;

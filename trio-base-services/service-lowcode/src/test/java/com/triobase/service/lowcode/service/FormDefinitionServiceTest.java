@@ -47,7 +47,7 @@ class FormDefinitionServiceTest {
     private LowcodeFormSchemaValidator formSchemaValidator;
 
     @Mock
-    private AuthorizationResourceSyncClient authorizationResourceSyncClient;
+    private AuthorizationPublicationService authorizationPublicationService;
 
     @InjectMocks
     private FormDefinitionService service;
@@ -177,7 +177,7 @@ class FormDefinitionServiceTest {
 
         assertEquals("PUBLISHED", response.getStatus());
         verify(formSchemaValidator).validate(any(), any(), any());
-        verify(authorizationResourceSyncClient).syncPublishedForm(any(), any());
+        verify(authorizationPublicationService).enqueuePublishedForm(any(), any());
         verify(formDefinitionMapper).updateById(definition);
     }
 
@@ -188,12 +188,12 @@ class FormDefinitionServiceTest {
         when(formDefinitionMapper.selectOne(any())).thenReturn(definition);
         when(formFieldDefinitionMapper.selectList(any())).thenReturn(List.of(fieldDefinition("amount")));
         doThrow(new BizException(50290, "LOWCODE_AUTHZ_SYNC_FAILED"))
-                .when(authorizationResourceSyncClient).syncPublishedForm(any(), any());
+                .when(authorizationPublicationService).enqueuePublishedForm(any(), any());
 
         BizException exception = assertThrows(BizException.class, () -> service.publish("FORM001"));
 
         assertEquals("LOWCODE_AUTHZ_SYNC_FAILED", exception.getMessage());
-        verify(formDefinitionMapper, never()).updateById(any(LcFormDefinition.class));
+        verify(formDefinitionMapper).updateById(any(LcFormDefinition.class));
     }
 
     @Test
@@ -241,6 +241,8 @@ class FormDefinitionServiceTest {
         definition.setVersion(1);
         definition.setStatus(status);
         definition.setSchemaHash("hash");
+        definition.setAuthorizationSnapshotHash("hash");
+        definition.setAuthorizationStatus("PUBLISHED".equals(status) ? "SYNCED" : "NOT_REQUIRED");
         definition.setSchemaJson("{\"type\":\"object\"}");
         definition.setUiSchemaJson("{}");
         return definition;

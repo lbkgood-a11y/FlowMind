@@ -53,6 +53,11 @@ public class AuthorizationResourceSyncClient {
     }
 
     public void syncPublishedForm(LcFormDefinition definition, List<FormFieldSchemaRequest> fields) {
+        synchronize(publishedFormRequest(definition, fields));
+    }
+
+    public AuthorizationResourceSyncRequest publishedFormRequest(
+            LcFormDefinition definition, List<FormFieldSchemaRequest> fields) {
         if (definition == null || !StringUtils.hasText(definition.getTenantId())
                 || !StringUtils.hasText(definition.getFormKey())) {
             throw new BizException(40090, "LOWCODE_AUTHZ_SYNC_FORM_REQUIRED");
@@ -61,13 +66,20 @@ public class AuthorizationResourceSyncClient {
         request.setTenantId(definition.getTenantId());
         request.setOwnerService(SERVICE_NAME);
         request.setResources(List.of(formResource(definition, fields)));
-        postSync(request);
+        return request;
     }
 
     public void syncOfflineForm(LcFormDefinition definition) {
+        AuthorizationResourceSyncRequest request = offlineFormRequest(definition);
+        if (request != null) {
+            synchronize(request);
+        }
+    }
+
+    public AuthorizationResourceSyncRequest offlineFormRequest(LcFormDefinition definition) {
         if (definition == null || !StringUtils.hasText(definition.getTenantId())
                 || !StringUtils.hasText(definition.getFormKey())) {
-            return;
+            return null;
         }
         AuthorizationResourceSyncRequest.Resource resource = formResource(definition, List.of());
         resource.setLifecycleStatus("INACTIVE");
@@ -75,13 +87,20 @@ public class AuthorizationResourceSyncClient {
         request.setTenantId(definition.getTenantId());
         request.setOwnerService(SERVICE_NAME);
         request.setResources(List.of(resource));
-        postSync(request);
+        return request;
     }
 
     public void syncOfflineApplication(LcApplicationVersion version) {
+        AuthorizationResourceSyncRequest request = offlineApplicationRequest(version);
+        if (request != null) {
+            synchronize(request);
+        }
+    }
+
+    public AuthorizationResourceSyncRequest offlineApplicationRequest(LcApplicationVersion version) {
         if (version == null || !StringUtils.hasText(version.getTenantId())
                 || !StringUtils.hasText(version.getAppKey())) {
-            return;
+            return null;
         }
         AuthorizationResourceSyncRequest.Resource resource = appResource(version, List.of(), List.of());
         resource.setLifecycleStatus("INACTIVE");
@@ -89,7 +108,7 @@ public class AuthorizationResourceSyncClient {
         request.setTenantId(version.getTenantId());
         request.setOwnerService(SERVICE_NAME);
         request.setResources(List.of(resource));
-        postSync(request);
+        return request;
     }
 
     public void syncPublishedApplication(LcApplicationVersion version,
@@ -99,14 +118,25 @@ public class AuthorizationResourceSyncClient {
                 || !StringUtils.hasText(version.getAppKey())) {
             throw new BizException(40090, "LOWCODE_AUTHZ_SYNC_APP_REQUIRED");
         }
+        synchronize(publishedApplicationRequest(version, pages, actions));
+    }
+
+    public AuthorizationResourceSyncRequest publishedApplicationRequest(
+            LcApplicationVersion version,
+            List<ApplicationPageRequest> pages,
+            List<ApplicationActionRequest> actions) {
+        if (version == null || !StringUtils.hasText(version.getTenantId())
+                || !StringUtils.hasText(version.getAppKey())) {
+            throw new BizException(40090, "LOWCODE_AUTHZ_SYNC_APP_REQUIRED");
+        }
         AuthorizationResourceSyncRequest request = new AuthorizationResourceSyncRequest();
         request.setTenantId(version.getTenantId());
         request.setOwnerService(SERVICE_NAME);
         request.setResources(List.of(appResource(version, pages, actions)));
-        postSync(request);
+        return request;
     }
 
-    private void postSync(AuthorizationResourceSyncRequest request) {
+    public long synchronize(AuthorizationResourceSyncRequest request) {
         JsonNode envelope = restClient.post()
                 .uri("/internal/v1/authz/resources/sync")
                 .header(InternalServiceTokenFilter.HEADER_SERVICE_NAME, SERVICE_NAME)
@@ -117,6 +147,11 @@ public class AuthorizationResourceSyncClient {
         if (envelope == null || envelope.path("code").asInt(-1) != 0) {
             throw new BizException(50290, "LOWCODE_AUTHZ_SYNC_FAILED");
         }
+        JsonNode data = envelope.path("data");
+        if (!data.path("resourceVersion").canConvertToLong()) {
+            throw new BizException(50291, "LOWCODE_AUTHZ_SYNC_ACK_REQUIRED");
+        }
+        return data.path("resourceVersion").asLong();
     }
 
     private AuthorizationResourceSyncRequest.Resource appResource(LcApplicationVersion version,
@@ -225,6 +260,8 @@ public class AuthorizationResourceSyncClient {
         int actionCount = actions != null ? actions.size() : 0;
         return "{\"appKey\":\"" + escape(version.getAppKey()) + "\",\"version\":"
                 + version.getVersion() + ",\"formKey\":\"" + escape(version.getFormKey())
-                + "\",\"pageCount\":" + pageCount + ",\"actionCount\":" + actionCount + "}";
+                + "\",\"pageCount\":" + pageCount + ",\"actionCount\":" + actionCount
+                + ",\"authorizationBlueprintVersion\":1"
+                + ",\"authorizationPresets\":[\"APPLICANT\",\"APPROVER\",\"DESIGNER\",\"ADMIN\"]}";
     }
 }

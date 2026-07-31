@@ -93,7 +93,13 @@ onMounted(() => {
     </div>
 
     <div
-      :class="cn(autoContentHeight ? 'h-full' : 'flex-1', 'p-4', contentClass)"
+      :class="
+        cn(
+          autoContentHeight ? 'h-full' : 'flex-1',
+          'min-h-0 min-w-0 p-4',
+          contentClass,
+        )
+      "
       :style="contentStyle"
     >
       <slot></slot>
