@@ -59,6 +59,7 @@ public class UserService {
             throw new BizException(AuthErrorCode.USER_NOT_FOUND);
         }
         ensureReadable(user);
+        ensureWithinScope(user);
         return toPayload(user);
     }
 
@@ -360,6 +361,20 @@ public class UserService {
 
     private void ensureWritable(SysUser user) {
         ensureReadable(user);
+    }
+
+    private void ensureWithinScope(SysUser user) {
+        DataScope scope = DataScopeContextHolder.get();
+        if (scope == null || scope.allowsAll()) {
+            return;
+        }
+        if (scope.restrictive()) {
+            throw new BizException(AuthErrorCode.PERMISSION_DENIED);
+        }
+        String currentUserId = SecurityContextHolder.getUserId();
+        if (scope.allowsSelf() && currentUserId != null && currentUserId.equals(user.getId())) {
+            return;
+        }
     }
 
     private String currentTenantId() {

@@ -16,15 +16,15 @@
 - **THEN** 系统明确提示“未绑定后端页面”且不把历史按钮节点冒充为 Page Capability 目录
 
 ### Requirement: 导航节点与权限节点分离
-系统 SHALL 仅在左侧主树展示可形成导航结构的目录、菜单、外链和内嵌节点。系统 SHALL 将后端 Page Capability Catalog 作为页面可授权功能的权威来源，并 SHALL NOT 允许前端通过新增 button 菜单节点创造新的权限事实；历史按钮及隐藏 API 权限节点只可作为兼容信息查看。
+系统 SHALL 仅展示可形成导航结构的目录、菜单、外链和内嵌节点。系统 SHALL 将后端 Page Capability Catalog 作为页面可授权功能的唯一目录来源，并 SHALL NOT 接受或展示 button 菜单权限节点。
 
 #### Scenario: 页面存在已注册功能
 - **WHEN** 业务菜单绑定的页面存在活动 Page Capability
 - **THEN** 右侧页面功能区域按后端目录展示功能名称、类别、依赖和 readiness，而不要求管理员填写权限码
 
-#### Scenario: 查看历史权限节点
-- **WHEN** 业务菜单仍存在历史 button 或隐藏 API 权限节点
-- **THEN** 系统将其标记为历史兼容信息且不提供新增此类节点的主入口
+#### Scenario: 旧权限节点退出工作台
+- **WHEN** 数据库升级到新的页面能力目录模型
+- **THEN** 历史 button 菜单节点被清理，菜单工作台不再展示兼容区域
 
 #### Scenario: 页面功能目录加载失败
 - **WHEN** 前端无权读取或无法加载后端页面功能目录

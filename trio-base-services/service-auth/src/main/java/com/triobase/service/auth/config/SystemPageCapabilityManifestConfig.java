@@ -14,10 +14,10 @@ public class SystemPageCapabilityManifestConfig {
     PageCapabilityManifestSyncRequest systemManagementPageCapabilities() {
         PageCapabilityManifestSyncRequest manifest = new PageCapabilityManifestSyncRequest();
         manifest.setCatalogCode("SYSTEM_MANAGEMENT");
-        manifest.setCatalogVersion(2L);
+        manifest.setCatalogVersion(3L);
         manifest.setSourceType("SYSTEM_MANIFEST");
         manifest.setSourceRef("service-auth/system-management");
-        manifest.setPages(List.of(
+        List<PageCapabilityManifestSyncRequest.Page> pages = new ArrayList<>(List.of(
                 crudPage("SYSTEM.USER", "用户管理", "SystemUser", "PAGE_USER_MANAGEMENT",
                         "/api/v1/users", "/api/v1/users/*", "新增用户", "编辑用户", "删除用户"),
                 tenantPage(),
@@ -30,6 +30,8 @@ public class SystemPageCapabilityManifestConfig {
                 configPage(),
                 readOnlyPage("SYSTEM.PAGE_CAPABILITY", "能力目录", "SystemPageCapabilityCatalog",
                         "PAGE_CAPABILITY_CATALOG", "/api/v1/authz/**")));
+        pages.addAll(OwnerPageCapabilityDeclarations.pages());
+        manifest.setPages(pages);
         return manifest;
     }
 

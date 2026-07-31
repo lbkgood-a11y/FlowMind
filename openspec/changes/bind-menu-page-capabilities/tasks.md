@@ -28,3 +28,17 @@
 - [x] 5.3 Add a dedicated Page Capability Catalog menu, route, read-only workbench, and frontend API models
 - [x] 5.4 Run focused backend/frontend verification and validate the extended OpenSpec change
 - [x] 5.5 Align system Manifest menu keys with persisted navigation keys, add a forward repair migration, and verify catalog activation readiness
+
+## 6. Remove legacy permission-node compatibility
+
+- [x] 6.1 Make page binding mandatory for page-bearing menus and reject new button permission nodes at the backend boundary
+- [x] 6.2 Remove legacy permission-node compatibility state and presentation from the menu workbench
+- [x] 6.3 Add a forward migration that deletes legacy button menu rows while preserving authorization grants as the single source of truth
+- [x] 6.4 Update tests, run focused verification, and validate the revised OpenSpec change
+
+## 7. Register every owner page
+
+- [x] 7.1 Add explicit owner page declarations for all active page-bearing navigation menus and compose them into one catalog version
+- [x] 7.2 Add a forward migration that binds every declared navigation menu and removes the retired permission-management route
+- [x] 7.3 Add contract tests for declaration uniqueness, menu coverage, registered targets, and owner metadata
+- [x] 7.4 Deploy catalog v3, verify every capability is READY and every page-bearing menu is bound, then validate OpenSpec

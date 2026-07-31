@@ -17,8 +17,13 @@ public class AuthDataScopeProvider implements DataScopeProvider {
     }
 
     @Override
-    public DataScope resolve(String userId, String resourceCode, String actionCode) {
-        EffectiveDataPolicyResponse effective = dataPolicyService.resolveEffective(userId, resourceCode, actionCode);
+    public DataScope resolve(String userId, String resourceCode, String actionCode, String tenantId) {
+        EffectiveDataPolicyResponse effective;
+        if (tenantId != null && !tenantId.isBlank()) {
+            effective = dataPolicyService.resolveEffective(tenantId, userId, resourceCode, actionCode);
+        } else {
+            effective = dataPolicyService.resolveEffective(userId, resourceCode, actionCode);
+        }
         return toDataScope(effective);
     }
 

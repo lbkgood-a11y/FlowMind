@@ -34,15 +34,15 @@ The authorization system SHALL expose the active tenant-scoped Page Capability C
 - **THEN** authorized frontend configuration surfaces can discover it from the backend catalog without adding a menu button permission row
 
 ### Requirement: Menus explicitly reference catalog pages
-Page-bearing menu entries SHALL support an explicit stable `pageCode` reference to the Page Capability Catalog. The reference SHALL remain optional for catalogs, links, embedded compatibility entries, and legacy menus that have not yet been mapped.
+Page-bearing menu entries SHALL require an explicit stable `pageCode` reference to the Page Capability Catalog. The reference remains empty only for catalogs and links that do not render a governed business page.
 
 #### Scenario: Save a page-bound menu
 - **WHEN** an administrator creates or updates a page menu with a registered `pageCode`
 - **THEN** the menu service persists and returns that `pageCode` without copying the page's capabilities into menu authorization rows
 
-#### Scenario: Read a legacy unmapped menu
-- **WHEN** a legacy menu has no explicit `pageCode`
-- **THEN** menu navigation remains readable and the management API identifies it as unmapped instead of guessing authorization operations
+#### Scenario: Reject an unmapped page menu
+- **WHEN** an administrator creates or updates a page-bearing menu without a registered `pageCode`
+- **THEN** the menu API rejects the request and does not persist an unmapped page menu
 
 ### Requirement: Only ready page capabilities are newly configurable
 Authorization configuration surfaces SHALL permit new selections only for Page Capabilities whose readiness is `READY`; other active capabilities SHALL remain visible for diagnosis with their backend-provided readiness message.
@@ -54,3 +54,14 @@ Authorization configuration surfaces SHALL permit new selections only for Page C
 #### Scenario: Attempt to select an incomplete operation
 - **WHEN** an administrator attempts to newly select a `PARTIAL`, `BROKEN`, or `UNMAPPED` capability
 - **THEN** the system rejects or disables the selection and presents the catalog readiness reason
+
+### Requirement: Every active page navigation is declared by an owner
+Every active page-bearing navigation menu SHALL map to an explicit owner-declared page in the active catalog. Owner declarations SHALL identify the owner service and SHALL use registered resource/action targets rather than deriving authorization facts from frontend labels.
+
+#### Scenario: Platform catalog activates
+- **WHEN** the composed platform catalog is synchronized and activated
+- **THEN** every active `menu` or `embedded` navigation row has a registered `pageCode` and every declared capability is `READY`
+
+#### Scenario: Retired permission route is encountered
+- **WHEN** the legacy permission-management navigation points to the retired permission API
+- **THEN** the migration removes that navigation instead of registering it as a new page

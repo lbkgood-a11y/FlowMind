@@ -32,18 +32,24 @@ public class DataScopeAspect {
 
         String resourceCode = requireDataScope.resource();
         String actionCode = requireDataScope.action();
+        String tenantId = SecurityContextHolder.getTenantId();
         DataScopeProvider provider = dataScopeProvider.getIfAvailable();
         DataScope dataScope = provider != null
-                ? provider.resolve(userId, resourceCode, actionCode)
+                ? provider.resolve(userId, resourceCode, actionCode, tenantId)
                 : DataScope.restrictive(userId, resourceCode, actionCode);
 
+        DataScope previous = DataScopeContextHolder.get();
         DataScopeContextHolder.set(dataScope != null
                 ? dataScope
                 : DataScope.restrictive(userId, resourceCode, actionCode));
         try {
             return joinPoint.proceed();
         } finally {
-            DataScopeContextHolder.clear();
+            if (previous != null) {
+                DataScopeContextHolder.set(previous);
+            } else {
+                DataScopeContextHolder.clear();
+            }
         }
     }
 }

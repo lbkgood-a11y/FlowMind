@@ -5,5 +5,5 @@ package com.triobase.common.core.auth;
  */
 public interface DataScopeProvider {
 
-    DataScope resolve(String userId, String resourceCode, String actionCode);
+    DataScope resolve(String userId, String resourceCode, String actionCode, String tenantId);
 }

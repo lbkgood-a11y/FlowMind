@@ -67,10 +67,12 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
 
             if (userId != null && !userId.isBlank()) {
                 if (!fromGateway) {
-                    log.warn("Identity headers present without gateway validation — "
-                            + "request may have bypassed gateway. "
+                    log.warn("Identity headers present without gateway validation — REJECTED. "
                             + "uri={} ip={} userId={}",
                             request.getRequestURI(), request.getRemoteAddr(), userId);
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED,
+                            "IDENTITY_HEADERS_REQUIRE_GATEWAY");
+                    return;
                 }
                 List<String> roles = rolesHeader != null && !rolesHeader.isBlank()
                         ? List.of(rolesHeader.split(","))

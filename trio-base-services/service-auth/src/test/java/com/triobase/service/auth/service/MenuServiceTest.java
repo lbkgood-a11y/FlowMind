@@ -236,7 +236,7 @@ class MenuServiceTest {
     }
 
     @Test
-    void create_shouldThrow_whenButtonMissingPermissionCode() {
+    void create_shouldRejectRetiredButtonType() {
         CreateMenuRequest request = new CreateMenuRequest();
         request.setMenuKey("menusCreate");
         request.setMenuName("新增菜单");
@@ -244,11 +244,11 @@ class MenuServiceTest {
 
         BizException ex = assertThrows(BizException.class, () -> menuService.create(request));
 
-        assertEquals(40040, ex.getCode());
+        assertEquals(40043, ex.getCode());
     }
 
     @Test
-    void create_shouldNormalizeButtonFields() {
+    void create_shouldRejectButtonEvenWhenPermissionCodeExists() {
         CreateMenuRequest request = new CreateMenuRequest();
         request.setMenuKey("menusCreate");
         request.setMenuName("新增菜单");
@@ -258,17 +258,9 @@ class MenuServiceTest {
         request.setPermissionCode("/api/v1/menus:POST");
         request.setHideInMenu(false);
 
-        when(menuMapper.selectCount(any())).thenReturn(0L);
-        when(authResourceMapper.selectCount(any())).thenReturn(1L);
-        when(authActionMapper.selectCount(any())).thenReturn(1L);
-        when(menuMapper.insert(any(SysMenu.class))).thenReturn(1);
+        BizException ex = assertThrows(BizException.class, () -> menuService.create(request));
 
-        SysMenu menu = menuService.create(request);
-
-        assertNull(menu.getPath());
-        assertNull(menu.getComponent());
-        assertEquals(Short.valueOf((short) 1), menu.getHideInMenu());
-        assertEquals("/api/v1/menus:POST", menu.getPermissionCode());
+        assertEquals(40043, ex.getCode());
     }
 
     @Test
@@ -276,7 +268,10 @@ class MenuServiceTest {
         CreateMenuRequest request = new CreateMenuRequest();
         request.setMenuKey("expenseCreate");
         request.setMenuName("发起费用");
-        request.setMenuType("button");
+        request.setMenuType("menu");
+        request.setPageCode("SYSTEM.MENU");
+        request.setPath("/system/menu");
+        request.setComponent("/system/menu/list");
         request.setPermissionCode("FORM:EXPENSE:CREATE");
 
         when(authResourceMapper.selectCount(any())).thenReturn(1L);
@@ -285,6 +280,20 @@ class MenuServiceTest {
         BizException ex = assertThrows(BizException.class, () -> menuService.create(request));
 
         assertEquals(40432, ex.getCode());
+    }
+
+    @Test
+    void create_shouldRejectPageMenuWithoutPageCode() {
+        CreateMenuRequest request = new CreateMenuRequest();
+        request.setMenuKey("users");
+        request.setMenuName("用户管理");
+        request.setMenuType("menu");
+        request.setPath("/system/users");
+        request.setComponent("/system/user/list");
+
+        BizException ex = assertThrows(BizException.class, () -> menuService.create(request));
+
+        assertEquals(40044, ex.getCode());
     }
 
     @Test

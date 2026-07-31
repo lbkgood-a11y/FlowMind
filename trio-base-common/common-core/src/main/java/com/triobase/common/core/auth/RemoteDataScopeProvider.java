@@ -52,17 +52,22 @@ public class RemoteDataScopeProvider implements DataScopeProvider {
     }
 
     @Override
-    public DataScope resolve(String userId, String resourceCode, String actionCode) {
+    public DataScope resolve(String userId, String resourceCode, String actionCode, String tenantId) {
         Exception lastException = null;
         for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             try {
                 JsonNode envelope = restClient.get()
-                        .uri(uriBuilder -> uriBuilder
-                                .path("/internal/v1/data-scopes/effective")
-                                .queryParam("userId", userId)
-                                .queryParam("resourceCode", resourceCode)
-                                .queryParam("actionCode", actionCode)
-                                .build())
+                        .uri(uriBuilder -> {
+                            var builder = uriBuilder
+                                    .path("/internal/v1/data-scopes/effective")
+                                    .queryParam("userId", userId)
+                                    .queryParam("resourceCode", resourceCode)
+                                    .queryParam("actionCode", actionCode);
+                            if (tenantId != null && !tenantId.isBlank()) {
+                                builder.queryParam("tenantId", tenantId);
+                            }
+                            return builder.build();
+                        })
                         .header(InternalServiceTokenFilter.HEADER_SERVICE_NAME, serviceName)
                         .header(InternalServiceTokenFilter.HEADER_SERVICE_TOKEN, securityProperties.getToken())
                         .retrieve()

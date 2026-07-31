@@ -19,7 +19,8 @@ public class InternalDataScopeController {
     @GetMapping("/effective")
     public R<DataScope> effective(@RequestParam String userId,
                                   @RequestParam String resourceCode,
-                                  @RequestParam String actionCode) {
-        return R.ok(dataScopeProvider.resolve(userId, resourceCode, actionCode));
+                                  @RequestParam String actionCode,
+                                  @RequestParam(required = false) String tenantId) {
+        return R.ok(dataScopeProvider.resolve(userId, resourceCode, actionCode, tenantId));
     }
 }

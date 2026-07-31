@@ -49,7 +49,7 @@ class AuthDataScopeProviderTest {
 
         when(dataPolicyService.resolveEffective("U001", "USER", "QUERY")).thenReturn(effective);
 
-        DataScope dataScope = provider.resolve("U001", "USER", "QUERY");
+        DataScope dataScope = provider.resolve("U001", "USER", "QUERY", null);
 
         assertFalse(dataScope.restrictive());
         assertEquals("U001", dataScope.userId());

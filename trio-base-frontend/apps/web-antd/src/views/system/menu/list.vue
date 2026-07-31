@@ -119,7 +119,6 @@ const typeOptions: Array<{
 }> = [
   { color: 'processing', label: '目录', value: 'catalog' },
   { color: 'default', label: '菜单', value: 'menu' },
-  { color: 'error', label: '按钮', value: 'button' },
   { color: 'success', label: '内嵌', value: 'embedded' },
   { color: 'warning', label: '外链', value: 'link' },
 ];
@@ -213,11 +212,6 @@ const fullyExpanded = computed(() => isFullyExpanded(expandedKeys.value, expanda
 const selectedMenu = computed(() =>
   allMenus.value.find((menu) => menu.id === selectedMenuId.value),
 );
-const selectedLegacyPermissions = computed(() =>
-  selectedMenu.value
-    ? workbench.value.permissionsByMenuId.get(selectedMenu.value.id) ?? []
-    : [],
-);
 const pageOptions = computed(() => buildPageOptions(pageCapabilities.value));
 const navigationTypeOptions = computed(() =>
   typeOptions.filter((option) => option.value !== 'button'),
@@ -250,11 +244,6 @@ const parentOptions = computed(() =>
     })),
 );
 
-const permissionColumns = [
-  { dataIndex: 'menuName', key: 'name', title: '权限名称', width: 150 },
-  { dataIndex: 'permissionCode', ellipsis: true, key: 'code', title: '权限标识' },
-  { key: 'status', title: '状态', width: 80 },
-];
 
 const capabilityColumns = [
   { dataIndex: 'capabilityName', key: 'name', title: '页面功能', width: 180 },
@@ -466,6 +455,7 @@ function isExternalUrl(value?: string) {
 function validateForm() {
   if (!formModel.menuKey.trim()) return message.warning('请输入菜单标识'), false;
   if (!formModel.menuName.trim()) return message.warning('请输入显示名称'), false;
+  if (['embedded', 'menu'].includes(formModel.menuType) && !formModel.pageCode) return message.warning('请选择后端业务页面'), false;
   if (showField('path') && !formModel.path?.trim()) return message.warning('请输入路由地址'), false;
   if (formModel.menuType === 'menu' && !formModel.component?.trim()) return message.warning('请输入页面组件'), false;
   if (showField('link') && !isExternalUrl(formModel.component)) return message.warning('链接地址必须以 http:// 或 https:// 开头'), false;
@@ -659,9 +649,6 @@ onMounted(() => {
         <aside class="navigation-panel">
           <div class="panel-heading">
             <div><strong>导航结构</strong><span>{{ workbench.navigationTree.length }} 个一级节点</span></div>
-            <Tag v-if="workbench.unassignedPermissions.length" color="orange">
-              未归类权限 {{ workbench.unassignedPermissions.length }}
-            </Tag>
           </div>
           <div class="navigation-tree-scroll">
             <Spin :spinning="loading">
@@ -777,16 +764,6 @@ onMounted(() => {
               </Table>
             </section>
 
-            <section v-if="selectedLegacyPermissions.length" class="detail-section">
-              <h4>历史权限节点 <Tag color="orange">兼容只读 {{ selectedLegacyPermissions.length }}</Tag></h4>
-              <Alert class="capability-alert" message="这些节点仅用于兼容旧数据；新的可授权操作由后端页面功能目录提供。" show-icon type="warning" />
-              <Table :columns="permissionColumns" :data-source="selectedLegacyPermissions" :pagination="false" row-key="id" size="small">
-                <template #bodyCell="{ column, record }">
-                  <template v-if="column.key === 'status'"><Tag :color="record.status === 0 ? 'default' : 'green'">{{ record.status === 0 ? '禁用' : '启用' }}</Tag></template>
-                </template>
-              </Table>
-            </section>
-
             <section class="detail-section">
               <h4>显示设置</h4>
               <div class="setting-tags">
@@ -826,10 +803,9 @@ onMounted(() => {
           <section v-if="showField('path') || showField('component') || showField('link')" class="form-section">
             <h4>页面与路由配置</h4>
             <div class="form-grid">
-              <FormItem v-if="['embedded', 'menu'].includes(formModel.menuType)" class="form-wide" label="业务页面">
+              <FormItem v-if="['embedded', 'menu'].includes(formModel.menuType)" class="form-wide" label="业务页面" required>
                 <Select
                   v-model:value="formModel.pageCode"
-                  allow-clear
                   :loading="capabilityLoading"
                   :options="pageOptions"
                   placeholder="从后端页面功能目录选择"

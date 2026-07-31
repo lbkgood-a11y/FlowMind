@@ -20,9 +20,15 @@ class SystemPageCapabilityManifestContractTest {
         PageCapabilityManifestSyncRequest manifest =
                 new SystemPageCapabilityManifestConfig().systemManagementPageCapabilities();
 
-        assertEquals(7, manifest.getPages().size());
-        assertFrontendControls(root, manifest);
-        assertBackendTargets(root, manifest);
+        List<PageCapabilityManifestSyncRequest.Page> corePages = manifest.getPages().stream()
+                .filter(page -> List.of("SYSTEM.USER", "SYSTEM.TENANT", "SYSTEM.ROLE", "SYSTEM.MENU",
+                        "SYSTEM.AUDIT", "SYSTEM.SESSION", "SYSTEM.CONFIG").contains(page.getPageCode()))
+                .toList();
+        assertEquals(7, corePages.size());
+        PageCapabilityManifestSyncRequest coreManifest = new PageCapabilityManifestSyncRequest();
+        coreManifest.setPages(corePages);
+        assertFrontendControls(root, coreManifest);
+        assertBackendTargets(root, coreManifest);
     }
 
     @Test

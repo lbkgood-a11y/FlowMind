@@ -342,6 +342,9 @@ public class MenuService {
         if (!MENU_TYPES.contains(normalizedType)) {
             throw new BizException(40038, "MENU_TYPE_INVALID");
         }
+        if (TYPE_BUTTON.equals(normalizedType)) {
+            throw new BizException(40043, "MENU_BUTTON_TYPE_RETIRED");
+        }
         if (PATH_REQUIRED_TYPES.contains(normalizedType) && !StringUtils.hasText(path)) {
             throw new BizException(40035, "MENU_PATH_REQUIRED");
         }
@@ -351,9 +354,6 @@ public class MenuService {
         if ((TYPE_EMBEDDED.equals(normalizedType) || TYPE_LINK.equals(normalizedType))
                 && !isExternalUrl(component)) {
             throw new BizException(40039, "MENU_COMPONENT_REQUIRED");
-        }
-        if (TYPE_BUTTON.equals(normalizedType) && !StringUtils.hasText(permissionCode)) {
-            throw new BizException(40040, "MENU_PERMISSION_CODE_REQUIRED");
         }
     }
 
@@ -577,6 +577,10 @@ public class MenuService {
 
     private void validatePageCode(String pageCode, String menuType) {
         String normalizedPageCode = normalizePageCodeForType(pageCode, menuType);
+        if ((TYPE_MENU.equals(menuType) || TYPE_EMBEDDED.equals(menuType))
+                && normalizedPageCode == null) {
+            throw new BizException(40044, "MENU_PAGE_CAPABILITY_REQUIRED");
+        }
         if (normalizedPageCode != null && !pageCapabilityCatalogFacade.pageExists(null, normalizedPageCode)) {
             throw new BizException(40442, "MENU_PAGE_CAPABILITY_NOT_FOUND");
         }

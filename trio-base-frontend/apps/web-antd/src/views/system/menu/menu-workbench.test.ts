@@ -63,7 +63,7 @@ describe('menu workbench model', () => {
     expect(capabilitiesForPage([], 'SYSTEM.MENU')).toEqual([]);
   });
 
-  it('separates navigation and permission nodes', () => {
+  it('excludes retired permission nodes from the navigation model', () => {
     const model = buildMenuWorkbench([
       menu('root', undefined, 'catalog'),
       menu('page', 'root'),
@@ -72,12 +72,7 @@ describe('menu workbench model', () => {
 
     expect(model.navigationTree[0]?.children?.[0]?.id).toBe('page');
     expect(model.navigationTree[0]?.children?.[0]?.children).toBeUndefined();
-    expect(model.permissionsByMenuId.get('page')?.[0]?.id).toBe('create');
-  });
-
-  it('keeps orphan permissions visible', () => {
-    const model = buildMenuWorkbench([menu('orphan', 'missing', 'button')]);
-    expect(model.unassignedPermissions.map((item) => item.id)).toEqual(['orphan']);
+    expect(JSON.stringify(model)).not.toContain('create');
   });
 
   it('expands only the first root by default and can detect fully expanded state', () => {

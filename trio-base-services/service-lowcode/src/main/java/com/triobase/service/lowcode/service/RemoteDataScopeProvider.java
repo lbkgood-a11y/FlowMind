@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.auth.DataScope;
 import com.triobase.common.core.auth.DataScopeProvider;
 import com.triobase.common.core.config.InternalServiceSecurityProperties;
+import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.filter.InternalServiceTokenFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,17 +43,24 @@ public class RemoteDataScopeProvider implements DataScopeProvider {
     }
 
     @Override
-    public DataScope resolve(String userId, String resourceCode, String actionCode) {
+    public DataScope resolve(String userId, String resourceCode, String actionCode, String tenantId) {
         Exception lastException = null;
         for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             try {
                 JsonNode envelope = restClient.get()
-                        .uri(uriBuilder -> uriBuilder
-                                .path("/internal/v1/data-scopes/effective")
-                                .queryParam("userId", userId)
-                                .queryParam("resourceCode", resourceCode)
-                                .queryParam("actionCode", actionCode)
-                                .build())
+                        .uri(uriBuilder -> {
+                            var builder = uriBuilder
+                                    .path("/internal/v1/data-scopes/effective")
+                                    .queryParam("userId", userId)
+                                    .queryParam("resourceCode", resourceCode)
+                                    .queryParam("actionCode", actionCode);
+                            String effectiveTenant = tenantId != null ? tenantId
+                                    : SecurityContextHolder.getTenantId();
+                            if (effectiveTenant != null && !effectiveTenant.isBlank()) {
+                                builder.queryParam("tenantId", effectiveTenant);
+                            }
+                            return builder.build();
+                        })
                         .header(InternalServiceTokenFilter.HEADER_SERVICE_NAME, SERVICE_NAME)
                         .header(InternalServiceTokenFilter.HEADER_SERVICE_TOKEN, securityProperties.getToken())
                         .retrieve()

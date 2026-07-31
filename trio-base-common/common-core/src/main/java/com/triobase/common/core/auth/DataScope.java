@@ -35,7 +35,17 @@ public record DataScope(
         if (restrictive || denies("ALL")) {
             return false;
         }
-        return allows("ALL");
+        if (!allows("ALL")) {
+            return false;
+        }
+        return !hasNonAllDeny();
+    }
+
+    private boolean hasNonAllDeny() {
+        return policies.stream()
+                .filter(p -> "DENY".equalsIgnoreCase(p.effect()))
+                .flatMap(p -> p.dimensions().stream())
+                .anyMatch(d -> !"ALL".equalsIgnoreCase(d.scopeType()));
     }
 
     public boolean allowsSelf() {

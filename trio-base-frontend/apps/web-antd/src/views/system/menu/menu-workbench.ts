@@ -12,8 +12,6 @@ export type MenuFilters = {
 
 export type MenuWorkbenchModel = {
   navigationTree: MenuTreeNode[];
-  permissionsByMenuId: Map<string, SystemMenuApi.SystemMenu[]>;
-  unassignedPermissions: SystemMenuApi.SystemMenu[];
 };
 
 export type ReorderResult =
@@ -72,31 +70,9 @@ export function isPermissionNode(menu: SystemMenuApi.SystemMenu) {
 export function buildMenuWorkbench(
   menus: SystemMenuApi.SystemMenu[],
 ): MenuWorkbenchModel {
-  const byId = new Map(menus.map((menu) => [menu.id, menu]));
-  const permissionsByMenuId = new Map<string, SystemMenuApi.SystemMenu[]>();
-  const unassignedPermissions: SystemMenuApi.SystemMenu[] = [];
   const navigationMenus = menus.filter((menu) => !isPermissionNode(menu));
-
-  for (const permission of menus.filter(isPermissionNode)) {
-    let parent = permission.parentId ? byId.get(permission.parentId) : undefined;
-    while (parent && isPermissionNode(parent)) {
-      parent = parent.parentId ? byId.get(parent.parentId) : undefined;
-    }
-    if (!parent) {
-      unassignedPermissions.push(permission);
-      continue;
-    }
-    const siblings = permissionsByMenuId.get(parent.id) ?? [];
-    siblings.push(permission);
-    permissionsByMenuId.set(parent.id, siblings);
-  }
-
-  permissionsByMenuId.forEach(sortMenus);
-  sortMenus(unassignedPermissions);
   return {
     navigationTree: buildMenuTree(navigationMenus),
-    permissionsByMenuId,
-    unassignedPermissions,
   };
 }
 

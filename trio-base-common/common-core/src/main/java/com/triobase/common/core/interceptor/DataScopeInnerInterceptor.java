@@ -11,8 +11,11 @@ import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.common.core.exception.AuthErrorCode;
 import com.triobase.common.core.exception.BizException;
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.NotExpression;
+import net.sf.jsqlparser.expression.Parenthesis;
 import net.sf.jsqlparser.expression.StringValue;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
+import net.sf.jsqlparser.expression.operators.conditional.OrExpression;
 import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.expression.operators.relational.InExpression;
@@ -45,9 +48,9 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
     private static final Logger log = LoggerFactory.getLogger(DataScopeInnerInterceptor.class);
 
     private static final Set<String> SELF_COLUMN_CANDIDATES = Set.of(
-            "created_by", "user_id", "submitted_by");
+            "user_id", "submitted_by");
     private static final Set<String> ORG_COLUMN_CANDIDATES = Set.of(
-            "org_unit_id", "org_id");
+            "org_unit_id", "org_id", "owner_org_id");
 
     private final Set<String> tablesWithSelfColumn = ConcurrentHashMap.newKeySet();
     private final Set<String> tablesWithoutSelfColumn = ConcurrentHashMap.newKeySet();
@@ -89,7 +92,9 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
 
             Expression originalWhere = plainSelect.getWhere();
             if (originalWhere != null) {
-                plainSelect.setWhere(new AndExpression(originalWhere, extraWhere));
+                Parenthesis paren = new Parenthesis();
+                paren.setExpression(originalWhere);
+                plainSelect.setWhere(new AndExpression(paren, extraWhere));
             } else {
                 plainSelect.setWhere(extraWhere);
             }
@@ -120,38 +125,61 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
     }
 
     private Expression buildScopeCondition(String tableName, DataScope scope) {
-        List<Expression> conditions = new ArrayList<>();
+        List<Expression> allowConditions = new ArrayList<>();
 
         String selfColumn = resolveSelfColumn(tableName);
         if (selfColumn != null && scope.allowsSelf()) {
             String userId = SecurityContextHolder.getUserId();
             if (userId != null && !userId.isBlank()) {
-                conditions.add(new EqualsTo(
+                allowConditions.add(new EqualsTo(
                         new Column(tableName + "." + selfColumn),
                         new StringValue(userId)));
             }
         }
 
-        List<String> orgUnitIds = collectOrgUnitIds(scope);
-        if (!orgUnitIds.isEmpty()) {
-            String orgColumn = resolveOrgColumn(tableName);
-            if (orgColumn != null) {
-                ExpressionList<StringValue> orgList = new ExpressionList<>(
-                        orgUnitIds.stream().map(StringValue::new).toList());
-                conditions.add(new InExpression(
-                        new Column(tableName + "." + orgColumn), orgList));
+        OrgUnitIds orgUnitIds = collectOrgUnitIds(scope);
+        String orgColumn = resolveOrgColumn(tableName);
+
+        if (orgColumn != null && !orgUnitIds.allowed().isEmpty()) {
+            ExpressionList<StringValue> orgList = new ExpressionList<>(
+                    orgUnitIds.allowed().stream().map(StringValue::new).toList());
+            allowConditions.add(new InExpression(
+                    new Column(tableName + "." + orgColumn), orgList));
+        }
+
+        if (allowConditions.isEmpty() && orgUnitIds.denied().isEmpty()) {
+            return null;
+        }
+
+        Expression result = null;
+
+        // Allow conditions: OR-connected (SELF OR org IN ...)
+        if (!allowConditions.isEmpty()) {
+            result = allowConditions.get(0);
+            for (int i = 1; i < allowConditions.size(); i++) {
+                result = new OrExpression(result, allowConditions.get(i));
             }
         }
 
-        if (conditions.isEmpty()) {
-            return null;
+        // Deny conditions: AND-connected NOT IN
+        if (orgColumn != null && !orgUnitIds.denied().isEmpty()) {
+            ExpressionList<StringValue> denyList = new ExpressionList<>(
+                    orgUnitIds.denied().stream().map(StringValue::new).toList());
+            Expression notInDeny = new NotExpression(
+                    new InExpression(new Column(tableName + "." + orgColumn), denyList));
+            if (result != null) {
+                Parenthesis paren = new Parenthesis();
+                paren.setExpression(result);
+                result = new AndExpression(paren, notInDeny);
+            } else {
+                result = notInDeny;
+            }
         }
-        Expression result = conditions.get(0);
-        for (int i = 1; i < conditions.size(); i++) {
-            result = new AndExpression(result, conditions.get(i));
-        }
+
         return result;
     }
+
+    private record OrgUnitIds(List<String> allowed, List<String> denied) {}
 
     private String resolveSelfColumn(String tableName) {
         if (tablesWithoutSelfColumn.contains(tableName)) {
@@ -227,9 +255,9 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
         return columns;
     }
 
-    private List<String> collectOrgUnitIds(DataScope scope) {
+    private OrgUnitIds collectOrgUnitIds(DataScope scope) {
         if (scope.deniesAll()) {
-            return List.of();
+            return new OrgUnitIds(List.of(), List.of());
         }
         List<String> allowed = new ArrayList<>();
         List<String> denied = new ArrayList<>();
@@ -252,7 +280,7 @@ public class DataScopeInnerInterceptor implements InnerInterceptor {
             Set<String> denySet = new HashSet<>(denied);
             allowed.removeIf(denySet::contains);
         }
-        return allowed;
+        return new OrgUnitIds(allowed, denied);
     }
 
     private String cleanTableName(String name) {

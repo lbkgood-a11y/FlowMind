@@ -42,6 +42,7 @@ public class UserController {
 
     @GetMapping("/{id}")
     @RequirePermission("/api/v1/users:GET")
+    @RequireDataScope(resource = "USER", action = "QUERY")
     public R<UserInfoPayload> getById(@PathVariable String id) {
         return R.ok(userService.findById(id));
     }

@@ -7,7 +7,7 @@ import com.triobase.common.core.auth.DataScope;
  */
 public final class DataScopeContextHolder {
 
-    private static final ThreadLocal<DataScope> CONTEXT = new ThreadLocal<>();
+    private static final ThreadLocal<DataScope> CONTEXT = new InheritableThreadLocal<>();
 
     private DataScopeContextHolder() {
     }
