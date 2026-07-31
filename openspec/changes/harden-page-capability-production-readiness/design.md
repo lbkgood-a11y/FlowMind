@@ -25,7 +25,7 @@ The design must preserve fail-closed behavior, the owner-service boundary, immut
 
 ### 1. Tenant-neutral manifests with explicit tenant materialization
 
-System manifests will be templates without a production `default` tenant. Startup synchronization will enumerate configured active tenants or accept an explicit tenant from a tenant-scoped job and materialize the same stable manifest for each tenant. Interactive authorization services will reject a missing tenant unless the caller has an authenticated platform-global context.
+System manifests will be templates without a production `default` tenant. Startup synchronization will enumerate configured active tenants or accept an explicit tenant from a tenant-scoped job and materialize the same stable manifest for each tenant. If startup prewarming is not configured, the first authenticated role-authorization request will materialize and activate the same manifest for its effective tenant before creating the draft. Interactive authorization services will reject a missing tenant unless the caller has an authenticated platform-global context.
 
 This is preferred over retaining `default` because a fallback converts missing context into valid access. It is also preferred over duplicating manifest beans per tenant because tenants are dynamic.
 

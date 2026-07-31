@@ -1,3 +1,5 @@
+import type { SystemAuthorizationApi } from './authorization';
+
 import { requestClient } from '#/api/request';
 
 export namespace SystemMenuApi {
@@ -31,6 +33,7 @@ export namespace SystemMenuApi {
     menuGroup?: string;
     menuKey: string;
     menuName: string;
+    pageCode?: string;
     menuType?: MenuType;
     parentId?: string;
     path?: string;
@@ -63,6 +66,7 @@ export namespace SystemMenuApi {
     menuGroup?: string;
     menuKey: string;
     menuName: string;
+    pageCode?: string;
     menuType: MenuType;
     parentId?: string;
     path?: string;
@@ -75,6 +79,13 @@ export namespace SystemMenuApi {
 
 async function getMenuList(params?: SystemMenuApi.MenuListParams) {
   return requestClient.get<SystemMenuApi.SystemMenu[]>('/menus', { params });
+}
+
+async function getMenuPageCapabilities(pageCode?: string) {
+  return requestClient.get<SystemAuthorizationApi.PageCapability[]>(
+    '/menus/page-capabilities',
+    { params: { pageCode } },
+  );
 }
 
 async function createMenu(data: SystemMenuApi.SaveMenuParams) {
@@ -115,6 +126,7 @@ export {
   createMenu,
   deleteMenu,
   getMenuList,
+  getMenuPageCapabilities,
   menuKeyExists,
   menuPathExists,
   updateMenu,

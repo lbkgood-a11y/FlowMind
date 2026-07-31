@@ -1,4 +1,4 @@
-import type { SystemMenuApi } from '#/api';
+import type { SystemAuthorizationApi, SystemMenuApi } from '#/api';
 
 export type MenuTreeNode = SystemMenuApi.SystemMenu & {
   children?: MenuTreeNode[];
@@ -19,6 +19,48 @@ export type MenuWorkbenchModel = {
 export type ReorderResult =
   | { error: 'cross-level' | 'invalid'; items: [] }
   | { items: Array<{ menu: SystemMenuApi.SystemMenu; sortOrder: number }> };
+
+export type PageOption = {
+  label: string;
+  readiness: SystemAuthorizationApi.PageCapability['readiness'];
+  value: string;
+};
+
+export function buildPageOptions(
+  capabilities: SystemAuthorizationApi.PageCapability[],
+): PageOption[] {
+  const pages = new Map<string, PageOption>();
+  for (const capability of capabilities) {
+    const current = pages.get(capability.pageCode);
+    const readiness = current?.readiness === 'READY' || capability.readiness === 'READY'
+      ? 'READY'
+      : capability.readiness;
+    pages.set(capability.pageCode, {
+      label: capability.pageName,
+      readiness,
+      value: capability.pageCode,
+    });
+  }
+  return [...pages.values()].sort((left, right) => left.label.localeCompare(right.label));
+}
+
+export function capabilitiesForPage(
+  capabilities: SystemAuthorizationApi.PageCapability[],
+  pageCode?: string,
+) {
+  if (!pageCode) return [];
+  return capabilities
+    .filter((capability) => capability.pageCode === pageCode)
+    .sort(
+      (left, right) =>
+        (left.sortOrder ?? 100) - (right.sortOrder ?? 100) ||
+        left.capabilityName.localeCompare(right.capabilityName),
+    );
+}
+
+export function capabilityCatalogErrorMessage() {
+  return '页面功能目录加载失败，请检查企业授权查询权限或稍后重试';
+}
 
 export function isPermissionNode(menu: SystemMenuApi.SystemMenu) {
   return (

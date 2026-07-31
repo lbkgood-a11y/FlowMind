@@ -4,9 +4,11 @@ import com.triobase.common.core.annotation.RequirePermission;
 import com.triobase.common.core.result.R;
 import com.triobase.service.auth.dto.CreateMenuRequest;
 import com.triobase.service.auth.dto.MenuRouteResponse;
+import com.triobase.service.auth.dto.PageCapabilityResponse;
 import com.triobase.service.auth.dto.UpdateMenuRequest;
 import com.triobase.service.auth.entity.SysMenu;
 import com.triobase.service.auth.service.MenuService;
+import com.triobase.service.auth.service.PageCapabilityCatalogFacade;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,6 +28,7 @@ import java.util.List;
 public class MenuController {
 
     private final MenuService menuService;
+    private final PageCapabilityCatalogFacade pageCapabilityCatalogFacade;
 
     @GetMapping
     @RequirePermission("/api/v1/menus:GET")
@@ -40,6 +43,13 @@ public class MenuController {
     @RequirePermission("/api/v1/menus:GET")
     public R<List<MenuRouteResponse>> routes() {
         return R.ok(menuService.listRoutes());
+    }
+
+    @GetMapping("/page-capabilities")
+    @RequirePermission("/api/v1/menus:GET")
+    public R<List<PageCapabilityResponse>> pageCapabilities(
+            @RequestParam(required = false) String pageCode) {
+        return R.ok(pageCapabilityCatalogFacade.implementationCatalog(null, null, pageCode));
     }
 
     @GetMapping("/exists/key")

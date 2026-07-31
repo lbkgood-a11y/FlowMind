@@ -10,6 +10,7 @@ import com.triobase.service.auth.dto.PageCapabilitySimulationResponse;
 import com.triobase.service.auth.dto.RoleAuthorizationDriftResponse;
 import com.triobase.service.auth.entity.SysAuthPageCatalog;
 import com.triobase.service.auth.service.PageCapabilityCatalogService;
+import com.triobase.service.auth.service.PageCapabilityCatalogFacade;
 import com.triobase.service.auth.service.PageCapabilitySimulationService;
 import com.triobase.service.auth.service.RoleAuthorizationDriftService;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ import java.util.List;
 public class PageCapabilityController {
 
     private final PageCapabilityCatalogService catalogService;
+    private final PageCapabilityCatalogFacade catalogFacade;
     private final PageCapabilitySimulationService simulationService;
     private final RoleAuthorizationDriftService driftService;
 
@@ -36,8 +38,16 @@ public class PageCapabilityController {
     @RequirePermission("/api/v1/authz/**:GET")
     public R<List<PageCapabilityResponse>> implementationCatalog(
             @RequestParam(required = false) String tenantId,
-            @RequestParam(required = false) String catalogId) {
-        return R.ok(catalogService.implementationCatalog(tenantId, catalogId));
+            @RequestParam(required = false) String catalogId,
+            @RequestParam(required = false) String pageCode) {
+        return R.ok(catalogFacade.implementationCatalog(tenantId, catalogId, pageCode));
+    }
+
+    @GetMapping("/catalogs")
+    @RequirePermission("/api/v1/authz/**:GET")
+    public R<List<SysAuthPageCatalog>> catalogs(
+            @RequestParam(required = false) String tenantId) {
+        return R.ok(catalogFacade.catalogs(tenantId));
     }
 
     @GetMapping("/diagnostics")
@@ -45,7 +55,7 @@ public class PageCapabilityController {
     public R<List<PageCapabilityDiagnosticResponse>> diagnostics(
             @RequestParam(required = false) String tenantId,
             @RequestParam(required = false) String catalogId) {
-        return R.ok(catalogService.diagnostics(tenantId, catalogId));
+        return R.ok(catalogFacade.diagnostics(tenantId, catalogId));
     }
 
     @PostMapping("/manifests/sync")

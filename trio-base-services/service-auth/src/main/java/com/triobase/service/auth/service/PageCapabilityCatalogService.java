@@ -66,13 +66,18 @@ public class PageCapabilityCatalogService {
     private final RoleAuthorizationDriftService driftService;
     private final ObjectMapper objectMapper;
 
-    public List<PageCapabilityResponse> implementationCatalog(String requestedTenantId, String requestedCatalogId) {
+    public List<PageCapabilityResponse> implementationCatalog(
+            String requestedTenantId, String requestedCatalogId, String requestedPageCode) {
         String tenantId = authorizationRegistryService.effectiveTenant(requestedTenantId);
         SysAuthPageCatalog catalog = resolveCatalog(tenantId, requestedCatalogId);
-        List<SysAuthPageCapability> capabilities = capabilityMapper.selectList(new LambdaQueryWrapper<SysAuthPageCapability>()
+        LambdaQueryWrapper<SysAuthPageCapability> query = new LambdaQueryWrapper<SysAuthPageCapability>()
                         .eq(SysAuthPageCapability::getTenantId, tenantId)
                         .eq(SysAuthPageCapability::getCatalogId, catalog.getId())
-                        .eq(SysAuthPageCapability::getStatus, (short) 1)
+                        .eq(SysAuthPageCapability::getStatus, (short) 1);
+        if (StringUtils.hasText(requestedPageCode)) {
+            query.eq(SysAuthPageCapability::getPageCode, requestedPageCode.trim());
+        }
+        List<SysAuthPageCapability> capabilities = capabilityMapper.selectList(query
                         .orderByAsc(SysAuthPageCapability::getPageCode)
                         .orderByAsc(SysAuthPageCapability::getSortOrder));
         Map<String, List<String>> dependenciesByCapability = new HashMap<>();
@@ -117,6 +122,19 @@ public class PageCapabilityCatalogService {
             response.setConstraintConfigurable(hasDeclaredGuards(item));
             return response;
         }).toList();
+    }
+
+    public boolean pageExists(String requestedTenantId, String pageCode) {
+        return StringUtils.hasText(pageCode)
+                && !implementationCatalog(requestedTenantId, null, pageCode.trim()).isEmpty();
+    }
+
+    public List<SysAuthPageCatalog> catalogs(String requestedTenantId) {
+        String tenantId = authorizationRegistryService.effectiveTenant(requestedTenantId);
+        return catalogMapper.selectList(new LambdaQueryWrapper<SysAuthPageCatalog>()
+                .eq(SysAuthPageCatalog::getTenantId, tenantId)
+                .orderByDesc(SysAuthPageCatalog::getCatalogVersion)
+                .orderByDesc(SysAuthPageCatalog::getUpdatedAt));
     }
 
     private boolean hasDeclaredGuards(SysAuthPageCapability capability) {

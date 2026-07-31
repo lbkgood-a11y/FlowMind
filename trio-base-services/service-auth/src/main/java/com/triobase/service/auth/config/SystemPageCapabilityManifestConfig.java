@@ -14,20 +14,22 @@ public class SystemPageCapabilityManifestConfig {
     PageCapabilityManifestSyncRequest systemManagementPageCapabilities() {
         PageCapabilityManifestSyncRequest manifest = new PageCapabilityManifestSyncRequest();
         manifest.setCatalogCode("SYSTEM_MANAGEMENT");
-        manifest.setCatalogVersion(1L);
+        manifest.setCatalogVersion(2L);
         manifest.setSourceType("SYSTEM_MANIFEST");
         manifest.setSourceRef("service-auth/system-management");
         manifest.setPages(List.of(
-                crudPage("SYSTEM.USER", "用户管理", "users", "PAGE_USER_MANAGEMENT",
+                crudPage("SYSTEM.USER", "用户管理", "SystemUser", "PAGE_USER_MANAGEMENT",
                         "/api/v1/users", "/api/v1/users/*", "新增用户", "编辑用户", "删除用户"),
                 tenantPage(),
                 rolePage(),
-                crudPage("SYSTEM.MENU", "菜单管理", "menus", "PAGE_MENU_MANAGEMENT",
+                crudPage("SYSTEM.MENU", "菜单管理", "SystemMenu", "PAGE_MENU_MANAGEMENT",
                         "/api/v1/menus", "/api/v1/menus/*", "新增菜单", "编辑菜单", "删除菜单"),
                 readOnlyPage("SYSTEM.AUDIT", "操作审计", "SystemAuditLog", "PAGE_AUDIT_LOG",
                         "/api/v1/audit-logs"),
                 sessionPage(),
-                configPage()));
+                configPage(),
+                readOnlyPage("SYSTEM.PAGE_CAPABILITY", "能力目录", "SystemPageCapabilityCatalog",
+                        "PAGE_CAPABILITY_CATALOG", "/api/v1/authz/**")));
         return manifest;
     }
 
@@ -94,7 +96,7 @@ public class SystemPageCapabilityManifestConfig {
 
     private PageCapabilityManifestSyncRequest.Page rolePage() {
         PageCapabilityManifestSyncRequest.Page page = crudPage(
-                "SYSTEM.ROLE", "角色管理", "roles", "PAGE_ROLE_MANAGEMENT",
+                "SYSTEM.ROLE", "角色管理", "SystemRole", "PAGE_ROLE_MANAGEMENT",
                 "/api/v1/roles", "/api/v1/roles/*", "新增角色", "编辑角色", "删除角色");
         List<PageCapabilityManifestSyncRequest.Capability> capabilities =
                 new ArrayList<>(page.getCapabilities());

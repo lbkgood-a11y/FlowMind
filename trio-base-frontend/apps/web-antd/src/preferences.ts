@@ -24,6 +24,13 @@ export const overridesPreferences = defineOverridesPreferences({
     name: import.meta.env.VITE_APP_TITLE,
   },
   copyright: appCopyrightPreferences,
+  logo: {
+    fit: 'contain',
+    logoMode: 'icon',
+    showText: true,
+    source: '/brand/triobase-mark.png',
+    sourceDark: '/brand/triobase-mark.png',
+  },
 });
 
 export const preferencesExtension =

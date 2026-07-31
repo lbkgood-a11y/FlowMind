@@ -49,6 +49,15 @@ const routes: RouteRecordRaw[] = [
         component: () => import('#/views/system/menu/list.vue'),
       },
       {
+        path: 'capability-catalog',
+        name: 'SystemPageCapabilityCatalog',
+        meta: {
+          icon: 'lucide:panels-top-left',
+          title: '能力目录',
+        },
+        component: () => import('#/views/system/capability-catalog/list.vue'),
+      },
+      {
         path: 'org',
         name: 'SystemOrg',
         meta: {

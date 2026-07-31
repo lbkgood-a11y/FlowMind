@@ -81,8 +81,8 @@ class AuthorizationDecisionServiceTest {
         givenRegisteredAction("tenant-a", "LOWCODE_FORM:EXPENSE", "VIEW", null);
         when(grantMapper.selectList(any())).thenReturn(List.of(
                 grant("G_ROLE_ALLOW", "ROLE", "R_MANAGER", "ALLOW")));
-        when(activeReleaseEvidenceService.supportsGrant(
-                "tenant-a", "R_MANAGER", "LOWCODE_FORM:EXPENSE", "VIEW")).thenReturn(false);
+        when(activeReleaseEvidenceService.batchSupportedGrantKeys(
+                "tenant-a", List.of("R_MANAGER"))).thenReturn(java.util.Set.of());
 
         AuthorizationDecisionResponse response = service.decide(
                 request("tenant-a", "U001", "LOWCODE_FORM:EXPENSE", "VIEW"));
@@ -110,8 +110,8 @@ class AuthorizationDecisionServiceTest {
                 activeReleaseEvidenceService,
                 new ObjectMapper());
         lenient().when(versionService.current(anyString())).thenReturn(1L);
-        lenient().when(activeReleaseEvidenceService.supportsGrant(anyString(), anyString(), anyString(), anyString()))
-                .thenReturn(true);
+        lenient().when(activeReleaseEvidenceService.batchSupportedGrantKeys(anyString(), any()))
+                .thenReturn(null); // null = non-PAGE_CAPABILITY, allow all
         lenient().when(dataPolicyService.resolveSubjectOrganizationIds(anyString(), anyString()))
                 .thenReturn(List.of());
     }

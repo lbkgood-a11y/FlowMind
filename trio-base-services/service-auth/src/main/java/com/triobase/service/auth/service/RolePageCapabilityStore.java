@@ -51,6 +51,7 @@ public class RolePageCapabilityStore {
     private final AuthPageCapabilityDependencyMapper dependencyMapper;
     private final RoleMapper roleMapper;
     private final AuthorizationRegistryService authorizationRegistryService;
+    private final PageCapabilityManifestMaterializer manifestMaterializer;
     private final RoleAuthorizationAuditService auditService;
     private final ObjectMapper objectMapper;
 
@@ -67,11 +68,11 @@ public class RolePageCapabilityStore {
             return existing;
         }
 
-        SysAuthPageCatalog catalog = catalogMapper.selectOne(new LambdaQueryWrapper<SysAuthPageCatalog>()
-                .eq(SysAuthPageCatalog::getTenantId, tenantId)
-                .eq(SysAuthPageCatalog::getLifecycleStatus, "ACTIVE")
-                .orderByDesc(SysAuthPageCatalog::getCatalogVersion)
-                .last("LIMIT 1"));
+        SysAuthPageCatalog catalog = findActiveCatalog(tenantId);
+        if (catalog == null) {
+            manifestMaterializer.materializeAndActivateTenant(tenantId);
+            catalog = findActiveCatalog(tenantId);
+        }
         if (catalog == null) {
             throw new BizException(40991, "PAGE_CAPABILITY_ACTIVE_CATALOG_REQUIRED");
         }
@@ -88,6 +89,14 @@ public class RolePageCapabilityStore {
         auditService.record(tenantId, roleId, draft.getId(), null,
                 "DRAFT_CREATED", "已为角色创建页面权限草稿", Map.of("catalogId", catalog.getId()));
         return draft;
+    }
+
+    private SysAuthPageCatalog findActiveCatalog(String tenantId) {
+        return catalogMapper.selectOne(new LambdaQueryWrapper<SysAuthPageCatalog>()
+                .eq(SysAuthPageCatalog::getTenantId, tenantId)
+                .eq(SysAuthPageCatalog::getLifecycleStatus, "ACTIVE")
+                .orderByDesc(SysAuthPageCatalog::getCatalogVersion)
+                .last("LIMIT 1"));
     }
 
     @Transactional

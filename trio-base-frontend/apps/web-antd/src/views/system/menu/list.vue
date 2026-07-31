@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SystemMenuApi } from '#/api';
+import type { SystemAuthorizationApi, SystemMenuApi } from '#/api';
 
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 
@@ -8,6 +8,7 @@ import { IconPicker, Page } from '@vben/common-ui';
 import { IconifyIcon, Plus } from '@vben/icons';
 
 import {
+  Alert,
   AutoComplete,
   Button,
   Checkbox,
@@ -37,6 +38,7 @@ import {
   createMenu,
   deleteMenu,
   getMenuList,
+  getMenuPageCapabilities,
   menuKeyExists,
   menuPathExists,
   updateMenu,
@@ -49,6 +51,9 @@ import {
   allExpandableKeys,
   buildMenuTree,
   buildMenuWorkbench,
+  buildPageOptions,
+  capabilitiesForPage,
+  capabilityCatalogErrorMessage,
   defaultExpandedKeys,
   filterMenuTree,
   flattenMenuTree,
@@ -81,6 +86,7 @@ type MenuFormModel = {
   menuKey: string;
   menuName: string;
   menuType: SystemMenuApi.MenuType;
+  pageCode?: string;
   parentId?: string;
   path?: string;
   permissionCode?: string;
@@ -143,6 +149,9 @@ const canUpdate = computed(() => hasAccessByCodes([MENU_PERMISSIONS.update]));
 const canDelete = computed(() => hasAccessByCodes([MENU_PERMISSIONS.delete]));
 
 const allMenus = ref<SystemMenuApi.SystemMenu[]>([]);
+const pageCapabilities = ref<SystemAuthorizationApi.PageCapability[]>([]);
+const capabilityLoading = ref(false);
+const capabilityLoadError = ref('');
 const loading = ref(false);
 const saving = ref(false);
 const sorting = ref(false);
@@ -176,6 +185,7 @@ const formModel = reactive<MenuFormModel>({
   menuKey: '',
   menuName: '',
   menuType: 'menu',
+  pageCode: undefined,
   parentId: undefined,
   path: '',
   permissionCode: '',
@@ -203,10 +213,20 @@ const fullyExpanded = computed(() => isFullyExpanded(expandedKeys.value, expanda
 const selectedMenu = computed(() =>
   allMenus.value.find((menu) => menu.id === selectedMenuId.value),
 );
-const selectedPermissions = computed(() =>
+const selectedLegacyPermissions = computed(() =>
   selectedMenu.value
     ? workbench.value.permissionsByMenuId.get(selectedMenu.value.id) ?? []
     : [],
+);
+const pageOptions = computed(() => buildPageOptions(pageCapabilities.value));
+const navigationTypeOptions = computed(() =>
+  typeOptions.filter((option) => option.value !== 'button'),
+);
+const selectedPageCapabilities = computed(() =>
+  capabilitiesForPage(pageCapabilities.value, selectedMenu.value?.pageCode),
+);
+const capabilityNamesById = computed(
+  () => new Map(pageCapabilities.value.map((item) => [item.id, item.capabilityName])),
 );
 const visibleFields = computed(() => new Set(fieldVisibility[formModel.menuType]));
 const formDirty = computed(() => formOpen.value && formSnapshot.value !== serializeForm());
@@ -234,19 +254,56 @@ const permissionColumns = [
   { dataIndex: 'menuName', key: 'name', title: '权限名称', width: 150 },
   { dataIndex: 'permissionCode', ellipsis: true, key: 'code', title: '权限标识' },
   { key: 'status', title: '状态', width: 80 },
-  { key: 'action', title: '操作', width: 130 },
 ];
+
+const capabilityColumns = [
+  { dataIndex: 'capabilityName', key: 'name', title: '页面功能', width: 180 },
+  { dataIndex: 'category', key: 'category', title: '类别', width: 100 },
+  { key: 'dependencies', title: '依赖功能' },
+  { key: 'readiness', title: '完整性', width: 120 },
+];
+
+const capabilityCategoryLabels: Record<SystemAuthorizationApi.PageCapabilityCategory, string> = {
+  ACCESS: '页面访问',
+  OPERATION: '可授权操作',
+  READ: '数据读取',
+};
+
+const readinessColors: Record<SystemAuthorizationApi.PageCapability['readiness'], string> = {
+  BROKEN: 'error',
+  PARTIAL: 'warning',
+  READY: 'success',
+  UNMAPPED: 'default',
+};
 
 function showField(key: FieldKey) {
   return visibleFields.value.has(key);
 }
 
-function asMenu(record: Record<string, any>) {
-  return record as SystemMenuApi.SystemMenu;
-}
-
 function parentMenuName(menu: SystemMenuApi.SystemMenu) {
   return allMenus.value.find((item) => item.id === menu.parentId)?.menuName || '无';
+}
+
+function pageName(pageCode?: string) {
+  if (!pageCode) return '未绑定后端页面';
+  return pageOptions.value.find((item) => item.value === pageCode)?.label ?? pageCode;
+}
+
+function dependencyNames(capability: Record<string, any>) {
+  const dependencyIds = Array.isArray(capability.requiredCapabilityIds)
+    ? capability.requiredCapabilityIds as string[]
+    : [];
+  return dependencyIds
+    .map((id) => capabilityNamesById.value.get(id) ?? id)
+    .join('、');
+}
+
+function capabilityCategoryLabel(category: unknown) {
+  return capabilityCategoryLabels[category as SystemAuthorizationApi.PageCapabilityCategory] ?? String(category);
+}
+
+function readinessColor(readiness: unknown) {
+  return readinessColors[readiness as SystemAuthorizationApi.PageCapability['readiness']] ?? 'default';
 }
 
 function typeMeta(type?: SystemMenuApi.MenuType) {
@@ -294,6 +351,19 @@ async function loadMenus(options: { preserveSelection?: boolean } = {}) {
   }
 }
 
+async function loadPageCapabilityCatalog() {
+  capabilityLoading.value = true;
+  capabilityLoadError.value = '';
+  try {
+    pageCapabilities.value = await getMenuPageCapabilities();
+  } catch {
+    pageCapabilities.value = [];
+    capabilityLoadError.value = capabilityCatalogErrorMessage();
+  } finally {
+    capabilityLoading.value = false;
+  }
+}
+
 async function selectMenu(keys: Array<number | string>) {
   const nextId = keys[0] ? String(keys[0]) : undefined;
   if (nextId === selectedMenuId.value) {
@@ -319,7 +389,7 @@ function resetForm(parentId?: string, menuType: SystemMenuApi.MenuType = 'menu')
     badgeVariant: undefined, component: '', hideChildrenInMenu: false,
     hideInBreadcrumb: false, hideInMenu: menuType === 'button', hideInTab: false,
     icon: '', keepAlive: false, menuGroup: selectedMenu.value?.menuGroup ?? 'system',
-    menuKey: '', menuName: '', menuType, parentId, path: '', permissionCode: '',
+    menuKey: '', menuName: '', menuType, pageCode: undefined, parentId, path: '', permissionCode: '',
     sortOrder: 100, status: 1,
   });
   snapshotForm();
@@ -336,7 +406,7 @@ function hydrateForm(menu: SystemMenuApi.SystemMenu) {
     hideInBreadcrumb: boolValue(menu.hideInBreadcrumb), hideInMenu: boolValue(menu.hideInMenu),
     hideInTab: boolValue(menu.hideInTab), icon: menu.icon ?? '', keepAlive: boolValue(menu.keepAlive),
     menuGroup: menu.menuGroup ?? 'system', menuKey: menu.menuKey, menuName: menu.menuName,
-    menuType: menu.menuType ?? 'menu', parentId: menu.parentId || undefined,
+    menuType: menu.menuType ?? 'menu', pageCode: menu.pageCode, parentId: menu.parentId || undefined,
     path: menu.path ?? '', permissionCode: menu.permissionCode ?? '',
     sortOrder: menu.sortOrder ?? 100, status: menu.status ?? menu.visible ?? 1,
   });
@@ -424,6 +494,7 @@ function buildPayload(model = formModel): SystemMenuApi.SaveMenuParams {
     menuKey: model.menuKey.trim(),
     menuName: model.menuName.trim(),
     menuType: model.menuType,
+    pageCode: ['embedded', 'menu'].includes(model.menuType) ? model.pageCode || undefined : undefined,
     parentId: model.parentId || undefined,
     path: visible('path') ? model.path?.trim() : undefined,
     permissionCode: visible('permissionCode') ? model.permissionCode?.trim() || undefined : undefined,
@@ -441,7 +512,7 @@ function payloadFromMenu(menu: SystemMenuApi.SystemMenu, sortOrder = menu.sortOr
     hideInBreadcrumb: boolValue(menu.hideInBreadcrumb), hideInMenu: boolValue(menu.hideInMenu),
     hideInTab: boolValue(menu.hideInTab), icon: menu.icon, keepAlive: boolValue(menu.keepAlive),
     menuGroup: menu.menuGroup ?? 'system', menuKey: menu.menuKey, menuName: menu.menuName,
-    menuType: menu.menuType ?? 'menu', parentId: menu.parentId, path: menu.path,
+    menuType: menu.menuType ?? 'menu', pageCode: menu.pageCode, parentId: menu.parentId, path: menu.path,
     permissionCode: menu.permissionCode, sortOrder, status: menu.status ?? menu.visible ?? 1,
   });
 }
@@ -533,6 +604,9 @@ watch(
   (type) => {
     if (hydratingForm.value) return;
     formModel.hideInMenu = type === 'button';
+    if (!['embedded', 'menu'].includes(type)) {
+      formModel.pageCode = undefined;
+    }
     if (type === 'button') {
       formModel.path = '';
       formModel.component = '';
@@ -540,7 +614,9 @@ watch(
   },
 );
 
-onMounted(loadMenus);
+onMounted(() => {
+  void Promise.all([loadMenus(), loadPageCapabilityCatalog()]);
+});
 </script>
 
 <template>
@@ -647,25 +723,66 @@ onMounted(loadMenus);
                 <DescriptionsItem label="路由地址">{{ selectedMenu.path || '-' }}</DescriptionsItem>
                 <DescriptionsItem label="页面组件">{{ selectedMenu.component || '-' }}</DescriptionsItem>
                 <DescriptionsItem label="激活路径">{{ selectedMenu.activePath || '-' }}</DescriptionsItem>
-                <DescriptionsItem label="权限标识">{{ selectedMenu.permissionCode || '-' }}</DescriptionsItem>
+                <DescriptionsItem label="绑定页面">
+                  <Tag :color="selectedMenu.pageCode ? 'blue' : 'warning'">{{ pageName(selectedMenu.pageCode) }}</Tag>
+                  <code v-if="selectedMenu.pageCode">{{ selectedMenu.pageCode }}</code>
+                </DescriptionsItem>
               </Descriptions>
             </section>
 
             <section class="detail-section">
               <div class="section-heading">
-                <h4>权限配置 <Tag>{{ selectedPermissions.length }}</Tag></h4>
-                <Button v-if="canCreate" size="small" type="link" @click="openCreate(selectedMenu, 'button')">新增权限</Button>
+                <h4>页面功能 <Tag>{{ selectedPageCapabilities.length }}</Tag></h4>
+                <Button size="small" type="link" :loading="capabilityLoading" @click="loadPageCapabilityCatalog">重新加载</Button>
               </div>
-              <Table :columns="permissionColumns" :data-source="selectedPermissions" :pagination="false" row-key="id" size="small">
-                <template #emptyText><Empty description="当前菜单暂无按钮或 API 权限" /></template>
+              <Alert
+                v-if="capabilityLoadError"
+                class="capability-alert"
+                :message="capabilityLoadError"
+                show-icon
+                type="error"
+              />
+              <Alert
+                v-else-if="!selectedMenu.pageCode"
+                class="capability-alert"
+                message="当前菜单尚未绑定后端页面，请编辑菜单并选择页面"
+                show-icon
+                type="warning"
+              />
+              <Table
+                v-else
+                :columns="capabilityColumns"
+                :data-source="selectedPageCapabilities"
+                :loading="capabilityLoading"
+                :pagination="false"
+                row-key="id"
+                size="small"
+              >
+                <template #emptyText><Empty description="后端目录未注册该页面的可授权功能" /></template>
+                <template #bodyCell="{ column, record }">
+                  <template v-if="column.key === 'category'">
+                    <Tag>{{ capabilityCategoryLabel(record.category) }}</Tag>
+                  </template>
+                  <template v-else-if="column.key === 'dependencies'">
+                    {{ dependencyNames(record) || '无' }}
+                  </template>
+                  <template v-else-if="column.key === 'readiness'">
+                    <Tooltip :title="record.readinessMessage || (record.readiness === 'READY' ? '后端校验完整，可用于授权配置' : '该功能暂不可授权')">
+                      <Tag :color="readinessColor(record.readiness)">
+                        {{ record.readiness }}
+                      </Tag>
+                    </Tooltip>
+                  </template>
+                </template>
+              </Table>
+            </section>
+
+            <section v-if="selectedLegacyPermissions.length" class="detail-section">
+              <h4>历史权限节点 <Tag color="orange">兼容只读 {{ selectedLegacyPermissions.length }}</Tag></h4>
+              <Alert class="capability-alert" message="这些节点仅用于兼容旧数据；新的可授权操作由后端页面功能目录提供。" show-icon type="warning" />
+              <Table :columns="permissionColumns" :data-source="selectedLegacyPermissions" :pagination="false" row-key="id" size="small">
                 <template #bodyCell="{ column, record }">
                   <template v-if="column.key === 'status'"><Tag :color="record.status === 0 ? 'default' : 'green'">{{ record.status === 0 ? '禁用' : '启用' }}</Tag></template>
-                  <template v-else-if="column.key === 'action'">
-                    <Space :size="4">
-                      <Button v-if="canUpdate" size="small" type="link" @click="openEdit(asMenu(record))">编辑</Button>
-                      <Popconfirm v-if="canDelete" title="确认删除该权限？" @confirm="removeMenu(asMenu(record))"><Button danger size="small" type="link">删除</Button></Popconfirm>
-                    </Space>
-                  </template>
                 </template>
               </Table>
             </section>
@@ -696,7 +813,7 @@ onMounted(loadMenus);
           <section class="form-section">
             <h4>基本信息</h4>
             <div class="form-grid">
-              <FormItem class="form-wide" label="类型"><RadioGroup v-model:value="formModel.menuType" button-style="solid" option-type="button" :options="typeOptions" /></FormItem>
+              <FormItem class="form-wide" label="类型"><RadioGroup v-model:value="formModel.menuType" button-style="solid" option-type="button" :options="navigationTypeOptions" /></FormItem>
               <FormItem label="菜单标识" required><Input v-model:value="formModel.menuKey" placeholder="例如 SystemUser" /></FormItem>
               <FormItem label="显示名称" required><Input v-model:value="formModel.menuName" placeholder="例如 用户管理" /></FormItem>
               <FormItem label="上级菜单"><Select v-model:value="formModel.parentId" allow-clear show-search :options="parentOptions" placeholder="请选择" /></FormItem>
@@ -707,18 +824,24 @@ onMounted(loadMenus);
           </section>
 
           <section v-if="showField('path') || showField('component') || showField('link')" class="form-section">
-            <h4>路由配置</h4>
+            <h4>页面与路由配置</h4>
             <div class="form-grid">
+              <FormItem v-if="['embedded', 'menu'].includes(formModel.menuType)" class="form-wide" label="业务页面">
+                <Select
+                  v-model:value="formModel.pageCode"
+                  allow-clear
+                  :loading="capabilityLoading"
+                  :options="pageOptions"
+                  placeholder="从后端页面功能目录选择"
+                  show-search
+                />
+                <div class="field-help">选择页面后，可授权操作由后端自动提供，无需手工填写权限码。</div>
+              </FormItem>
               <FormItem v-if="showField('path')" label="路由地址" required><Input v-model:value="formModel.path" /></FormItem>
               <FormItem v-if="showField('activePath')" label="激活路径"><Input v-model:value="formModel.activePath" /></FormItem>
               <FormItem v-if="showField('component')" label="页面组件" :required="formModel.menuType === 'menu'"><AutoComplete v-model:value="formModel.component" :options="componentOptions" /></FormItem>
               <FormItem v-if="showField('link')" label="链接地址" required><Input v-model:value="formModel.component" placeholder="https://" /></FormItem>
             </div>
-          </section>
-
-          <section v-if="showField('permissionCode')" class="form-section">
-            <h4>权限配置</h4>
-            <FormItem label="权限标识" :required="formModel.menuType === 'button'"><Input v-model:value="formModel.permissionCode" placeholder="/api/v1/resource:ACTION" /></FormItem>
           </section>
 
           <section v-if="formModel.menuType !== 'button'" class="form-section">
@@ -805,6 +928,10 @@ onMounted(loadMenus);
 .section-heading h4 { margin: 0; }
 
 .setting-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.capability-alert { margin-bottom: 8px; }
+
+.field-help { margin-top: 4px; font-size: 12px; color: #64748b; }
 
 .detail-empty { margin-top: 160px; }
 

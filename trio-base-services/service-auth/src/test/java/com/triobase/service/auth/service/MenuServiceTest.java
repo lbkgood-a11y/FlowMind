@@ -38,6 +38,9 @@ class MenuServiceTest {
     @Mock
     private UserMapper userMapper;
 
+    @Mock
+    private PageCapabilityCatalogFacade pageCapabilityCatalogFacade;
+
     @InjectMocks
     private MenuService menuService;
 
@@ -46,11 +49,13 @@ class MenuServiceTest {
         CreateMenuRequest request = new CreateMenuRequest();
         request.setMenuKey("users");
         request.setMenuName("用户管理");
+        request.setPageCode("SYSTEM.USER");
         request.setPath("/admin/users");
         request.setComponent("/system/user/list");
         request.setPermissionCode("/api/v1/users:GET");
 
         when(menuMapper.selectCount(any())).thenReturn(0L);
+        when(pageCapabilityCatalogFacade.pageExists(null, "SYSTEM.USER")).thenReturn(true);
         when(authResourceMapper.selectCount(any())).thenReturn(1L);
         when(authActionMapper.selectCount(any())).thenReturn(1L);
         when(menuMapper.insert(any(SysMenu.class))).thenReturn(1);
@@ -59,6 +64,7 @@ class MenuServiceTest {
 
         assertNotNull(menu.getId());
         assertEquals("users", menu.getMenuKey());
+        assertEquals("SYSTEM.USER", menu.getPageCode());
         assertEquals("/admin/users", menu.getPath());
         assertEquals("/system/user/list", menu.getComponent());
         assertEquals("/api/v1/users:GET", menu.getPermissionCode());
@@ -82,6 +88,59 @@ class MenuServiceTest {
         assertEquals(1, menus.size());
         assertEquals("system", menus.get(0).getMenuGroup());
         assertEquals("MISSING", menus.get(0).getAuthorizationMappingStatus());
+    }
+
+    @Test
+    void update_shouldRoundTripPageCode() {
+        SysMenu existing = new SysMenu();
+        existing.setId("M001");
+        existing.setMenuType("menu");
+
+        UpdateMenuRequest request = new UpdateMenuRequest();
+        request.setMenuKey("menus");
+        request.setMenuName("菜单管理");
+        request.setPageCode(" SYSTEM.MENU ");
+        request.setPath("/system/menu");
+        request.setComponent("/system/menu/list");
+        request.setMenuType("menu");
+
+        when(menuMapper.selectById("M001")).thenReturn(existing);
+        when(menuMapper.selectCount(any())).thenReturn(0L);
+        when(pageCapabilityCatalogFacade.pageExists(null, "SYSTEM.MENU")).thenReturn(true);
+
+        SysMenu updated = menuService.update("M001", request);
+
+        assertEquals("SYSTEM.MENU", updated.getPageCode());
+    }
+
+    @Test
+    void list_shouldKeepLegacyMenuWithoutPageCodeReadable() {
+        SysMenu legacy = new SysMenu();
+        legacy.setId("M_LEGACY");
+        legacy.setMenuKey("legacyPage");
+        legacy.setMenuName("历史页面");
+        legacy.setMenuType("menu");
+        when(menuMapper.selectList(any())).thenReturn(List.of(legacy));
+
+        SysMenu result = menuService.list().getFirst();
+
+        assertNull(result.getPageCode());
+        assertEquals("历史页面", result.getMenuName());
+    }
+
+    @Test
+    void create_shouldDiscardPageCodeForCatalogNodes() {
+        CreateMenuRequest request = new CreateMenuRequest();
+        request.setMenuKey("system");
+        request.setMenuName("系统管理");
+        request.setPageCode("SYSTEM.MENU");
+        request.setPath("/system");
+        request.setMenuType("catalog");
+        when(menuMapper.selectCount(any())).thenReturn(0L);
+
+        SysMenu menu = menuService.create(request);
+
+        assertNull(menu.getPageCode());
     }
 
     @Test

@@ -164,7 +164,11 @@ export namespace SystemAuthorizationApi {
 
   export interface ReplaceRoleFunctionGrants {
     expectedGrantVersion?: number;
-    grants: Array<{ actionCode: string; description?: string; resourceCode: string }>;
+    grants: Array<{
+      actionCode: string;
+      description?: string;
+      resourceCode: string;
+    }>;
     tenantId?: string;
   }
 
@@ -276,6 +280,7 @@ export namespace SystemAuthorizationApi {
     availableFields?: Array<{ fieldKey: string; fieldLabel?: string }>;
     category: PageCapabilityCategory;
     capabilityName: string;
+    capabilityCode: string;
     constraintConfigurable?: boolean;
     fieldRestrictionConfigurable?: boolean;
     helpText?: string;
@@ -287,6 +292,20 @@ export namespace SystemAuthorizationApi {
     requiredCapabilityIds?: string[];
     scopeConfigurable?: boolean;
     sortOrder?: number;
+  }
+
+  export interface PageCapabilityCatalog {
+    activatedAt?: string;
+    catalogCode: string;
+    catalogVersion: number;
+    createdAt?: string;
+    id: string;
+    lifecycleStatus: 'ACTIVE' | 'DRAFT' | 'SUPERSEDED';
+    manifestHash: string;
+    sourceRef?: string;
+    sourceType: string;
+    tenantId: string;
+    updatedAt?: string;
   }
 
   export interface RoleCapabilitySelection {
@@ -519,16 +538,30 @@ async function previewRoleAuthorizationDecision(
   );
 }
 
-async function getPageCapabilities(tenantId?: string) {
+async function getPageCapabilities(
+  tenantId?: string,
+  pageCode?: string,
+  catalogId?: string,
+) {
   return requestClient.get<SystemAuthorizationApi.PageCapability[]>(
     '/authz/page-capabilities',
-    { params: { tenantId } },
+    { params: { catalogId, pageCode, tenantId } },
   );
 }
 
-async function getPageCapabilityDiagnostics(tenantId?: string) {
+async function getPageCapabilityDiagnostics(
+  tenantId?: string,
+  catalogId?: string,
+) {
   return requestClient.get<SystemAuthorizationApi.PageCapabilityDiagnostic[]>(
     '/authz/page-capabilities/diagnostics',
+    { params: { catalogId, tenantId } },
+  );
+}
+
+async function getPageCapabilityCatalogs(tenantId?: string) {
+  return requestClient.get<SystemAuthorizationApi.PageCapabilityCatalog[]>(
+    '/authz/page-capabilities/catalogs',
     { params: { tenantId } },
   );
 }
@@ -558,7 +591,10 @@ async function updateAuthorizationManagementMode(
   );
 }
 
-async function getOrCreateRoleAuthorizationDraft(roleId: string, tenantId?: string) {
+async function getOrCreateRoleAuthorizationDraft(
+  roleId: string,
+  tenantId?: string,
+) {
   return requestClient.post<SystemAuthorizationApi.RoleAuthorizationDraft>(
     `/authz/roles/${roleId}/authorization-drafts`,
     undefined,
@@ -653,6 +689,7 @@ export {
   getAuthorizationResourceTree,
   getOrCreateRoleAuthorizationDraft,
   getPageCapabilities,
+  getPageCapabilityCatalogs,
   getPageCapabilityDiagnostics,
   getRoleAuthorizationReleases,
   getRoleAuthorizationDrifts,

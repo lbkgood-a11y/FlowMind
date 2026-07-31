@@ -7,6 +7,7 @@ public class UpdateMenuRequest {
     private String parentId;
     private String menuKey;
     private String menuName;
+    private String pageCode;
     private String path;
     private String component;
     private String icon;

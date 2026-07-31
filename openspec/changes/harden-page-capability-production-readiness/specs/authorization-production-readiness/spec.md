@@ -11,6 +11,10 @@ The system SHALL require an authenticated or explicitly job-scoped tenant for ev
 - **WHEN** a background job synchronizes system page manifests
 - **THEN** it materializes the tenant-neutral manifest separately for each explicitly enumerated active tenant
 
+#### Scenario: First authenticated use without startup prewarming
+- **WHEN** an authenticated tenant opens role authorization before an active page-capability catalog exists and startup prewarming was not configured
+- **THEN** the system materializes and activates the tenant-neutral system manifest for that effective tenant before creating the role draft
+
 ### Requirement: Compatibility assessment is set-based and tenant isolated
 The compatibility dashboard SHALL compute catalog readiness, migration coverage, decision equivalence, drift, publication failures, rollback, and cutover blockers using a bounded number of tenant-scoped database queries independent of role count.
 
@@ -50,4 +54,3 @@ The administrator diagnostics SHALL expose unresolved lowcode ownership counts, 
 #### Scenario: Ownership reconciliation incomplete
 - **WHEN** lowcode instances remain without verified organization ownership
 - **THEN** the dashboard identifies the unresolved count as an organization-scope readiness blocker
-

@@ -55,6 +55,7 @@ public class MenuService {
     private final AuthResourceMapper authResourceMapper;
     private final AuthActionMapper authActionMapper;
     private final UserMapper userMapper;
+    private final PageCapabilityCatalogFacade pageCapabilityCatalogFacade;
 
     public List<SysMenu> list() {
         return list(null, null, null, null);
@@ -215,6 +216,7 @@ public class MenuService {
                 request.getComponent(), request.getPermissionCode(), menuType);
         validateParent(request.getParentId(), null);
         validatePermissionCode(request.getPermissionCode());
+        validatePageCode(request.getPageCode(), menuType);
         validateUniqueMenuKey(request.getMenuKey(), null);
         validateUniquePath(normalizePathForType(request.getPath(), menuType), null);
 
@@ -237,6 +239,7 @@ public class MenuService {
                 request.getComponent(), request.getPermissionCode(), menuType);
         validateParent(request.getParentId(), id);
         validatePermissionCode(request.getPermissionCode());
+        validatePageCode(request.getPageCode(), menuType);
         validateUniqueMenuKey(request.getMenuKey(), id);
         validateUniquePath(normalizePathForType(request.getPath(), menuType), id);
 
@@ -277,6 +280,7 @@ public class MenuService {
         menu.setParentId(StringHelpers.normalizeBlank(request.getParentId()));
         menu.setMenuKey(request.getMenuKey().trim());
         menu.setMenuName(request.getMenuName().trim());
+        menu.setPageCode(normalizePageCodeForType(request.getPageCode(), menuType));
         menu.setPath(normalizePathForType(request.getPath(), menuType));
         menu.setComponent(normalizeComponentForType(request.getComponent(), menuType));
         menu.setIcon(StringHelpers.normalizeBlank(request.getIcon()));
@@ -305,6 +309,7 @@ public class MenuService {
         menu.setParentId(StringHelpers.normalizeBlank(request.getParentId()));
         menu.setMenuKey(request.getMenuKey().trim());
         menu.setMenuName(request.getMenuName().trim());
+        menu.setPageCode(normalizePageCodeForType(request.getPageCode(), menuType));
         menu.setPath(normalizePathForType(request.getPath(), menuType));
         menu.setComponent(normalizeComponentForType(request.getComponent(), menuType));
         menu.setIcon(StringHelpers.normalizeBlank(request.getIcon()));
@@ -568,6 +573,19 @@ public class MenuService {
 
     private String normalizePathForType(String path, String menuType) {
         return TYPE_BUTTON.equals(menuType) || TYPE_LINK.equals(menuType) ? null : StringHelpers.normalizeBlank(path);
+    }
+
+    private void validatePageCode(String pageCode, String menuType) {
+        String normalizedPageCode = normalizePageCodeForType(pageCode, menuType);
+        if (normalizedPageCode != null && !pageCapabilityCatalogFacade.pageExists(null, normalizedPageCode)) {
+            throw new BizException(40442, "MENU_PAGE_CAPABILITY_NOT_FOUND");
+        }
+    }
+
+    private String normalizePageCodeForType(String pageCode, String menuType) {
+        return TYPE_MENU.equals(menuType) || TYPE_EMBEDDED.equals(menuType)
+                ? StringHelpers.normalizeBlank(pageCode)
+                : null;
     }
 
     private void includeAncestorMenus(List<SysMenu> menus, Set<String> menuIds) {

@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 import {
   allExpandableKeys,
   buildMenuWorkbench,
+  buildPageOptions,
+  capabilitiesForPage,
+  capabilityCatalogErrorMessage,
   defaultExpandedKeys,
   filterMenuTree,
   isFullyExpanded,
@@ -28,6 +31,38 @@ function menu(
 }
 
 describe('menu workbench model', () => {
+  it('builds distinct backend page options and keeps ready pages selectable', () => {
+    const capabilities = [
+      { category: 'ACCESS', capabilityName: '进入菜单管理', id: 'one', pageCode: 'SYSTEM.MENU', pageName: '菜单管理', readiness: 'READY' },
+      { category: 'OPERATION', capabilityName: '新增菜单', id: 'two', pageCode: 'SYSTEM.MENU', pageName: '菜单管理', readiness: 'PARTIAL' },
+      { category: 'ACCESS', capabilityName: '进入用户管理', id: 'three', pageCode: 'SYSTEM.USER', pageName: '用户管理', readiness: 'BROKEN' },
+    ] as any;
+
+    expect(buildPageOptions(capabilities)).toEqual([
+      { label: '菜单管理', readiness: 'READY', value: 'SYSTEM.MENU' },
+      { label: '用户管理', readiness: 'BROKEN', value: 'SYSTEM.USER' },
+    ]);
+  });
+
+  it('returns one page capabilities in declared order', () => {
+    const capabilities = [
+      { capabilityName: '删除', id: 'delete', pageCode: 'SYSTEM.MENU', sortOrder: 50 },
+      { capabilityName: '查看', id: 'read', pageCode: 'SYSTEM.MENU', sortOrder: 20 },
+      { capabilityName: '查看用户', id: 'users', pageCode: 'SYSTEM.USER', sortOrder: 20 },
+    ] as any;
+
+    expect(capabilitiesForPage(capabilities, 'SYSTEM.MENU').map((item) => item.id)).toEqual([
+      'read',
+      'delete',
+    ]);
+    expect(capabilitiesForPage(capabilities, undefined)).toEqual([]);
+  });
+
+  it('keeps catalog load failure distinct from an empty page catalog', () => {
+    expect(capabilityCatalogErrorMessage()).toContain('加载失败');
+    expect(capabilitiesForPage([], 'SYSTEM.MENU')).toEqual([]);
+  });
+
   it('separates navigation and permission nodes', () => {
     const model = buildMenuWorkbench([
       menu('root', undefined, 'catalog'),

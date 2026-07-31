@@ -5,6 +5,7 @@ import com.triobase.common.core.exception.BizException;
 import com.triobase.service.auth.dto.ReplaceRoleCapabilityIntentRequest;
 import com.triobase.service.auth.entity.SysAuthPageCapability;
 import com.triobase.service.auth.entity.SysAuthPageCapabilityDependency;
+import com.triobase.service.auth.entity.SysAuthPageCatalog;
 import com.triobase.service.auth.entity.SysRoleAuthDraft;
 import com.triobase.service.auth.entity.SysRoleAuthIntent;
 import com.triobase.service.auth.mapper.AuthPageCapabilityDependencyMapper;
@@ -40,6 +41,7 @@ class RolePageCapabilityStoreTest {
     @Mock private AuthPageCapabilityDependencyMapper dependencyMapper;
     @Mock private RoleMapper roleMapper;
     @Mock private AuthorizationRegistryService registryService;
+    @Mock private PageCapabilityManifestMaterializer manifestMaterializer;
     @Mock private RoleAuthorizationAuditService auditService;
 
     private RolePageCapabilityStore store;
@@ -50,7 +52,8 @@ class RolePageCapabilityStoreTest {
     void setUp() {
         MybatisPlusTestMetadata.initialize();
         store = new RolePageCapabilityStore(draftMapper, intentMapper, catalogMapper,
-                capabilityMapper, dependencyMapper, roleMapper, registryService, auditService,
+                capabilityMapper, dependencyMapper, roleMapper, registryService,
+                manifestMaterializer, auditService,
                 new ObjectMapper());
         when(registryService.effectiveTenant("tenant-a")).thenReturn("tenant-a");
         SysRoleAuthDraft draft = new SysRoleAuthDraft();
@@ -63,13 +66,13 @@ class RolePageCapabilityStoreTest {
         when(draftMapper.selectOne(any())).thenReturn(draft);
         access = capability("access", "进入用户管理", "ACCESS");
         read = capability("read", "查看用户信息", "READ");
-        when(capabilityMapper.selectCount(any())).thenReturn(1L);
-        when(capabilityMapper.selectList(any())).thenReturn(List.of(access, read));
+        lenient().when(capabilityMapper.selectCount(any())).thenReturn(1L);
+        lenient().when(capabilityMapper.selectList(any())).thenReturn(List.of(access, read));
         SysAuthPageCapabilityDependency dependency = new SysAuthPageCapabilityDependency();
         dependency.setTenantId("tenant-a");
         dependency.setCapabilityId("read");
         dependency.setRequiredCapabilityId("access");
-        when(dependencyMapper.selectList(any())).thenReturn(List.of(dependency));
+        lenient().when(dependencyMapper.selectList(any())).thenReturn(List.of(dependency));
         lenient().when(draftMapper.update(any(), any())).thenReturn(1);
     }
 
@@ -97,6 +100,26 @@ class RolePageCapabilityStoreTest {
                 .hasMessageContaining("查看用户信息")
                 .hasMessageContaining("进入用户管理");
         verify(intentMapper, never()).insert(any(SysRoleAuthIntent.class));
+    }
+
+    @Test
+    void materializesCatalogForAuthenticatedTenantOnFirstUse() {
+        when(draftMapper.selectOne(any())).thenReturn(null);
+        when(roleMapper.selectCount(any())).thenReturn(1L);
+        SysAuthPageCatalog catalog = new SysAuthPageCatalog();
+        catalog.setId("catalog-1");
+        catalog.setTenantId("tenant-a");
+        catalog.setLifecycleStatus("ACTIVE");
+        when(catalogMapper.selectOne(any())).thenReturn(null, catalog);
+
+        SysRoleAuthDraft created = store.getOrCreateDraft("tenant-a", "role-1");
+
+        verify(manifestMaterializer).materializeAndActivateTenant("tenant-a");
+        ArgumentCaptor<SysRoleAuthDraft> captor = ArgumentCaptor.forClass(SysRoleAuthDraft.class);
+        verify(draftMapper).insert(captor.capture());
+        assertThat(captor.getValue().getTenantId()).isEqualTo("tenant-a");
+        assertThat(captor.getValue().getCatalogId()).isEqualTo("catalog-1");
+        assertThat(created).isSameAs(captor.getValue());
     }
 
     private ReplaceRoleCapabilityIntentRequest request(boolean removeAccess) {

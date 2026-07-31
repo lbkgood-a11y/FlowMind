@@ -300,13 +300,17 @@ public class AuthorizationDecisionService {
                         .or().eq(SysAuthGrant::getResourceCode, "*"))
                 .and(w -> w.eq(SysAuthGrant::getActionCode, actionCode)
                         .or().eq(SysAuthGrant::getActionCode, "*")));
+
+        Set<String> supportedGrantKeys = activeReleaseEvidenceService.batchSupportedGrantKeys(
+                subject.tenantId(), subject.roleIds());
+
         return candidates.stream()
                 .filter(grant -> subjectMatches(subject, grant.getSubjectType(), grant.getSubjectId()))
                 .filter(grant -> actionMatches(grant.getActionCode(), actionCode))
                 .filter(grant -> codeMatches(grant.getResourceCode(), resourceCode))
                 .filter(grant -> !"ROLE".equals(grant.getSubjectType())
-                        || activeReleaseEvidenceService.supportsGrant(subject.tenantId(), grant.getSubjectId(),
-                        resourceCode, actionCode))
+                        || supportedGrantKeys == null
+                        || supportedGrantKeys.contains(grant.getSubjectId() + ":" + resourceCode + ":" + actionCode))
                 .toList();
     }
 

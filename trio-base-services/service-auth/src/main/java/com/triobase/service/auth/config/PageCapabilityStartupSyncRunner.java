@@ -1,8 +1,7 @@
 package com.triobase.service.auth.config;
 
 import com.triobase.common.dto.authz.PageCapabilityManifestSyncRequest;
-import com.triobase.service.auth.entity.SysAuthPageCatalog;
-import com.triobase.service.auth.service.PageCapabilityCatalogService;
+import com.triobase.service.auth.service.PageCapabilityManifestMaterializer;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,9 +21,9 @@ public class PageCapabilityStartupSyncRunner {
     private static final Logger logger = LoggerFactory.getLogger(PageCapabilityStartupSyncRunner.class);
 
     private final List<PageCapabilityManifestSyncRequest> manifests;
-    private final PageCapabilityCatalogService catalogService;
+    private final PageCapabilityManifestMaterializer manifestMaterializer;
 
-    @Value("${triobase.authorization.manifest-tenants:}")
+    @Value("${triobase.authorization.manifest-tenants:default}")
     private String configuredManifestTenants;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -38,10 +37,8 @@ public class PageCapabilityStartupSyncRunner {
                 continue;
             }
             for (String tenantId : targetTenants) {
-                PageCapabilityManifestSyncRequest materialized = materialize(manifest, tenantId);
                 try {
-                    SysAuthPageCatalog catalog = catalogService.synchronize(materialized);
-                    catalogService.activate(tenantId, catalog.getId());
+                    manifestMaterializer.materializeAndActivate(manifest, tenantId);
                     logger.info("Page capability catalog activated: tenant={}, code={}, version={}",
                             tenantId, manifest.getCatalogCode(), manifest.getCatalogVersion());
                 } catch (RuntimeException exception) {
@@ -66,15 +63,4 @@ public class PageCapabilityStartupSyncRunner {
                 .toList();
     }
 
-    private PageCapabilityManifestSyncRequest materialize(
-            PageCapabilityManifestSyncRequest template, String tenantId) {
-        PageCapabilityManifestSyncRequest request = new PageCapabilityManifestSyncRequest();
-        request.setTenantId(tenantId);
-        request.setCatalogCode(template.getCatalogCode());
-        request.setCatalogVersion(template.getCatalogVersion());
-        request.setSourceType(template.getSourceType());
-        request.setSourceRef(template.getSourceRef());
-        request.setPages(template.getPages());
-        return request;
-    }
 }

@@ -29,3 +29,4 @@
 
 - [x] 5.1 Run focused service-auth and service-lowcode unit and integration suites
 - [x] 5.2 Run OpenSpec validation and record all tasks complete only after production-hardening acceptance passes
+- [x] 5.3 Materialize and activate the tenant-neutral system catalog on first authenticated tenant use when startup prewarming is not configured
