@@ -6,14 +6,15 @@ import { inject, ref } from 'vue';
 
 import { IconifyIcon } from '@vben/icons';
 
-import { Button, message, Space, Table, Tag } from 'ant-design-vue';
+import { Button, message, Space, Tag, Tooltip } from 'ant-design-vue';
 
 import {
   getAuthorizationCompatibilityDashboard,
   getAuthorizationManagementMode,
   updateAuthorizationManagementMode,
 } from '#/api';
-import { CompactTableFrame } from '#/shared';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import { ClientPaginatedTable } from '#/shared';
 
 const ctx = inject<any>('authzContext')!;
 
@@ -26,13 +27,6 @@ const acceptanceColumns: TableProps['columns'] = [
   { title: '缺少已发布权限', dataIndex: 'missingProjectionCount', key: 'missingProjectionCount', width: 150 },
   { title: '版本外权限', dataIndex: 'unintendedExpansionCount', key: 'unintendedExpansionCount', width: 130 },
 ];
-
-const clientPagination: TableProps['pagination'] = {
-  pageSize: 20,
-  showQuickJumper: true,
-  showSizeChanger: true,
-  showTotal: (total, range) => `共 ${total} 条记录，本页 ${range[0]}-${range[1]} 条`,
-};
 
 async function loadCompatibilityDashboard() {
   if (!ctx.canQuery.value) return;
@@ -75,9 +69,11 @@ async function enablePageCapabilityMode() {
       </div>
       <Space>
         <Tag color="blue">当前模式：{{ managementMode?.managementMode || '-' }}</Tag>
-        <Button class="!h-8 !w-8" @click="loadCompatibilityDashboard">
-          <IconifyIcon icon="lucide:refresh-cw" />
-        </Button>
+        <Tooltip title="刷新">
+          <Button shape="circle" @click="loadCompatibilityDashboard">
+            <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+          </Button>
+        </Tooltip>
         <Button
           v-if="ctx.canUpdate.value && managementMode?.managementMode !== 'PAGE_CAPABILITY'"
           type="primary"
@@ -139,14 +135,10 @@ async function enablePageCapabilityMode() {
         </template>
       </div>
 
-      <CompactTableFrame>
-        <Table
+      <ClientPaginatedTable
           :columns="acceptanceColumns"
           :data-source="compatibilityDashboard.roleStatuses"
-          :pagination="clientPagination"
           row-key="roleId"
-          size="small"
-          bordered
         >
           <template #bodyCell="{ column, record }: any">
             <template v-if="column.key === 'status'">
@@ -155,8 +147,7 @@ async function enablePageCapabilityMode() {
               </Tag>
             </template>
           </template>
-        </Table>
-      </CompactTableFrame>
+      </ClientPaginatedTable>
     </div>
   </div>
 </template>

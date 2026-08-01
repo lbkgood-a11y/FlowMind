@@ -16,15 +16,16 @@ import {
   Popconfirm,
   Space,
   Switch,
-  Table,
   Tag,
+  Tooltip,
 } from 'ant-design-vue';
 
 import {
   saveAuthorizationGuardTemplate,
   updateAuthorizationGuardTemplateStatus,
 } from '#/api';
-import { CompactTableFrame } from '#/shared';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import { ClientPaginatedTable } from '#/shared';
 
 const ctx = inject<any>('authzContext')!;
 
@@ -47,13 +48,6 @@ const guardColumns: TableProps['columns'] = [
   { title: '状态', dataIndex: 'status', key: 'status', width: 90 },
   { title: '操作', key: 'action', width: 180 },
 ];
-
-const clientPagination: TableProps['pagination'] = {
-  pageSize: 20,
-  showQuickJumper: true,
-  showSizeChanger: true,
-  showTotal: (total, range) => `共 ${total} 条记录，本页 ${range[0]}-${range[1]} 条`,
-};
 
 function openGuardDrawer() {
   guardForm.guardCode = '';
@@ -132,23 +126,21 @@ function statusTagColor(status?: number) {
     <div class="mb-3 flex items-center justify-between">
       <span class="text-muted-foreground text-sm">管理运行时守卫模板的启用/禁用</span>
       <Space v-if="ctx.canCreate.value">
-        <Button class="!h-8 !w-8" @click="loadGuards">
-          <IconifyIcon icon="lucide:refresh-cw" />
-        </Button>
+        <Tooltip title="刷新">
+          <Button shape="circle" @click="loadGuards">
+            <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+          </Button>
+        </Tooltip>
         <Button type="primary" @click="openGuardDrawer">
           <IconifyIcon icon="lucide:plus" class="mr-1" />新增守卫
         </Button>
       </Space>
     </div>
-    <CompactTableFrame>
-      <Table
+    <ClientPaginatedTable
         :columns="guardColumns"
         :data-source="guardRows"
         :loading="ctx.loading.value"
-        :pagination="clientPagination"
         row-key="id"
-        size="small"
-        bordered
       >
         <template #bodyCell="{ column, record }: any">
           <template v-if="column.key === 'status'">
@@ -174,8 +166,7 @@ function statusTagColor(status?: number) {
             </Space>
           </template>
         </template>
-      </Table>
-    </CompactTableFrame>
+    </ClientPaginatedTable>
 
     <Drawer v-model:open="guardDrawerOpen" title="新增守卫模板" :width="500">
       <Form layout="vertical">

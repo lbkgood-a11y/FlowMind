@@ -12,7 +12,7 @@ import type {
 } from '#/api';
 import type { TableColumnSetting } from '#/shared';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
@@ -81,6 +81,8 @@ import PageCapabilityAuthorizationWorkbench from './components/PageCapabilityAut
 const RangePicker = DatePicker.RangePicker;
 const TabPane = Tabs.TabPane;
 const Textarea = Input.TextArea;
+
+const rolePageProps = defineProps<{ createRequestKey?: number; editRoleId?: string; embedded?: boolean }>();
 
 const ROLE_PERMISSIONS = {
   create: '/api/v1/roles:POST',
@@ -1349,18 +1351,35 @@ function toggleFullscreen() {
 
 onMounted(() => {
   loadRoles(1);
+  if (rolePageProps.embedded && rolePageProps.createRequestKey) openCreate();
+});
+
+watch(() => rolePageProps.createRequestKey, (current, previous) => {
+  if (rolePageProps.embedded && current && current !== previous) openCreate();
+});
+watch(() => rolePageProps.editRoleId, async (compositeKey) => {
+  if (!rolePageProps.embedded || !compositeKey) return;
+  const roleId = compositeKey.includes(':') ? compositeKey.split(':')[0] : compositeKey;
+  if (roles.value.length === 0) await loadRoles(1);
+  const role = roles.value.find((r) => r.id === roleId);
+  if (role) openEdit(role);
 });
 </script>
 
 <template>
-  <Page auto-content-height>
-    <BusinessPageScaffold
+  <component
+    :is="rolePageProps.embedded ? 'div' : Page"
+    auto-content-height
+    :class="{ 'role-page-host--embedded': rolePageProps.embedded }"
+  >
+    <component
+      :is="rolePageProps.embedded ? 'div' : BusinessPageScaffold"
       class="role-page"
       pattern="master-detail"
       :fullscreen="blockFullscreen"
       :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }"
     >
-      <section v-show="!queryHidden" class="query-panel">
+      <section v-show="!queryHidden && !rolePageProps.embedded" class="query-panel">
         <div class="query-grid" :class="{ collapsed }">
           <FormItem label="角色名称">
             <Input
@@ -1419,7 +1438,7 @@ onMounted(() => {
       </section>
 
       <section class="role-workbench">
-        <aside class="role-tree-panel">
+        <aside v-if="!rolePageProps.embedded" class="role-tree-panel">
           <div class="role-tree-header">
             <div>
               <h3>角色视图</h3>
@@ -1450,7 +1469,7 @@ onMounted(() => {
           </div>
         </aside>
 
-        <section class="list-panel">
+        <section v-if="!rolePageProps.embedded" class="list-panel">
           <div class="list-header">
             <div class="list-title">
               <h2>角色列表</h2>
@@ -1595,7 +1614,14 @@ onMounted(() => {
           </div>
         </section>
       </section>
-    </BusinessPageScaffold>
+
+      <section v-if="rolePageProps.embedded" class="embedded-role-bar">
+        <span>使用左侧角色树管理角色，或点击下方按钮新建角色。</span>
+        <Button v-if="canCreate" type="primary" size="small" @click="openCreate">
+          <Plus class="size-4" />新建角色
+        </Button>
+      </section>
+    </component>
 
     <Drawer
       v-model:open="formOpen"
@@ -2178,7 +2204,7 @@ onMounted(() => {
         </DescriptionsItem>
       </Descriptions>
     </Drawer>
-  </Page>
+  </component>
 </template>
 
 <style scoped>
@@ -2288,6 +2314,13 @@ onMounted(() => {
   flex-direction: column;
   gap: 8px;
   min-height: 100%;
+}
+
+.role-page-host--embedded :deep(.page-content),
+.role-page-host--embedded :deep(.role-page) {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
 }
 
 .role-page.is-block-fullscreen {
@@ -2474,6 +2507,17 @@ onMounted(() => {
   border-radius: 4px;
 }
 
+.table-frame :deep(.ant-table-content) {
+  height: 100%;
+  overflow: auto !important;
+  scrollbar-gutter: stable;
+}
+
+.table-frame :deep(.ant-table-content > table) {
+  width: 100% !important;
+  min-width: max-content;
+}
+
 .table-frame :deep(.ant-table-container) {
   border-inline-start: 0 !important;
 }
@@ -2499,6 +2543,7 @@ onMounted(() => {
 }
 
 .table-footer {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;

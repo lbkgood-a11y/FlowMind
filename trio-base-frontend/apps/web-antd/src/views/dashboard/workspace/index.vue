@@ -114,8 +114,8 @@ const quickNavItems: WorkbenchQuickNavItem[] = [
   {
     color: '#4daf1bc9',
     icon: 'lucide:key-round',
-    title: '企业授权',
-    url: '/system/authz',
+    title: '角色与授权',
+    url: '/system/role-workbench',
   },
   {
     color: '#00d8ff',

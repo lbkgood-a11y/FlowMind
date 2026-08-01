@@ -30,7 +30,9 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -52,6 +54,8 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final PermissionCacheService permissionCacheService;
     private final AuthService authService;
+    private final AuthorizationDecisionService authorizationDecisionService;
+    private final UserFieldAuthorizationAdapter fieldAuthorizationAdapter;
 
     public UserInfoPayload findById(String id) {
         SysUser user = userMapper.selectById(id);
@@ -138,6 +142,7 @@ public class UserService {
             throw new BizException(400, "Password is required");
         }
         String targetTenantId = resolveTargetTenant(request.getTenantId());
+        validateFieldWrite(createChanges(request));
         if (userMapper.selectCount(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, request.getUsername())) > 0) {
             throw new BizException(AuthErrorCode.USER_ALREADY_EXISTS);
@@ -166,6 +171,7 @@ public class UserService {
             throw new BizException(AuthErrorCode.USER_NOT_FOUND);
         }
         ensureWritable(user);
+        validateFieldWrite(updateChanges(request));
         if (StringUtils.hasText(request.getPassword())) {
             validatePassword(request.getPassword());
             user.setPassword(passwordEncoder.encode(request.getPassword()));
@@ -189,6 +195,7 @@ public class UserService {
             throw new BizException(400, "Profile request is required");
         }
         SysUser user = requireActiveUser(userId);
+        validateFieldWrite(profileChanges(request));
 
         if (request.getRealName() != null) {
             user.setRealName(normalizeOptional(request.getRealName(), MAX_REAL_NAME_LENGTH, "realName"));
@@ -432,7 +439,58 @@ public class UserService {
         payload.setRoles(roles);
         payload.setCreatedAt(user.getCreatedAt());
         payload.setUpdatedAt(user.getUpdatedAt());
-        return payload;
+        return fieldAuthorizationAdapter.applyRead(payload, effectiveUserFieldRules());
+    }
+
+    private List<com.triobase.common.dto.authz.AuthzFieldRule> effectiveUserFieldRules() {
+        return authorizationDecisionService.effectiveFieldRules(
+                UserFieldAuthorizationAdapter.RESOURCE_CODE,
+                UserFieldAuthorizationAdapter.FIELD_KEYS.stream().sorted().toList());
+    }
+
+    private List<com.triobase.common.dto.authz.AuthzFieldRule> effectiveUserFieldRules(SysUser authenticatedUser) {
+        String actorUserId = StringUtils.hasText(SecurityContextHolder.getUserId())
+                ? SecurityContextHolder.getUserId() : authenticatedUser.getId();
+        String actorTenantId = StringUtils.hasText(SecurityContextHolder.getTenantId())
+                ? SecurityContextHolder.getTenantId() : tenantId(authenticatedUser);
+        return authorizationDecisionService.effectiveFieldRules(
+                actorTenantId, actorUserId,
+                UserFieldAuthorizationAdapter.RESOURCE_CODE,
+                UserFieldAuthorizationAdapter.FIELD_KEYS.stream().sorted().toList());
+    }
+
+    private void validateFieldWrite(Map<String, Object> changes) {
+        fieldAuthorizationAdapter.validateWrite(changes, effectiveUserFieldRules());
+    }
+
+    private Map<String, Object> createChanges(CreateUserRequest request) {
+        Map<String, Object> changes = new LinkedHashMap<>();
+        changes.put("username", request.getUsername());
+        changes.put("email", request.getEmail());
+        changes.put("phone", request.getPhone());
+        changes.put("status", request.getStatus());
+        return changes;
+    }
+
+    private Map<String, Object> updateChanges(UpdateUserRequest request) {
+        Map<String, Object> changes = new LinkedHashMap<>();
+        changes.put("email", request.getEmail());
+        changes.put("phone", request.getPhone());
+        if (request.getStatus() != null) {
+            changes.put("status", request.getStatus());
+        }
+        return changes;
+    }
+
+    private Map<String, Object> profileChanges(UpdateProfileRequest request) {
+        Map<String, Object> changes = new LinkedHashMap<>();
+        if (request.getEmail() != null) {
+            changes.put("email", request.getEmail());
+        }
+        if (request.getPhone() != null) {
+            changes.put("phone", request.getPhone());
+        }
+        return changes;
     }
 
     private UserProfileResponse toProfileResponse(SysUser user) {
@@ -452,7 +510,7 @@ public class UserService {
         response.setHomePath(DEFAULT_HOME_PATH);
         response.setCreatedAt(user.getCreatedAt());
         response.setUpdatedAt(user.getUpdatedAt());
-        return response;
+        return fieldAuthorizationAdapter.applyRead(response, effectiveUserFieldRules(user));
     }
 
     private String displayRealName(SysUser user) {

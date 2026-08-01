@@ -61,10 +61,12 @@ public class AuthorizationManagementController {
     public R<PageResult<AuthorizationResourceResponse>> resources(@RequestParam(required = false) String tenantId,
                                                                   @RequestParam(required = false) String ownerService,
                                                                   @RequestParam(required = false) String resourceType,
+                                                                  @RequestParam(required = false) String lifecycleStatus,
                                                                   @RequestParam(required = false) String keyword,
                                                                   @RequestParam(defaultValue = "1") int page,
                                                                   @RequestParam(defaultValue = "20") int size) {
-        return R.ok(registryService.pageResources(tenantId, ownerService, resourceType, keyword, page, size));
+        return R.ok(registryService.pageResources(tenantId, ownerService, resourceType,
+                lifecycleStatus, keyword, page, size));
     }
 
     @GetMapping("/resources/tree")

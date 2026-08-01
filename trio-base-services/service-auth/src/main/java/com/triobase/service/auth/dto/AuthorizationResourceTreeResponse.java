@@ -30,6 +30,10 @@ public class AuthorizationResourceTreeResponse {
         private Boolean readHideEnforced;
         private Boolean readMaskEnforced;
         private Boolean writeDenyEnforced;
+        private String metadataJson;
+        private Integer fieldCount;
+        private String fieldEnforcementReadiness;
+        private String fieldEnforcementReason;
         private LocalDateTime lastSyncedAt;
         private List<ActionNode> actions = new ArrayList<>();
         private List<FieldNode> fields = new ArrayList<>();

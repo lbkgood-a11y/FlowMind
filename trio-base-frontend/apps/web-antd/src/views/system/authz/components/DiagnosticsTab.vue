@@ -6,10 +6,11 @@ import { inject, ref } from 'vue';
 
 import { IconifyIcon } from '@vben/icons';
 
-import { Button, Space, Table, Tag } from 'ant-design-vue';
+import { Button, Space, Tag, Tooltip } from 'ant-design-vue';
 
 import { getPageCapabilityDiagnostics } from '#/api';
-import { CompactTableFrame } from '#/shared';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import { ClientPaginatedTable } from '#/shared';
 
 const ctx = inject<any>('authzContext')!;
 
@@ -23,13 +24,6 @@ const diagnosticColumns: TableProps['columns'] = [
   { title: '依赖功能', key: 'dependencies', width: 240 },
   { title: '说明', dataIndex: 'readinessMessage', key: 'readinessMessage', width: 260 },
 ];
-
-const clientPagination: TableProps['pagination'] = {
-  pageSize: 20,
-  showQuickJumper: true,
-  showSizeChanger: true,
-  showTotal: (total, range) => `共 ${total} 条记录，本页 ${range[0]}-${range[1]} 条`,
-};
 
 async function loadCapabilityDiagnostics() {
   if (!ctx.canQuery.value) return;
@@ -48,19 +42,17 @@ async function loadCapabilityDiagnostics() {
       <span class="text-muted-foreground text-sm">
         仅供平台管理员排查页面功能与后台权限连接，角色实施人员无需理解这些代码
       </span>
-      <Button class="!h-8 !w-8" @click="loadCapabilityDiagnostics">
-        <IconifyIcon icon="lucide:refresh-cw" />
-      </Button>
+      <Tooltip title="刷新">
+        <Button shape="circle" @click="loadCapabilityDiagnostics">
+          <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+        </Button>
+      </Tooltip>
     </div>
-    <CompactTableFrame>
-      <Table
+    <ClientPaginatedTable
         :columns="diagnosticColumns"
         :data-source="capabilityDiagnostics"
         :loading="ctx.loading.value"
-        :pagination="clientPagination"
         row-key="capabilityId"
-        size="small"
-        bordered
       >
         <template #bodyCell="{ column, record }: any">
           <template v-if="column.key === 'readiness'">
@@ -81,7 +73,6 @@ async function loadCapabilityDiagnostics() {
             </Space>
           </template>
         </template>
-      </Table>
-    </CompactTableFrame>
+    </ClientPaginatedTable>
   </div>
 </template>

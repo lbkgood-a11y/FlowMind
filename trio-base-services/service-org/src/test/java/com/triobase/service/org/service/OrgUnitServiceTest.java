@@ -19,14 +19,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class OrgUnitServiceTest {
@@ -46,8 +49,27 @@ class OrgUnitServiceTest {
     @Mock
     private UserViewMapper userViewMapper;
 
+    @Mock
+    private OrgFieldDecisionClient fieldDecisionClient;
+
+    @Spy
+    private OrgUnitFieldAuthorizationAdapter fieldAuthorizationAdapter = new OrgUnitFieldAuthorizationAdapter();
+
     @InjectMocks
     private OrgUnitService orgUnitService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUpFieldRules() {
+        List<com.triobase.common.dto.authz.AuthzFieldRule> rules = Stream.of("unitCode", "unitName", "unitType", "status")
+                .map(key -> {
+                    com.triobase.common.dto.authz.AuthzFieldRule rule = new com.triobase.common.dto.authz.AuthzFieldRule();
+                    rule.setFieldKey(key);
+                    rule.setReadMode("VISIBLE");
+                    rule.setWriteMode("EDITABLE");
+                    return rule;
+                }).toList();
+        lenient().when(fieldDecisionClient.effectiveRules(any(), any(), any(), any())).thenReturn(rules);
+    }
 
     @Test
     void primaryOwnershipUsesExplicitTenantAndPrimaryAssignment() {

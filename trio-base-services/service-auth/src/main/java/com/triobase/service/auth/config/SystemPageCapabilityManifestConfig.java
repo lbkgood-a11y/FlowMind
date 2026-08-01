@@ -14,7 +14,7 @@ public class SystemPageCapabilityManifestConfig {
     PageCapabilityManifestSyncRequest systemManagementPageCapabilities() {
         PageCapabilityManifestSyncRequest manifest = new PageCapabilityManifestSyncRequest();
         manifest.setCatalogCode("SYSTEM_MANAGEMENT");
-        manifest.setCatalogVersion(3L);
+        manifest.setCatalogVersion(5L);
         manifest.setSourceType("SYSTEM_MANIFEST");
         manifest.setSourceRef("service-auth/system-management");
         List<PageCapabilityManifestSyncRequest.Page> pages = new ArrayList<>(List.of(
@@ -28,8 +28,11 @@ public class SystemPageCapabilityManifestConfig {
                         "/api/v1/audit-logs"),
                 sessionPage(),
                 configPage(),
-                readOnlyPage("SYSTEM.PAGE_CAPABILITY", "能力目录", "SystemPageCapabilityCatalog",
-                        "PAGE_CAPABILITY_CATALOG", "/api/v1/authz/**")));
+                readOnlyPage("SYSTEM.PAGE_CAPABILITY", "页面能力目录", "SystemPageCapabilityCatalog",
+                        "PAGE_CAPABILITY_CATALOG", "/api/v1/authz/**"),
+                readOnlyPage("SYSTEM.AUTHORIZATION_RESOURCE", "资源注册中心",
+                        "SystemAuthorizationResourceCatalog",
+                        "PAGE_AUTHORIZATION_RESOURCE_CATALOG", "/api/v1/authz/**")));
         pages.addAll(OwnerPageCapabilityDeclarations.pages());
         manifest.setPages(pages);
         return manifest;

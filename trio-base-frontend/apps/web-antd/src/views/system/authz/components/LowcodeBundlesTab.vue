@@ -2,8 +2,9 @@
 import type { TableProps } from 'ant-design-vue';
 import type { SystemAuthorizationApi } from '#/api';
 
-import { computed, inject, onMounted, ref } from 'vue';
-import { Button, message, Select, Space, Table, Tag } from 'ant-design-vue';
+import { computed, inject, onMounted, ref, watch } from 'vue';
+import { IconifyIcon } from '@vben/icons';
+import { Alert, Button, message, Select, Space, Tag, Tooltip } from 'ant-design-vue';
 
 import {
   applyLowcodeAuthorizationBundle,
@@ -12,13 +13,15 @@ import {
   reconcileLowcodeAuthorizationPublication,
   retryLowcodeAuthorizationPublication,
 } from '#/api';
-import { CompactTableFrame } from '#/shared';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import { ClientPaginatedTable } from '#/shared';
 
 const ctx = inject<any>('authzContext')!;
 const applicationResourceCode = ref('');
 const preset = ref<SystemAuthorizationApi.LowcodeAuthorizationBundleRequest['preset']>('APPLICANT');
 const preview = ref<SystemAuthorizationApi.LowcodeAuthorizationBundleResult>();
 const publications = ref<SystemAuthorizationApi.LowcodeAuthorizationPublication[]>([]);
+const publicationsError = ref('');
 const requestKey = ref('');
 
 const applicationOptions = computed(() => ctx.resourceList.value
@@ -47,7 +50,6 @@ const publicationColumns: TableProps['columns'] = [
   { title: '最近错误', dataIndex: 'lastError', ellipsis: true },
   { title: '处置', key: 'actions', width: 160 },
 ];
-const pagination = { pageSize: 10, showSizeChanger: true, showTotal: (total: number) => `共 ${total} 条` };
 
 function payload() {
   return {
@@ -83,7 +85,13 @@ async function applyBundle() {
 }
 
 async function loadPublications() {
-  publications.value = await getLowcodeAuthorizationPublications();
+  publicationsError.value = '';
+  try {
+    publications.value = await getLowcodeAuthorizationPublications();
+  } catch {
+    publications.value = [];
+    publicationsError.value = '发布记录服务暂不可用，请确认网关和低代码服务已更新并正常运行。';
+  }
 }
 
 async function retry(eventId: string) {
@@ -99,6 +107,10 @@ async function reconcile(eventId: string) {
 }
 
 onMounted(loadPublications);
+watch(() => ctx.selectedRoleId.value, () => {
+  preview.value = undefined;
+  requestKey.value = '';
+});
 </script>
 
 <template>
@@ -111,22 +123,24 @@ onMounted(loadPublications);
         <Button :loading="ctx.saving.value" @click="dryRun">预览差异</Button>
         <Button type="primary" :disabled="!preview || preview.applied || !ctx.canCreate.value" :loading="ctx.saving.value" @click="applyBundle">原子应用</Button>
       </Space>
-      <CompactTableFrame v-if="preview" class="mt-3">
-        <Table :columns="changeColumns" :data-source="preview.changes" :pagination="pagination" :row-key="(record: any) => `${record.resourceCode}:${record.actionCode}`" size="small" bordered>
+      <ClientPaginatedTable v-if="preview" class="mt-3" :columns="changeColumns" :data-source="preview.changes" :page-size="10" :row-key="(record: any) => `${record.resourceCode}:${record.actionCode}`">
           <template #bodyCell="{ column, record }: any">
             <Tag v-if="column.key === 'state' || column.dataIndex === 'state'" :color="record.state === 'ADD' ? 'processing' : 'default'">{{ record.state === 'ADD' ? '新增' : '已存在' }}</Tag>
           </template>
-        </Table>
-      </CompactTableFrame>
+      </ClientPaginatedTable>
     </div>
 
     <div>
       <div class="mb-3 flex items-center justify-between">
         <div><div class="font-medium">发布授权链路诊断</div><div class="text-muted-foreground text-sm">只有当前快照收到授权中心确认后才会进入运行态。</div></div>
-        <Button @click="loadPublications">刷新诊断</Button>
+        <Tooltip title="刷新">
+          <Button shape="circle" @click="loadPublications">
+            <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+          </Button>
+        </Tooltip>
       </div>
-      <CompactTableFrame>
-        <Table :columns="publicationColumns" :data-source="publications" :pagination="pagination" row-key="eventId" size="small" bordered>
+      <Alert v-if="publicationsError" class="mb-3" type="warning" show-icon :message="publicationsError" />
+      <ClientPaginatedTable :columns="publicationColumns" :data-source="publications" :page-size="10" row-key="eventId">
           <template #bodyCell="{ column, record }: any">
             <Tag v-if="column.dataIndex === 'status'" :color="record.status === 'ACKNOWLEDGED' ? 'success' : record.status === 'FAILED' ? 'error' : 'processing'">{{ record.status }}</Tag>
             <Space v-if="column.key === 'actions'">
@@ -134,8 +148,7 @@ onMounted(loadPublications);
               <Button size="small" @click="reconcile(record.eventId)">对账</Button>
             </Space>
           </template>
-        </Table>
-      </CompactTableFrame>
+      </ClientPaginatedTable>
     </div>
   </div>
 </template>

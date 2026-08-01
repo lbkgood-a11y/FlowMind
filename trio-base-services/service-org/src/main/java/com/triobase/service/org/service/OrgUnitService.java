@@ -10,6 +10,7 @@ import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.dto.internal.OrgParticipantsResponse;
 import com.triobase.common.dto.internal.ResolvedUserDto;
+import com.triobase.common.dto.authz.AuthzFieldRule;
 import com.triobase.service.org.dto.CreateOrgUnitRequest;
 import com.triobase.service.org.dto.OrgUnitUserResponse;
 import com.triobase.service.org.dto.OrgTreeNodeResponse;
@@ -55,6 +56,8 @@ public class OrgUnitService {
     private final OrgRelationMapper orgRelationMapper;
     private final UserOrgUnitMapper userOrgUnitMapper;
     private final UserViewMapper userViewMapper;
+    private final OrgFieldDecisionClient fieldDecisionClient;
+    private final OrgUnitFieldAuthorizationAdapter fieldAuthorizationAdapter;
 
     public List<SysOrgDimension> listDimensions() {
         return orgDimensionMapper.selectList(new LambdaQueryWrapper<SysOrgDimension>()
@@ -90,7 +93,10 @@ public class OrgUnitService {
         if (status != null) {
             wrapper.eq(SysOrgUnit::getStatus, toStatus(status));
         }
-        return orgUnitMapper.selectList(wrapper);
+        List<AuthzFieldRule> rules = effectiveOrgUnitFieldRules();
+        return orgUnitMapper.selectList(wrapper).stream()
+                .map(unit -> fieldAuthorizationAdapter.applyRead(unit, rules))
+                .toList();
     }
 
     public List<SysUserOrgUnit> listUserOrgRelations() {
@@ -115,9 +121,11 @@ public class OrgUnitService {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         Map<String, SysOrgUnit> units = orgUnitMapper.selectBatchIds(unitIds).stream()
                 .collect(Collectors.toMap(SysOrgUnit::getId, Function.identity()));
+        List<AuthzFieldRule> rules = effectiveOrgUnitFieldRules();
         return relations.stream()
                 .filter(relation -> units.containsKey(relation.getChildUnitId()))
                 .map(relation -> OrgTreeNodeResponse.from(relation, units.get(relation.getChildUnitId())))
+                .map(node -> fieldAuthorizationAdapter.applyRead(node, rules))
                 .toList();
     }
 
@@ -126,6 +134,7 @@ public class OrgUnitService {
         if (!StringUtils.hasText(request.getUnitCode()) || !StringUtils.hasText(request.getUnitName())) {
             throw new BizException(40041, "ORG_UNIT_CODE_NAME_REQUIRED");
         }
+        fieldAuthorizationAdapter.validateWrite(createChanges(request), effectiveOrgUnitFieldRules());
         String dimensionCode = StringHelpers.normalizeBlank(request.getDimensionCode()) != null
                 ? request.getDimensionCode().trim()
                 : DEFAULT_DIMENSION_CODE;
@@ -166,7 +175,7 @@ public class OrgUnitService {
         relationRequest.setSortOrder(unit.getSortOrder());
         relationRequest.setEnabled(unit.getStatus() == null || unit.getStatus() == 1);
         saveRelation(dimensionCode, unit.getId(), relationRequest);
-        return unit;
+        return fieldAuthorizationAdapter.applyRead(unit, effectiveOrgUnitFieldRules());
     }
 
     @Transactional
@@ -178,13 +187,14 @@ public class OrgUnitService {
         if (!StringUtils.hasText(request.getUnitName())) {
             throw new BizException(40041, "ORG_UNIT_CODE_NAME_REQUIRED");
         }
+        fieldAuthorizationAdapter.validateWrite(updateChanges(request), effectiveOrgUnitFieldRules());
         unit.setUnitName(request.getUnitName().trim());
         unit.setUnitType(StringHelpers.normalizeBlank(request.getUnitType()) != null ? request.getUnitType().trim() : DEFAULT_UNIT_TYPE);
         unit.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : 100);
         unit.setStatus(Boolean.FALSE.equals(request.getEnabled()) ? (short) 0 : (short) 1);
         unit.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         orgUnitMapper.updateById(unit);
-        return unit;
+        return fieldAuthorizationAdapter.applyRead(unit, effectiveOrgUnitFieldRules());
     }
 
     @Transactional
@@ -572,6 +582,30 @@ public class OrgUnitService {
 
     private Short toStatus(Integer status) {
         return status != null && status == 0 ? (short) 0 : (short) 1;
+    }
+
+    private List<AuthzFieldRule> effectiveOrgUnitFieldRules() {
+        return fieldDecisionClient.effectiveRules(
+                currentTenantId(), SecurityContextHolder.getUserId(),
+                OrgUnitFieldAuthorizationAdapter.RESOURCE_CODE,
+                List.copyOf(OrgUnitFieldAuthorizationAdapter.FIELD_KEYS));
+    }
+
+    private Map<String, Object> createChanges(CreateOrgUnitRequest request) {
+        Map<String, Object> changes = new LinkedHashMap<>();
+        changes.put("unitCode", request.getUnitCode());
+        changes.put("unitName", request.getUnitName());
+        changes.put("unitType", request.getUnitType());
+        changes.put("status", request.getEnabled());
+        return changes;
+    }
+
+    private Map<String, Object> updateChanges(UpdateOrgUnitRequest request) {
+        Map<String, Object> changes = new LinkedHashMap<>();
+        changes.put("unitName", request.getUnitName());
+        changes.put("unitType", request.getUnitType());
+        changes.put("status", request.getEnabled());
+        return changes;
     }
 
 }

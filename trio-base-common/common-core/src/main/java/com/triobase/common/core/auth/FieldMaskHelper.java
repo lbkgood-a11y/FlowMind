@@ -61,6 +61,21 @@ public final class FieldMaskHelper {
         }
     }
 
+    public static void assertRulesCoverRegisteredFields(
+            Set<String> registeredFields,
+            List<? extends FieldRule> fieldRules) {
+        if (registeredFields == null || registeredFields.isEmpty()) {
+            return;
+        }
+        Map<String, FieldRule> rulesByKey = indexByKey(fieldRules != null ? fieldRules : List.of());
+        for (String fieldKey : registeredFields) {
+            if (!rulesByKey.containsKey(fieldKey)) {
+                throw new IllegalArgumentException(
+                        "Missing effective field rule for registered field: " + fieldKey);
+            }
+        }
+    }
+
     public static boolean isReadable(String readMode) {
         return !READ_DENIED_MODES.contains(normalize(readMode));
     }

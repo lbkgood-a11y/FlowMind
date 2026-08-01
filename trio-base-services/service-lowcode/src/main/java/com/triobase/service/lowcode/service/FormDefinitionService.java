@@ -348,7 +348,7 @@ public class FormDefinitionService {
 
     private FormDataResourceResponse toDataResource(LcFormDefinition definition) {
         FormDataResourceResponse response = new FormDataResourceResponse();
-        response.setResourceCode("FORM:" + definition.getFormKey().trim().toUpperCase(Locale.ROOT));
+        response.setResourceCode("LOWCODE_FORM:" + definition.getFormKey().trim().toUpperCase(Locale.ROOT));
         response.setResourceName(definition.getName());
         response.setResourceType("LOWCODE_FORM");
         response.setBusinessObjectId(definition.getId());

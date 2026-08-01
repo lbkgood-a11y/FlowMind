@@ -57,16 +57,57 @@ export namespace SystemAuthorizationApi {
     businessObjectId?: string;
     displayName?: string;
     fields: FieldNode[];
+    fieldCount?: number;
+    fieldEnforcementReadiness?: 'NON_COMPLIANT' | 'NOT_APPLICABLE' | 'PARTIAL' | 'READY';
+    fieldEnforcementReason?: string;
     guards: GuardNode[];
     id: string;
     lastSyncedAt?: string;
     lifecycleStatus?: string;
+    metadataJson?: string;
     ownerService?: string;
     resourceCode: string;
     resourceType: string;
     readHideEnforced?: boolean;
     readMaskEnforced?: boolean;
     writeDenyEnforced?: boolean;
+  }
+
+  export interface ResourceSummary {
+    businessObjectId?: string;
+    displayName?: string;
+    globalResource?: boolean;
+    fieldCount?: number;
+    fieldEnforcementReadiness?: 'NON_COMPLIANT' | 'NOT_APPLICABLE' | 'PARTIAL' | 'READY';
+    fieldEnforcementReason?: string;
+    id: string;
+    lastSyncedAt?: string;
+    lifecycleStatus?: string;
+    metadataJson?: string;
+    ownerService?: string;
+    readHideEnforced?: boolean;
+    readMaskEnforced?: boolean;
+    resourceCode: string;
+    resourceType: string;
+    tenantId?: string;
+    writeDenyEnforced?: boolean;
+  }
+
+  export interface ResourcePage {
+    page: number;
+    records: ResourceSummary[];
+    size: number;
+    total: number;
+  }
+
+  export interface ResourceQuery {
+    keyword?: string;
+    lifecycleStatus?: string;
+    ownerService?: string;
+    page?: number;
+    resourceType?: string;
+    size?: number;
+    tenantId?: string;
   }
 
   export interface ResourceGroup {
@@ -488,6 +529,26 @@ async function getAuthorizationResourceTree(params?: {
   );
 }
 
+async function getAuthorizationResources(
+  params?: SystemAuthorizationApi.ResourceQuery,
+) {
+  return requestClient.get<SystemAuthorizationApi.ResourcePage>(
+    '/authz/resources',
+    { params },
+  );
+}
+
+async function getStaleAuthorizationResources(params?: {
+  ownerService?: string;
+  staleMinutes?: number;
+  tenantId?: string;
+}) {
+  return requestClient.get<SystemAuthorizationApi.ResourceSummary[]>(
+    '/authz/resources/stale',
+    { params },
+  );
+}
+
 async function getAuthorizationAdminOptions(params?: {
   ownerService?: string;
   tenantId?: string;
@@ -758,7 +819,9 @@ export {
   getAuthorizationAdminOptions,
   getAuthorizationCompatibilityDashboard,
   getAuthorizationManagementMode,
+  getAuthorizationResources,
   getAuthorizationResourceTree,
+  getStaleAuthorizationResources,
   getLowcodeAuthorizationPublications,
   getOrCreateRoleAuthorizationDraft,
   getPageCapabilities,

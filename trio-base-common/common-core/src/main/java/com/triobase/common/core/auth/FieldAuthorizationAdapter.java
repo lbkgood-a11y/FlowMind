@@ -9,6 +9,8 @@ import java.util.Map;
  */
 public interface FieldAuthorizationAdapter<T> {
 
+    FieldEnforcementManifest manifest();
+
     Map<String, Object> filterRead(T source, List<? extends FieldRule> rules);
 
     void validateWrite(Map<String, Object> changes, List<? extends FieldRule> rules);

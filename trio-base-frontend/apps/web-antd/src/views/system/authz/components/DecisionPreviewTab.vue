@@ -10,11 +10,11 @@ import {
   Input,
   message,
   Select,
-  Table,
   Tag,
 } from 'ant-design-vue';
 
 import { previewAuthorizationDecision } from '#/api';
+import { ClientPaginatedTable } from '#/shared';
 
 const ctx = inject<any>('authzContext')!;
 
@@ -136,7 +136,7 @@ function readModeColor(mode?: string) {
 
       <div v-if="previewResult.fieldRules?.length" class="mt-3">
         <h5 class="mb-1 font-medium">字段规则:</h5>
-        <Table
+        <ClientPaginatedTable
           :columns="[
             { title: '字段', dataIndex: 'fieldKey', key: 'fieldKey' },
             { title: '读取', dataIndex: 'readMode', key: 'readMode' },
@@ -144,8 +144,7 @@ function readModeColor(mode?: string) {
             { title: '脱敏', dataIndex: 'maskStrategy', key: 'maskStrategy' },
           ]"
           :data-source="previewResult.fieldRules"
-          :pagination="false"
-          size="small"
+          :page-size="10"
           row-key="fieldKey"
         >
           <template #bodyCell="{ column, record }: any">
@@ -153,7 +152,7 @@ function readModeColor(mode?: string) {
               <Tag :color="readModeColor(record.readMode)">{{ record.readMode }}</Tag>
             </template>
           </template>
-        </Table>
+        </ClientPaginatedTable>
       </div>
 
       <div v-if="previewResult.guardRequirements?.length" class="mt-3">

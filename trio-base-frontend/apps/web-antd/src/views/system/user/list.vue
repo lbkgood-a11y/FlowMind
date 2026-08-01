@@ -818,7 +818,8 @@ onMounted(async () => {
             :data-source="users"
             :loading="loading"
             :pagination="false"
-            :scroll="{ x: 1440 }"
+            :scroll="{ x: 1440, y: '100%' }"
+            :sticky="{ offsetHeader: 0 }"
             bordered
             row-key="id"
             table-layout="fixed"

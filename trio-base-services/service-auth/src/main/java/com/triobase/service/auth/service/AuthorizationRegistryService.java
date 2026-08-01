@@ -10,6 +10,8 @@ import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.common.dto.authz.AuthorizationResourceSyncRequest;
+import com.triobase.common.core.auth.FieldEnforcementReadiness;
+import com.triobase.common.core.auth.FieldEnforcementManifest;
 import com.triobase.service.auth.dto.AuthorizationAdminOptionsResponse;
 import com.triobase.service.auth.dto.AuthorizationGrantResponse;
 import com.triobase.service.auth.dto.AuthorizationResourceResponse;
@@ -39,7 +41,7 @@ import com.triobase.service.auth.mapper.AuthGrantMapper;
 import com.triobase.service.auth.mapper.AuthGuardTemplateMapper;
 import com.triobase.service.auth.mapper.AuthResourceMapper;
 import com.triobase.service.auth.mapper.SysAuthSyncReceiptMapper;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -52,10 +54,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 @Service
-@RequiredArgsConstructor
 public class AuthorizationRegistryService {
 
     public static final String DEFAULT_TENANT = "default";
@@ -63,9 +65,19 @@ public class AuthorizationRegistryService {
     private static final String ACTIVE = "ACTIVE";
     private static final Set<String> SUBJECT_TYPES = Set.of("ROLE", "USER");
     private static final Set<String> EFFECTS = Set.of("ALLOW", "DENY");
-    private static final Set<String> VERIFIED_FIELD_ADAPTERS = Set.of(
-            "service-lowcode|LOWCODE_FORM",
-            "service-api-runtime|CUSTOM_DOC:CONTRACT");
+    private static final List<FieldEnforcementManifest> OWNER_FIELD_MANIFESTS = List.of(
+            new FieldEnforcementManifest("service-auth", "USER", "BUSINESS_OBJECT",
+                    Set.of("username", "email", "phone", "status"), true, true, true,
+                    Set.of("LIST", "DETAIL", "PROFILE", "CREATE", "UPDATE")),
+            new FieldEnforcementManifest("service-org", "ORG_UNIT", "BUSINESS_OBJECT",
+                    Set.of("unitCode", "unitName", "unitType", "status"), true, true, true,
+                    Set.of("TREE", "DETAIL", "CREATE", "UPDATE")),
+            new FieldEnforcementManifest("service-lowcode", "*", "LOWCODE_FORM",
+                    Set.of(), true, true, true,
+                    Set.of("LIST", "DETAIL", "SAVE", "SUBMIT", "OWNER_ACTION")),
+            new FieldEnforcementManifest("service-api-runtime", "CUSTOM_DOC:CONTRACT", "CUSTOM_DOC",
+                    Set.of("amount", "customerName", "paymentTerms"), true, true, true,
+                    Set.of("LIST", "DETAIL", "CREATE", "UPDATE", "OWNER_ACTION")));
 
     private final AuthResourceMapper resourceMapper;
     private final AuthActionMapper actionMapper;
@@ -77,7 +89,29 @@ public class AuthorizationRegistryService {
     private final SysAuthSyncReceiptMapper syncReceiptMapper;
     private final AuthorizationVersionService versionService;
 
+    @Autowired
+    public AuthorizationRegistryService(AuthResourceMapper resourceMapper,
+                                         AuthActionMapper actionMapper,
+                                         AuthFieldMapper fieldMapper,
+                                         AuthFieldPolicyMapper fieldPolicyMapper,
+                                         AuthGuardTemplateMapper guardTemplateMapper,
+                                         AuthGrantMapper grantMapper,
+                                         AuthDecisionLogMapper decisionLogMapper,
+                                         SysAuthSyncReceiptMapper syncReceiptMapper,
+                                         AuthorizationVersionService versionService) {
+        this.resourceMapper = resourceMapper;
+        this.actionMapper = actionMapper;
+        this.fieldMapper = fieldMapper;
+        this.fieldPolicyMapper = fieldPolicyMapper;
+        this.guardTemplateMapper = guardTemplateMapper;
+        this.grantMapper = grantMapper;
+        this.decisionLogMapper = decisionLogMapper;
+        this.syncReceiptMapper = syncReceiptMapper;
+        this.versionService = versionService;
+    }
+
     /** Test/source compatibility for callers that do not exercise lifecycle receipts. */
+    @java.lang.SuppressWarnings("unused")
     AuthorizationRegistryService(AuthResourceMapper resourceMapper,
                                  AuthActionMapper actionMapper,
                                  AuthFieldMapper fieldMapper,
@@ -93,6 +127,7 @@ public class AuthorizationRegistryService {
     public PageResult<AuthorizationResourceResponse> pageResources(String tenantId,
                                                                    String ownerService,
                                                                    String resourceType,
+                                                                   String lifecycleStatus,
                                                                    String keyword,
                                                                    int page,
                                                                    int size) {
@@ -101,6 +136,8 @@ public class AuthorizationRegistryService {
                 .eq(SysAuthResource::getTenantId, effectiveTenant)
                 .eq(StringUtils.hasText(ownerService), SysAuthResource::getOwnerService, ownerService)
                 .eq(StringUtils.hasText(resourceType), SysAuthResource::getResourceType, normalize(resourceType))
+                .eq(StringUtils.hasText(lifecycleStatus), SysAuthResource::getLifecycleStatus,
+                        normalize(lifecycleStatus))
                 .and(StringUtils.hasText(keyword), q -> q
                         .like(SysAuthResource::getResourceCode, keyword)
                         .or()
@@ -109,7 +146,7 @@ public class AuthorizationRegistryService {
                 .orderByAsc(SysAuthResource::getResourceCode);
         IPage<SysAuthResource> result = resourceMapper.selectPage(new Page<>(page, size), wrapper);
         return PageResult.of(result.getRecords().stream()
-                .map(AuthorizationResourceResponse::from)
+                .map(this::resourceResponse)
                 .toList(), result.getTotal(), page, size);
     }
 
@@ -220,7 +257,7 @@ public class AuthorizationRegistryService {
                         .orderByAsc(SysAuthResource::getOwnerService)
                         .orderByAsc(SysAuthResource::getResourceCode))
                 .stream()
-                .map(AuthorizationResourceResponse::from)
+                .map(this::resourceResponse)
                 .toList();
     }
 
@@ -603,6 +640,8 @@ public class AuthorizationRegistryService {
         node.setReadHideEnforced(enabled(resource.getReadHideEnforced()));
         node.setReadMaskEnforced(enabled(resource.getReadMaskEnforced()));
         node.setWriteDenyEnforced(enabled(resource.getWriteDenyEnforced()));
+        node.setMetadataJson(resource.getMetadataJson());
+        applyFieldReadiness(node, fields.size(), resource);
         node.setLastSyncedAt(resource.getLastSyncedAt());
         node.setActions(actions.stream().map(this::actionNode).toList());
         node.setFields(fields.stream().map(this::fieldNode).toList());
@@ -641,6 +680,92 @@ public class AuthorizationRegistryService {
         node.setDescription(guard.getDescription());
         node.setStatus(guard.getStatus());
         return node;
+    }
+
+    private AuthorizationResourceResponse resourceResponse(SysAuthResource resource) {
+        AuthorizationResourceResponse response = AuthorizationResourceResponse.from(resource);
+        int fieldCount = Math.toIntExact(fieldMapper.selectCount(
+                new LambdaQueryWrapper<SysAuthField>()
+                        .eq(SysAuthField::getTenantId, resource.getTenantId())
+                        .eq(SysAuthField::getResourceCode, resource.getResourceCode())
+                        .eq(SysAuthField::getStatus, (short) 1)));
+        response.setFieldCount(fieldCount);
+        FieldReadiness readiness = fieldReadiness(fieldCount, resource);
+        response.setFieldEnforcementReadiness(readiness.status().name());
+        response.setFieldEnforcementReason(readiness.reason());
+        return response;
+    }
+
+    private void applyFieldReadiness(
+            AuthorizationResourceTreeResponse.ResourceNode node,
+            int fieldCount,
+            SysAuthResource resource) {
+        FieldReadiness readiness = fieldReadiness(fieldCount, resource);
+        node.setFieldCount(fieldCount);
+        node.setFieldEnforcementReadiness(readiness.status().name());
+        node.setFieldEnforcementReason(readiness.reason());
+    }
+
+    private FieldReadiness fieldReadiness(int fieldCount, SysAuthResource resource) {
+        if (fieldCount == 0) {
+            return new FieldReadiness(FieldEnforcementReadiness.NOT_APPLICABLE, "未注册授权字段");
+        }
+        boolean hide = enabled(resource.getReadHideEnforced());
+        boolean mask = enabled(resource.getReadMaskEnforced());
+        boolean write = enabled(resource.getWriteDenyEnforced());
+        if (hide && mask && write) {
+            return new FieldReadiness(FieldEnforcementReadiness.READY, "Owner 已声明读写字段执行能力");
+        }
+        if (hide || mask || write) {
+            return new FieldReadiness(FieldEnforcementReadiness.PARTIAL,
+                    "字段执行能力不完整：隐藏=" + hide + "，脱敏=" + mask + "，拒写=" + write);
+        }
+        return new FieldReadiness(FieldEnforcementReadiness.NON_COMPLIANT,
+                "Owner 未声明字段读取和写入执行能力");
+    }
+
+    private void validateFieldPolicyReadiness(
+            String tenantId,
+            String resourceCode,
+            String fieldKey,
+            String readMode,
+            String writeMode,
+            String maskStrategy,
+            String effect) {
+        SysAuthResource resource = resourceMapper.selectOne(new LambdaQueryWrapper<SysAuthResource>()
+                .eq(SysAuthResource::getTenantId, tenantId)
+                .eq(SysAuthResource::getResourceCode, resourceCode)
+                .eq(SysAuthResource::getLifecycleStatus, ACTIVE)
+                .last("LIMIT 1"));
+        if (resource == null) {
+            throw new BizException(40481, "AUTHZ_FIELD_RESOURCE_NOT_ACTIVE");
+        }
+        Long fieldCount = fieldMapper.selectCount(new LambdaQueryWrapper<SysAuthField>()
+                .eq(SysAuthField::getTenantId, tenantId)
+                .eq(SysAuthField::getResourceCode, resourceCode)
+                .eq(SysAuthField::getFieldKey, fieldKey)
+                .eq(SysAuthField::getStatus, (short) 1));
+        if (fieldCount == null || fieldCount == 0) {
+            throw new BizException(40482, "AUTHZ_FIELD_NOT_REGISTERED");
+        }
+        if (!List.of("ALLOW", "DENY").contains(effect)) {
+            throw new BizException(40083, "AUTHZ_FIELD_EFFECT_INVALID");
+        }
+        boolean deny = "DENY".equals(effect);
+        boolean needsHide = deny || "HIDDEN".equals(readMode) || "DENIED".equals(readMode);
+        boolean needsMask = "MASKED".equals(readMode);
+        boolean needsWriteDeny = deny || "DENIED".equals(writeMode) || "READ_ONLY".equals(writeMode);
+        if ((needsHide && !enabled(resource.getReadHideEnforced()))
+                || (needsMask && !enabled(resource.getReadMaskEnforced()))
+                || (needsWriteDeny && !enabled(resource.getWriteDenyEnforced()))) {
+            throw new BizException(40988, "AUTHZ_FIELD_ENFORCEMENT_NOT_READY");
+        }
+        if (needsMask && !StringUtils.hasText(maskStrategy)) {
+            throw new BizException(40083, "AUTHZ_FIELD_MASK_STRATEGY_REQUIRED");
+        }
+    }
+
+    private record FieldReadiness(FieldEnforcementReadiness status, String reason) {
     }
 
     private boolean guardSupportsResourceType(SysAuthGuardTemplate guard, String resourceType) {
@@ -802,8 +927,11 @@ public class AuthorizationRegistryService {
             return;
         }
         String owner = ownerService != null ? ownerService.trim() : "";
-        boolean verified = VERIFIED_FIELD_ADAPTERS.contains(owner + "|" + resourceType)
-                || VERIFIED_FIELD_ADAPTERS.contains(owner + "|" + resourceCode);
+        boolean verified = OWNER_FIELD_MANIFESTS.stream().anyMatch(manifest ->
+                owner.equals(manifest.ownerService())
+                        && (resourceCode.equals(manifest.resourceCode())
+                        || ("*".equals(manifest.resourceCode())
+                        && Objects.equals(normalize(resourceType), normalize(manifest.resourceType())))));
         if (!verified) {
             throw new BizException(40088, "AUTHZ_FIELD_ADAPTER_NOT_VERIFIED");
         }
@@ -811,6 +939,10 @@ public class AuthorizationRegistryService {
 
     private Short toFlag(Boolean enabled) {
         return Boolean.TRUE.equals(enabled) ? (short) 1 : (short) 0;
+    }
+
+    static List<FieldEnforcementManifest> ownerFieldManifests() {
+        return OWNER_FIELD_MANIFESTS;
     }
 
     private boolean enabled(Short value) {
@@ -842,6 +974,11 @@ public class AuthorizationRegistryService {
         String fieldKey = required(request.getFieldKey(), "AUTHZ_FIELD_KEY_REQUIRED");
         String subjectType = normalize(request.getSubjectType());
         String subjectId = StringHelpers.normalizeBlank(request.getSubjectId());
+        String readMode = normalize(request.getReadMode());
+        String writeMode = normalize(request.getWriteMode());
+        String effect = normalize(request.getEffect());
+        validateFieldPolicyReadiness(tenantId, resourceCode, fieldKey, readMode, writeMode,
+                request.getMaskStrategy(), effect);
 
         SysAuthFieldPolicy policy = fieldPolicyMapper.selectOne(new LambdaQueryWrapper<SysAuthFieldPolicy>()
                 .eq(SysAuthFieldPolicy::getTenantId, tenantId)
@@ -859,10 +996,10 @@ public class AuthorizationRegistryService {
             policy.setSubjectType(subjectType);
             policy.setSubjectId(subjectId);
         }
-        policy.setReadMode(StringHelpers.normalizeBlank(request.getReadMode()));
-        policy.setWriteMode(StringHelpers.normalizeBlank(request.getWriteMode()));
+        policy.setReadMode(readMode);
+        policy.setWriteMode(writeMode);
         policy.setMaskStrategy(StringHelpers.normalizeBlank(request.getMaskStrategy()));
-        policy.setEffect(StringHelpers.normalizeBlank(request.getEffect()));
+        policy.setEffect(effect);
         policy.setStatus(toStatus(request.getStatus()));
         policy.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         if (policy.getCreatedAt() == null) {

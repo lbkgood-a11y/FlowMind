@@ -19,6 +19,10 @@ public class AuthorizationResourceResponse {
     private Boolean readHideEnforced;
     private Boolean readMaskEnforced;
     private Boolean writeDenyEnforced;
+    private String metadataJson;
+    private Integer fieldCount;
+    private String fieldEnforcementReadiness;
+    private String fieldEnforcementReason;
     private LocalDateTime lastSyncedAt;
 
     public static AuthorizationResourceResponse from(SysAuthResource resource) {
@@ -35,6 +39,7 @@ public class AuthorizationResourceResponse {
         response.setReadHideEnforced(enabled(resource.getReadHideEnforced()));
         response.setReadMaskEnforced(enabled(resource.getReadMaskEnforced()));
         response.setWriteDenyEnforced(enabled(resource.getWriteDenyEnforced()));
+        response.setMetadataJson(resource.getMetadataJson());
         response.setLastSyncedAt(resource.getLastSyncedAt());
         return response;
     }

@@ -306,7 +306,7 @@ onBeforeUnmount(() => streamController?.abort());
   >
     <div class="tb-ai-assistant">
       <Alert
-        description="当前支持请假申请和费用报销。所有业务操作都会先展示预览，并在确认后通过统一 Action 执行。"
+        description="业务工具由已发布应用注册。所有业务操作都会先展示预览，并在确认后通过统一 Action 执行。"
         message="安全执行模式"
         show-icon
         type="info"

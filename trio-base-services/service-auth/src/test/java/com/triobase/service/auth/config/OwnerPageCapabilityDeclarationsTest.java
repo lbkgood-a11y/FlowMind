@@ -47,9 +47,12 @@ class OwnerPageCapabilityDeclarationsTest {
     void composedCatalogContainsCoreAndOwnerPages() {
         PageCapabilityManifestSyncRequest manifest =
                 new SystemPageCapabilityManifestConfig().systemManagementPageCapabilities();
-        assertEquals(3L, manifest.getCatalogVersion());
-        assertEquals(50, manifest.getPages().size());
-        assertEquals(50, manifest.getPages().stream().map(PageCapabilityManifestSyncRequest.Page::getPageCode).distinct().count());
+        assertEquals(5L, manifest.getCatalogVersion());
+        assertEquals(51, manifest.getPages().size());
+        assertEquals(51, manifest.getPages().stream().map(PageCapabilityManifestSyncRequest.Page::getPageCode).distinct().count());
+        assertTrue(manifest.getPages().stream().anyMatch(page ->
+                "SYSTEM.AUTHORIZATION_RESOURCE".equals(page.getPageCode())
+                        && "SystemAuthorizationResourceCatalog".equals(page.getMenuKey())));
     }
 
     private Path repositoryRoot() {

@@ -308,6 +308,27 @@ body,
   overflow: auto !important;
 }
 
+/* Unified table behavior: only rows scroll; headers stay visible. */
+.tb-table-frame__body .ant-table-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto !important;
+}
+
+.tb-table-frame .ant-table-thead > tr > th {
+  position: sticky !important;
+  top: 0;
+  z-index: 3;
+  color: #2b3340 !important;
+  background: #f5f5f5 !important;
+  font-weight: 600;
+}
+
+.tb-table-frame .ant-table-thead > tr > th.ant-table-cell-fix-left,
+.tb-table-frame .ant-table-thead > tr > th.ant-table-cell-fix-right {
+  z-index: 4;
+}
+
 .tb-table-frame .ant-table-tbody > tr > td,
 .tb-table-frame .ant-table-thead > tr > th,
 .erp-compact-page .ant-table-tbody > tr > td,
@@ -651,10 +672,30 @@ body,
 }
 
 .erp-compact-page :where(.ant-table-thead > tr > th) {
-  height: 34px;
+  height: auto !important;
+  min-height: 34px;
   padding: 6px 8px !important;
+  color: #2b3340 !important;
+  background: #f5f5f5 !important;
   font-size: 13px;
   font-weight: 600;
+  line-height: 18px;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+.erp-compact-page :where(.ant-table-thead .ant-table-column-title) {
+  min-width: 0;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+}
+
+.erp-compact-page :where(.ant-table-thead .ant-table-column-sorters) {
+  min-height: 34px;
+  align-items: center;
 }
 
 .erp-compact-page :where(.ant-table-tbody > tr > td) {

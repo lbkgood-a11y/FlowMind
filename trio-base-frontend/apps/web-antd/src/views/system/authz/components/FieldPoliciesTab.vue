@@ -16,8 +16,8 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table,
   Tag,
+  Tooltip,
 } from 'ant-design-vue';
 
 import {
@@ -25,7 +25,8 @@ import {
   getRoleAuthorizationProfile,
   saveAuthorizationFieldPolicy,
 } from '#/api';
-import { CompactTableFrame } from '#/shared';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import { ClientPaginatedTable } from '#/shared';
 
 const ctx = inject<any>('authzContext')!;
 
@@ -61,13 +62,6 @@ const fieldColumns: TableProps['columns'] = [
   { title: '脱敏策略', dataIndex: 'maskStrategy', key: 'maskStrategy', width: 120 },
   { title: '操作', key: 'action', width: 100 },
 ];
-
-const clientPagination: TableProps['pagination'] = {
-  pageSize: 20,
-  showQuickJumper: true,
-  showSizeChanger: true,
-  showTotal: (total, range) => `共 ${total} 条记录，本页 ${range[0]}-${range[1]} 条`,
-};
 
 function asStringValue(value: unknown) {
   return typeof value === 'string' ? value : String(value ?? '');
@@ -130,7 +124,10 @@ async function handleDeleteField(record: SystemAuthorizationApi.FieldPolicy) {
 }
 
 async function loadFieldPolicies() {
-  if (!ctx.canQuery.value || !ctx.selectedRoleId.value) return;
+  if (!ctx.canQuery.value || !ctx.selectedRoleId.value) {
+    fieldRows.value = [];
+    return;
+  }
   try {
     const profile = await getRoleAuthorizationProfile(ctx.selectedRoleId.value);
     fieldRows.value = profile.fieldPolicies ?? [];
@@ -155,23 +152,21 @@ watch(() => ctx.selectedRoleId.value, () => {
     <div class="mb-3 flex items-center justify-between">
       <span class="text-muted-foreground text-sm">按字段配置读写权限和脱敏策略</span>
       <Space v-if="ctx.canCreate.value">
-        <Button class="!h-8 !w-8" @click="loadFieldPolicies">
-          <IconifyIcon icon="lucide:refresh-cw" />
-        </Button>
+        <Tooltip title="刷新">
+          <Button shape="circle" @click="loadFieldPolicies">
+            <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+          </Button>
+        </Tooltip>
         <Button type="primary" @click="openFieldDrawer">
           <IconifyIcon icon="lucide:plus" class="mr-1" />新增字段策略
         </Button>
       </Space>
     </div>
-    <CompactTableFrame>
-      <Table
+    <ClientPaginatedTable
         :columns="fieldColumns"
         :data-source="fieldRows"
         :loading="ctx.loading.value"
-        :pagination="clientPagination"
         row-key="id"
-        size="small"
-        bordered
       >
         <template #bodyCell="{ column, record }: any">
           <template v-if="column.key === 'readMode'">
@@ -183,8 +178,7 @@ watch(() => ctx.selectedRoleId.value, () => {
             </Popconfirm>
           </template>
         </template>
-      </Table>
-    </CompactTableFrame>
+    </ClientPaginatedTable>
 
     <Drawer v-model:open="fieldDrawerOpen" title="新增字段策略" :width="500">
       <Form layout="vertical">

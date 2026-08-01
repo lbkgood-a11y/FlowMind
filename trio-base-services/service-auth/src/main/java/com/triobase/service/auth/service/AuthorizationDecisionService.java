@@ -132,6 +132,31 @@ public class AuthorizationDecisionService {
         return response;
     }
 
+    /**
+     * Owner-local field-only decision for an already authorized operation.
+     * Function and data authorization remain enforced by the controller boundary.
+     */
+    public List<AuthzFieldRule> effectiveFieldRules(
+            String resourceCode, List<String> fieldKeys) {
+        return effectiveFieldRules(SecurityContextHolder.getTenantId(), SecurityContextHolder.getUserId(),
+                resourceCode, fieldKeys);
+    }
+
+    public List<AuthzFieldRule> effectiveFieldRules(
+            String tenantId, String userId, String resourceCode, List<String> fieldKeys) {
+        AuthorizationDecisionRequest request = new AuthorizationDecisionRequest();
+        request.setTenantId(tenantId);
+        request.setUserId(userId);
+        return fieldRules(subject(request), resourceCode, fieldKeys, true);
+    }
+
+    public List<AuthzFieldRule> effectiveFieldRules(AuthorizationDecisionRequest request) {
+        if (request == null || !StringUtils.hasText(request.getResourceCode())) {
+            throw new BizException(40082, "AUTHZ_RESOURCE_CODE_REQUIRED");
+        }
+        return fieldRules(subject(request), request.getResourceCode(), request.getFieldKeys(), true);
+    }
+
     private AuthorizationDecisionResponse decide(AuthorizationDecisionRequest request, SubjectSnapshot subject) {
         String requestedResource = request.getResourceCode().trim();
         String actionCode = normalizeAction(request.getActionCode());

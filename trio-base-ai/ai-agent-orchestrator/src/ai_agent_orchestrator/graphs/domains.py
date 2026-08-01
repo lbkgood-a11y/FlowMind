@@ -25,24 +25,9 @@ class BusinessDomain:
 
 
 def domains(settings: Settings) -> dict[str, BusinessDomain]:
-    return {
-        "leave": BusinessDomain(
-            key="leave",
-            app_key="leave",
-            form_key="leave",
-            display_name="请假申请",
-            keywords=("请假", "休假", "事假", "病假", "年假", "调休"),
-            enabled=settings.feature_leave_enabled,
-        ),
-        "expense": BusinessDomain(
-            key="expense",
-            app_key="expense_report",
-            form_key="expense",
-            display_name="费用报销",
-            keywords=("报销", "费用", "发票", "差旅"),
-            enabled=settings.feature_expense_enabled,
-        ),
-    }
+    # Business domains are registered from applications created by rapid development.
+    # Keep the built-in registry empty so a clean environment has no demo tools.
+    return {}
 
 
 def classify_intent(message: str, settings: Settings) -> tuple[str, str | None, float]:

@@ -4,9 +4,11 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.context.SecurityContextHolder;
 import com.triobase.service.auth.dto.ReplaceRoleFunctionGrantsRequest;
+import com.triobase.service.auth.dto.SaveFieldPolicyRequest;
 import com.triobase.common.dto.authz.AuthorizationResourceSyncRequest;
 import com.triobase.service.auth.entity.SysAuthAction;
 import com.triobase.service.auth.entity.SysAuthField;
+import com.triobase.service.auth.entity.SysAuthFieldPolicy;
 import com.triobase.service.auth.entity.SysAuthGuardTemplate;
 import com.triobase.service.auth.entity.SysAuthResource;
 import com.triobase.service.auth.entity.SysAuthGrant;
@@ -164,6 +166,32 @@ class AuthorizationRegistryServiceTest {
 
         assertThrows(BizException.class, () -> service.synchronize(request));
         verify(resourceMapper, never()).insert(any(SysAuthResource.class));
+    }
+
+    @Test
+    void saveFieldPolicyRejectsMaskingWhenOwnerIsNotReady() {
+        SysAuthResource resource = resource("R_USER", "USER", "BUSINESS_OBJECT", "service-auth");
+        resource.setReadHideEnforced((short) 1);
+        resource.setReadMaskEnforced((short) 0);
+        resource.setWriteDenyEnforced((short) 1);
+        when(resourceMapper.selectOne(any())).thenReturn(resource);
+        when(fieldMapper.selectCount(any())).thenReturn(1L);
+
+        SaveFieldPolicyRequest request = new SaveFieldPolicyRequest();
+        request.setTenantId("tenant-a");
+        request.setSubjectType("ROLE");
+        request.setSubjectId("ADMIN");
+        request.setResourceCode("USER");
+        request.setFieldKey("phone");
+        request.setReadMode("MASKED");
+        request.setWriteMode("EDITABLE");
+        request.setMaskStrategy("LAST4");
+        request.setEffect("ALLOW");
+
+        BizException exception = assertThrows(BizException.class, () -> service.saveFieldPolicy(request));
+
+        assertThat(exception.getMessage()).isEqualTo("AUTHZ_FIELD_ENFORCEMENT_NOT_READY");
+        verify(fieldPolicyMapper, never()).insert(any(SysAuthFieldPolicy.class));
     }
 
     @Test

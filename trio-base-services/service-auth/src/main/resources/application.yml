@@ -55,7 +55,7 @@ triobase:
       base-url: ${LOWCODE_SERVICE_URL:http://localhost:8085}
   internal:
     token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
-    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-lowcode,service-api-runtime}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-lowcode,service-api-runtime,service-org}
 
 # Temporal Worker — 铁律 5：与微服务生命周期共生死
 temporal:

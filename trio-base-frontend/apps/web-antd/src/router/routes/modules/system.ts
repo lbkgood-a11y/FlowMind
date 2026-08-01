@@ -31,13 +31,22 @@ const routes: RouteRecordRaw[] = [
         component: () => import('#/views/system/user/list.vue'),
       },
       {
+        path: 'role-workbench',
+        name: 'SystemRoleAuthorizationWorkbench',
+        meta: {
+          icon: 'lucide:shield-user',
+          title: '角色与授权',
+        },
+        component: () => import('#/views/system/role-workbench/index.vue'),
+      },
+      {
         path: 'role',
         name: 'SystemRole',
+        redirect: { name: 'SystemRoleAuthorizationWorkbench', query: { tab: 'basic' } },
         meta: {
-          icon: 'lucide:users',
+          hideInMenu: true,
           title: $t('system.role.title'),
         },
-        component: () => import('#/views/system/role/list.vue'),
       },
       {
         path: 'menu',
@@ -49,13 +58,33 @@ const routes: RouteRecordRaw[] = [
         component: () => import('#/views/system/menu/list.vue'),
       },
       {
-        path: 'capability-catalog',
-        name: 'SystemPageCapabilityCatalog',
+        path: 'authorization-governance',
+        name: 'SystemAuthorizationGovernance',
         meta: {
-          icon: 'lucide:panels-top-left',
-          title: '能力目录',
+          icon: 'lucide:shield-check',
+          title: '权限治理',
         },
-        component: () => import('#/views/system/capability-catalog/list.vue'),
+        children: [
+          {
+            path: '/system/capability-catalog',
+            name: 'SystemPageCapabilityCatalog',
+            meta: {
+              icon: 'lucide:panels-top-left',
+              title: '页面能力目录',
+            },
+            component: () => import('#/views/system/capability-catalog/list.vue'),
+          },
+          {
+            path: '/system/authorization-resource-catalog',
+            name: 'SystemAuthorizationResourceCatalog',
+            meta: {
+              icon: 'lucide:boxes',
+              title: '资源注册中心',
+            },
+            component: () =>
+              import('#/views/system/authorization-resource-catalog/list.vue'),
+          },
+        ],
       },
       {
         path: 'org',
@@ -69,11 +98,11 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'data-permission',
         name: 'SystemDataPermission',
+        redirect: { name: 'SystemRoleAuthorizationWorkbench', query: { tab: 'data' } },
         meta: {
-          icon: 'lucide:shield-keyhole',
+          hideInMenu: true,
           title: $t('system.dataPermission.title'),
         },
-        component: () => import('#/views/system/data-permission/list.vue'),
       },
       {
         path: 'audit-log',
@@ -114,7 +143,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'authorization',
         name: 'SystemAuthorizationRedirect',
-        redirect: '/system/authz',
+        redirect: { name: 'SystemRoleAuthorizationWorkbench', query: { tab: 'function' } },
         meta: {
           hideInMenu: true,
           title: '企业授权',
@@ -123,11 +152,11 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'authz',
         name: 'SystemAuthz',
+        redirect: { name: 'SystemRoleAuthorizationWorkbench', query: { tab: 'function' } },
         meta: {
-          icon: 'lucide:shield-user',
+          hideInMenu: true,
           title: '企业授权',
         },
-        component: () => import('#/views/system/authz/index.vue'),
       },
     ],
   },

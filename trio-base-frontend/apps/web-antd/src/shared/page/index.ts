@@ -1,6 +1,7 @@
 export { default as BusinessPageScaffold } from './BusinessPageScaffold.vue';
 export { default as CompactQueryBar } from './CompactQueryBar.vue';
 export { default as CompactTableFrame } from './CompactTableFrame.vue';
+export { default as ClientPaginatedTable } from './ClientPaginatedTable.vue';
 export { default as CompactToolbar } from './CompactToolbar.vue';
 export { default as MasterDetailLayout } from './MasterDetailLayout.vue';
 export { default as MultiTableLayout } from './MultiTableLayout.vue';

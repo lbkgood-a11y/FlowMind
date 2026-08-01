@@ -1,26 +1,23 @@
 <script lang="ts" setup>
 import type { SystemAuthorizationApi } from '#/api/system/authorization';
+import type { TableColumnSetting } from '#/shared';
 
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
 
 import {
   Alert,
   Button,
-  Card,
-  Col,
-  Descriptions,
-  DescriptionsItem,
   Empty,
+  FormItem,
   Pagination,
-  Row,
   Select,
   Space,
-  Spin,
-  Statistic,
   Table,
   Tag,
+  Tooltip,
 } from 'ant-design-vue';
 
 import {
@@ -30,16 +27,24 @@ import {
 } from '#/api/system/authorization';
 import {
   BusinessPageScaffold,
+  CompactQueryBar,
   CompactTableFrame,
   CompactToolbar,
+  restoreTableColumnSettings,
+  TableColumnSettings,
 } from '#/shared/page';
 
 const loading = ref(false);
+const route = useRoute();
+const router = useRouter();
 const errorMessage = ref('');
 const catalogs = ref<SystemAuthorizationApi.PageCapabilityCatalog[]>([]);
 const selectedCatalogId = ref<string>();
 const capabilities = ref<SystemAuthorizationApi.PageCapability[]>([]);
 const diagnostics = ref<SystemAuthorizationApi.PageCapabilityDiagnostic[]>([]);
+const queryHidden = ref(false);
+const blockFullscreen = ref(false);
+const tableKey = ref(0);
 
 const selectedCatalog = computed(() =>
   catalogs.value.find((item) => item.id === selectedCatalogId.value),
@@ -68,7 +73,7 @@ const pagedCapabilities = computed(() => {
   return capabilities.value.slice(start, start + pagination.pageSize);
 });
 
-const columns = [
+const baseColumns = [
   { dataIndex: 'pageName', key: 'pageName', title: '页面', width: 170 },
   {
     dataIndex: 'capabilityName',
@@ -93,6 +98,33 @@ const columns = [
     width: 240,
   },
 ];
+const defaultColumnSettings: TableColumnSetting[] = baseColumns.map((column) => ({
+  key: String(column.key),
+  title: String(column.title),
+  visible: true,
+  width: Number(column.width || 120),
+}));
+const columnSettings = reactive(
+  restoreTableColumnSettings(
+    'triobase:table-columns:system-capability-catalog',
+    defaultColumnSettings,
+  ),
+);
+const columns = computed(() =>
+  columnSettings.filter((item) => item.visible).map((item) => {
+    const base = baseColumns.find((column) => String(column.key) === item.key);
+    return {
+      ...base,
+      fixed: item.fixed,
+      width: Math.max(Number(item.width || 0), Number(base?.width || 120)),
+    };
+  }),
+);
+
+function applyColumnSettings(settings: TableColumnSetting[]) {
+  columnSettings.splice(0, columnSettings.length, ...settings);
+  tableKey.value += 1;
+}
 
 function readinessColor(readiness: string) {
   return readiness === 'READY'
@@ -115,6 +147,7 @@ async function loadCatalogContent() {
       getPageCapabilities(undefined, undefined, selectedCatalogId.value),
       getPageCapabilityDiagnostics(undefined, selectedCatalogId.value),
     ]);
+    focusCapabilityFromRoute();
   } catch (error) {
     capabilities.value = [];
     diagnostics.value = [];
@@ -123,6 +156,24 @@ async function loadCatalogContent() {
   } finally {
     loading.value = false;
   }
+}
+
+function focusCapabilityFromRoute() {
+  const capabilityCode = String(route.query.capabilityCode || '');
+  if (!capabilityCode) return;
+  const index = capabilities.value.findIndex(
+    (item) => item.capabilityCode === capabilityCode,
+  );
+  if (index >= 0) {
+    pagination.current = Math.floor(index / pagination.pageSize) + 1;
+  }
+}
+
+function openResourceTarget(resourceCode: string) {
+  void router.push({
+    name: 'SystemAuthorizationResourceCatalog',
+    query: { resourceCode },
+  });
 }
 
 async function loadCatalogs() {
@@ -150,6 +201,7 @@ async function loadCatalogs() {
 watch(selectedCatalogId, () => void loadCatalogContent());
 watch(capabilities, () => {
   pagination.current = 1;
+  focusCapabilityFromRoute();
 });
 
 function handlePageChange(page: number, pageSize: number) {
@@ -165,14 +217,63 @@ onMounted(() => void loadCatalogs());
 </script>
 
 <template>
-  <Page>
-    <BusinessPageScaffold>
+  <Page auto-content-height>
+    <BusinessPageScaffold
+      class="capability-catalog-page"
+      pattern="single-table"
+      :fullscreen="blockFullscreen"
+      :class="{ 'is-block-fullscreen': blockFullscreen, 'is-query-hidden': queryHidden }"
+    >
+      <template #query>
+        <CompactQueryBar v-show="!queryHidden" :columns="4">
+          <FormItem label="目录版本">
+            <Select
+              v-model:value="selectedCatalogId"
+              :options="catalogOptions"
+              placeholder="选择目录版本"
+            />
+          </FormItem>
+          <template #actions>
+            <Button type="primary" @click="loadCatalogContent">查询</Button>
+          </template>
+        </CompactQueryBar>
+      </template>
       <template #toolbar>
-        <CompactToolbar
-          title="能力目录"
-          subtitle="查看页面能力、目录生命周期、依赖关系与运行时映射；能力定义由 Owner Manifest 维护"
-        >
-          <Button :loading="loading" @click="loadCatalogs">刷新目录</Button>
+        <CompactToolbar>
+          <template #title>
+            <div class="list-title">
+              <h2>页面能力目录</h2>
+              <Button v-if="queryHidden" type="link" @click="queryHidden = false">展开搜索</Button>
+            </div>
+          </template>
+          <Space :size="8">
+            <Tag v-if="selectedCatalog" :color="selectedCatalog.lifecycleStatus === 'ACTIVE' ? 'success' : 'default'">
+              {{ selectedCatalog.catalogCode }} v{{ selectedCatalog.catalogVersion }}
+            </Tag>
+            <Tag color="blue">页面 {{ pageCount }}</Tag>
+            <Tag color="success">READY {{ readyCount }}/{{ capabilities.length }}</Tag>
+            <Tooltip title="查询并隐藏搜索栏">
+              <Button shape="circle" type="primary" @click="loadCatalogContent(); queryHidden = true">
+                <i aria-hidden="true" class="vxe-button--item vxe-table-icon-search"></i>
+              </Button>
+            </Tooltip>
+            <Tooltip title="刷新">
+              <Button :loading="loading" shape="circle" @click="loadCatalogs">
+                <i aria-hidden="true" class="vxe-button--item vxe-table-icon-refresh"></i>
+              </Button>
+            </Tooltip>
+            <Tooltip :title="blockFullscreen ? '还原' : '全屏'">
+              <Button shape="circle" @click="blockFullscreen = !blockFullscreen">
+                <i aria-hidden="true" class="vxe-button--item vxe-button--prefix-icon" :class="blockFullscreen ? 'vxe-table-icon-minimize' : 'vxe-table-icon-fullscreen'"></i>
+              </Button>
+            </Tooltip>
+            <TableColumnSettings
+              :defaults="defaultColumnSettings"
+              :model-value="columnSettings"
+              storage-key="triobase:table-columns:system-capability-catalog"
+              @apply="applyColumnSettings"
+            />
+          </Space>
         </CompactToolbar>
       </template>
 
@@ -184,80 +285,13 @@ onMounted(() => void loadCatalogs());
         type="error"
       />
 
-      <Spin :spinning="loading">
-        <Card class="mb-3" size="small">
-          <Space wrap>
-            <span class="text-sm font-medium">目录版本</span>
-            <Select
-              v-model:value="selectedCatalogId"
-              :options="catalogOptions"
-              placeholder="选择目录版本"
-              style="width: 320px"
-            />
-            <Tag
-              v-if="selectedCatalog"
-              :color="
-                selectedCatalog.lifecycleStatus === 'ACTIVE'
-                  ? 'success'
-                  : 'default'
-              "
-            >
-              {{ selectedCatalog.lifecycleStatus }}
-            </Tag>
-          </Space>
-
-          <Descriptions
-            v-if="selectedCatalog"
-            class="mt-3"
-            :column="3"
-            size="small"
-            bordered
-          >
-            <DescriptionsItem label="租户">
-              {{ selectedCatalog.tenantId }}
-            </DescriptionsItem>
-            <DescriptionsItem label="目录编码">
-              {{ selectedCatalog.catalogCode }}
-            </DescriptionsItem>
-            <DescriptionsItem label="版本">
-              v{{ selectedCatalog.catalogVersion }}
-            </DescriptionsItem>
-            <DescriptionsItem label="来源">
-              {{ selectedCatalog.sourceType }}
-            </DescriptionsItem>
-            <DescriptionsItem label="来源引用">
-              {{ selectedCatalog.sourceRef || '-' }}
-            </DescriptionsItem>
-            <DescriptionsItem label="激活时间">
-              {{ selectedCatalog.activatedAt || '-' }}
-            </DescriptionsItem>
-          </Descriptions>
-        </Card>
-
-        <Row class="mb-3" :gutter="12">
-          <Col :span="8">
-            <Card size="small">
-              <Statistic title="页面数" :value="pageCount" />
-            </Card>
-          </Col>
-          <Col :span="8">
-            <Card size="small">
-              <Statistic title="能力总数" :value="capabilities.length" />
-            </Card>
-          </Col>
-          <Col :span="8">
-            <Card size="small">
-              <Statistic title="READY 能力" :value="readyCount" />
-            </Card>
-          </Col>
-        </Row>
-
         <CompactTableFrame v-if="capabilities.length">
           <Table
+            :key="tableKey"
             :columns="columns"
             :data-source="pagedCapabilities"
             :pagination="false"
-            :scroll="{ x: 'max-content', y: '100%' }"
+            :scroll="{ x: 'max-content' }"
             row-key="id"
             size="small"
           >
@@ -296,7 +330,9 @@ onMounted(() => void loadCatalogs());
                 <Tag
                   v-for="target in diagnosticById.get(record.id)?.targets || []"
                   :key="`${target.resourceCode}:${target.actionCode}`"
+                  class="cursor-pointer"
                   :color="target.active ? 'processing' : 'error'"
+                  @click="openResourceTarget(target.resourceCode)"
                 >
                   {{ target.resourceCode }} : {{ target.actionCode }}
                 </Tag>
@@ -323,7 +359,10 @@ onMounted(() => void loadCatalogs());
           </template>
         </CompactTableFrame>
         <Empty v-else-if="!loading" description="当前目录没有页面能力" />
-      </Spin>
     </BusinessPageScaffold>
   </Page>
 </template>
+
+<style scoped>
+.capability-catalog-page{display:flex;min-height:100%;flex-direction:column;gap:8px}
+</style>

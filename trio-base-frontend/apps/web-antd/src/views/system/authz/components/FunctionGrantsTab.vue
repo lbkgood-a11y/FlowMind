@@ -16,8 +16,8 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table,
   Tag,
+  Tooltip,
 } from 'ant-design-vue';
 
 import {
@@ -25,7 +25,8 @@ import {
   getRoleAuthorizationProfile,
   saveAuthorizationGrant,
 } from '#/api';
-import { CompactTableFrame } from '#/shared';
+import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import { ClientPaginatedTable } from '#/shared';
 
 const ctx = inject<any>('authzContext')!;
 
@@ -53,13 +54,6 @@ const subjectTypeOptions = [
   { label: '角色 (ROLE)', value: 'ROLE' },
   { label: '用户 (USER)', value: 'USER' },
 ];
-
-const clientPagination: TableProps['pagination'] = {
-  pageSize: 20,
-  showQuickJumper: true,
-  showSizeChanger: true,
-  showTotal: (total, range) => `共 ${total} 条记录，本页 ${range[0]}-${range[1]} 条`,
-};
 
 function asStringValue(value: unknown) {
   return typeof value === 'string' ? value : String(value ?? '');
@@ -116,7 +110,10 @@ async function handleDeleteGrant(record: SystemAuthorizationApi.AuthorizationGra
 }
 
 async function loadGrants() {
-  if (!ctx.canQuery.value || !ctx.selectedRoleId.value) return;
+  if (!ctx.canQuery.value || !ctx.selectedRoleId.value) {
+    grantRows.value = [];
+    return;
+  }
   try {
     const profile = await getRoleAuthorizationProfile(ctx.selectedRoleId.value);
     grantRows.value = profile.functionGrants ?? [];
@@ -139,23 +136,21 @@ watch(() => ctx.selectedRoleId.value, () => {
     <div class="mb-3 flex items-center justify-between">
       <span class="text-muted-foreground text-sm">按资源 + 动作授权给角色或用户</span>
       <Space v-if="ctx.canCreate.value">
-        <Button class="!h-8 !w-8" @click="loadGrants">
-          <IconifyIcon icon="lucide:refresh-cw" />
-        </Button>
+        <Tooltip title="刷新">
+          <Button shape="circle" @click="loadGrants">
+            <IconifyIcon :icon="ERP_TOOLBAR_ICONS.refresh" class="size-4" />
+          </Button>
+        </Tooltip>
         <Button type="primary" @click="openGrantDrawer">
           <IconifyIcon icon="lucide:plus" class="mr-1" />新增授权
         </Button>
       </Space>
     </div>
-    <CompactTableFrame>
-      <Table
+    <ClientPaginatedTable
         :columns="grantColumns"
         :data-source="grantRows"
         :loading="ctx.loading.value"
-        :pagination="clientPagination"
         row-key="id"
-        size="small"
-        bordered
       >
         <template #bodyCell="{ column, record }: any">
           <template v-if="column.key === 'effect'">
@@ -167,8 +162,7 @@ watch(() => ctx.selectedRoleId.value, () => {
             </Popconfirm>
           </template>
         </template>
-      </Table>
-    </CompactTableFrame>
+    </ClientPaginatedTable>
 
     <Drawer v-model:open="grantDrawerOpen" title="新增授权" :width="500">
       <Form layout="vertical">

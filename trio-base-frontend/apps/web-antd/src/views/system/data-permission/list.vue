@@ -8,7 +8,7 @@ import type {
 } from '#/api';
 import type { TableProps } from 'ant-design-vue';
 
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, inject, onMounted, reactive, ref, watch } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
@@ -43,8 +43,23 @@ import {
 } from '#/api';
 import { getAuthorizationResourceTree } from '#/api/system/authorization';
 import { ERP_TOOLBAR_ICONS } from '#/constants/erp-toolbar';
+import { BusinessPageScaffold } from '#/shared';
 
 const Textarea = Input.TextArea;
+
+const props = defineProps<{ embedded?: boolean; externalRoleId?: string }>();
+
+interface AuthzContext {
+  resourceList: { value: SystemAuthorizationApi.ResourceNode[] };
+  resourceOptions: { value: { label: string; value: string }[] };
+  roleList: { value: SystemRoleApi.SystemRole[] };
+  orgDimensions: { value: SystemOrgApi.OrgDimension[] };
+  orgOptionsMap: { value: Record<string, { label: string; value: string }[]> };
+  ensureOrgOptions: (dimensionCode: string) => Promise<void>;
+  loading: { value: boolean };
+}
+const authzCtx = inject<AuthzContext>('authzContext', undefined as any);
+const useEmbeddedResources = computed(() => props.embedded && !!authzCtx?.resourceOptions?.value?.length);
 
 const DATA_POLICY_PERMISSIONS = {
   create: '/api/v1/data-policies:POST',
@@ -132,29 +147,39 @@ const builtInResourceOptions = [
   { label: '组织 ORG_UNIT', value: 'ORG_UNIT' },
 ];
 
-const resourceOptions = computed(() => [
-  {
-    label: '平台内置资源',
-    options: builtInResourceOptions,
-  },
-  {
-    label: '已发布低代码表单',
-    options: formDataResources.value.map((item) => ({
-      label: `${item.resourceName}（${item.formKey}）`,
-      value: item.resourceCode,
-    })),
-  },
-]);
+const resourceOptions = computed(() => {
+  if (useEmbeddedResources.value) {
+    return [{ label: '已注册资源', options: authzCtx.resourceOptions.value }];
+  }
+  return [
+    {
+      label: '平台内置资源',
+      options: builtInResourceOptions,
+    },
+    {
+      label: '已发布低代码表单',
+      options: formDataResources.value.map((item) => ({
+        label: `${item.resourceName}（${item.formKey}）`,
+        value: item.resourceCode,
+      })),
+    },
+  ];
+});
 
-const resourceLabelMap = computed(() =>
-  new Map([
+const resourceLabelMap = computed(() => {
+  if (useEmbeddedResources.value) {
+    return new Map(
+      authzCtx.resourceList.value.map((r) => [r.resourceCode, r.displayName || r.resourceCode] as const),
+    );
+  }
+  return new Map([
     ...builtInResourceOptions.map((item) => [item.value, item.label] as const),
     ...formDataResources.value.map(
       (item) =>
         [item.resourceCode, `${item.resourceName}（${item.formKey}）`] as const,
     ),
-  ]),
-);
+  ]);
+});
 
 const actionOptions = computed(() => {
   const resource = findResourceNode(formModel.resourceCode);
@@ -170,6 +195,9 @@ const actionOptions = computed(() => {
 });
 
 function findResourceNode(resourceCode: string) {
+  if (useEmbeddedResources.value) {
+    return authzCtx.resourceList.value.find((r) => r.resourceCode === resourceCode);
+  }
   if (!resourceTree.value) return undefined;
   for (const group of resourceTree.value.groups ?? []) {
     for (const r of group.resources ?? []) {
@@ -241,18 +269,8 @@ const pagedPolicies = computed(() => {
   const start = (pagination.current - 1) * pagination.pageSize;
   return policies.value.slice(start, start + pagination.pageSize);
 });
-const policyTableBodyHeight = computed(() => {
-  const compactRowHeight = 34;
-  const emptyBodyHeight = 120;
-  const maxVisibleRows = 12;
-  const rowCount = pagedPolicies.value.length;
-  return rowCount === 0
-    ? emptyBodyHeight
-    : Math.min(rowCount, maxVisibleRows) * compactRowHeight;
-});
 const policyTableScroll = computed(() => ({
-  x: 1500,
-  y: policyTableBodyHeight.value,
+  x: 'max-content' as const,
 }));
 
 const columns = computed<TableProps['columns']>(() => [
@@ -268,6 +286,10 @@ const columns = computed<TableProps['columns']>(() => [
 ]);
 
 async function loadRoles() {
+  if (props.embedded && authzCtx?.roleList?.value) {
+    roles.value = authzCtx.roleList.value;
+    return;
+  }
   if (!canQueryRoles.value) {
     roles.value = [];
     selectedRoleId.value = undefined;
@@ -282,6 +304,10 @@ async function loadRoles() {
 }
 
 async function loadDimensions() {
+  if (props.embedded && authzCtx?.orgDimensions?.value) {
+    dimensions.value = authzCtx.orgDimensions.value;
+    return;
+  }
   if (!canQueryOrg.value) {
     dimensions.value = [];
     return;
@@ -312,6 +338,9 @@ function normalizePolicyPage() {
 }
 
 async function loadDataResources() {
+  if (props.embedded && authzCtx?.resourceList?.value) {
+    return; // resources provided by authzContext
+  }
   resourcesLoading.value = true;
   try {
     const [formResources, tree] = await Promise.all([
@@ -354,6 +383,13 @@ function flattenOrgTree(list: SystemOrgApi.OrgTreeNode[]) {
 }
 
 async function ensureOrgOptions(dimensionCode: string) {
+  if (props.embedded && authzCtx?.ensureOrgOptions) {
+    await authzCtx.ensureOrgOptions(dimensionCode);
+    if (authzCtx.orgOptionsMap?.value) {
+      orgOptionsMap.value = authzCtx.orgOptionsMap.value;
+    }
+    return;
+  }
   if (!canQueryOrg.value || orgOptionsMap.value[dimensionCode]) {
     return;
   }
@@ -539,6 +575,11 @@ watch(selectedRoleId, () => {
   loadPolicies();
 });
 
+watch(() => props.externalRoleId, (roleId) => {
+  selectedRoleId.value = roleId || undefined;
+  selectedRoleTreeKey.value = roleId || 'all';
+}, { immediate: true });
+
 onMounted(async () => {
   await Promise.all([loadRoles(), loadDimensions(), loadDataResources()]);
   await loadPolicies();
@@ -546,10 +587,18 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Page auto-content-height>
-    <div class="erp-compact-page data-permission-page">
+  <component
+    :is="props.embedded ? 'div' : Page"
+    auto-content-height
+    :class="{ 'data-permission-host--embedded': props.embedded }"
+  >
+    <component
+      :is="props.embedded ? 'div' : BusinessPageScaffold"
+      class="data-permission-page"
+      pattern="master-detail"
+    >
       <section class="policy-workbench">
-        <aside class="data-panel policy-role-panel">
+        <aside v-if="!props.embedded" class="role-tree-panel policy-role-panel">
           <div class="role-tree-header">
             <div>
               <h3>角色树</h3>
@@ -589,7 +638,7 @@ onMounted(async () => {
           </div>
         </aside>
 
-        <section class="data-panel policy-table-panel">
+        <section class="list-panel policy-table-panel">
           <div class="list-header">
             <div class="list-title">
               <h2>数据权限策略</h2>
@@ -688,7 +737,7 @@ onMounted(async () => {
           </div>
         </section>
       </section>
-    </div>
+    </component>
 
     <Drawer
       v-model:open="formOpen"
@@ -782,7 +831,7 @@ onMounted(async () => {
         </Space>
       </template>
     </Drawer>
-  </Page>
+  </component>
 </template>
 
 <style scoped>
@@ -793,11 +842,27 @@ onMounted(async () => {
   min-height: 100%;
 }
 
+.data-permission-host--embedded :deep(.page-content),
+.data-permission-host--embedded :deep(.data-permission-page) {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+
 .policy-workbench {
   display: flex;
   flex: 1;
   gap: var(--erp-panel-gap);
   min-height: 0;
+}
+
+.role-tree-panel,
+.list-panel {
+  padding: 8px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
 }
 
 .policy-role-panel {
@@ -873,7 +938,6 @@ onMounted(async () => {
 }
 
 .policy-table-panel {
-  align-self: flex-start;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -912,31 +976,39 @@ onMounted(async () => {
 }
 
 .policy-table-scroll {
-  flex: 0 1 auto;
+  flex: 1;
   min-height: 0;
   overflow: hidden;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
 }
 
 .policy-table-scroll :deep(.ant-table-wrapper),
 .policy-table-scroll :deep(.ant-spin-nested-loading),
-.policy-table-scroll :deep(.ant-spin-container),
-.policy-table-scroll :deep(.ant-table),
+.policy-table-scroll :deep(.ant-spin-container) {
+  height: 100%;
+}
+
+.policy-table-scroll :deep(.ant-table) {
+  height: 100%;
+}
+
 .policy-table-scroll :deep(.ant-table-container) {
-  display: block !important;
-  height: auto !important;
+  border-inline-start: 0 !important;
 }
 
 .policy-table-scroll :deep(.ant-table-content) {
   overflow: auto !important;
-}
-
-.policy-table-scroll :deep(.ant-table-header) {
-  overflow: hidden !important;
-}
-
-.policy-table-scroll :deep(.ant-table-body) {
-  overflow: auto !important;
   scrollbar-gutter: stable;
+}
+
+.policy-table-scroll :deep(.ant-table-content > table) {
+  width: 100% !important;
+}
+
+.policy-table-scroll :deep(.ant-table-cell) {
+  overflow-wrap: break-word;
 }
 
 .policy-table-footer {
