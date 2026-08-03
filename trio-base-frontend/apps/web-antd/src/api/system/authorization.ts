@@ -32,6 +32,8 @@ export namespace SystemAuthorizationApi {
     actionCategory?: string;
     actionCode: string;
     description?: string;
+    dataScopeEnforced?: boolean;
+    dataScopeSupported?: boolean;
     guardCodes?: string[];
     status?: number;
   }

@@ -26,12 +26,12 @@ spring:
     redis:
       host: ${REDIS_HOST:10.193.102.2}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:pwd123}
+      password: ${REDIS_PASSWORD:!pwd123$}
       timeout: 2s
   cloud:
     nacos:
       username: nacos
-      password: nacos
+      password: "'!pwd123$'"
       discovery:
         enabled: ${NACOS_ENABLED:true}
         server-addr: ${NACOS_SERVER_ADDR:10.193.102.2:8848}

@@ -39,6 +39,8 @@ public class AuthorizationResourceSyncRequest {
         private String actionCode;
         private String actionCategory;
         private String description;
+        private Boolean dataScopeSupported;
+        private Boolean dataScopeEnforced;
         private Integer status;
         private List<String> guardCodes = new ArrayList<>();
     }

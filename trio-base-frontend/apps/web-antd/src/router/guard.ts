@@ -78,10 +78,10 @@ function setupAccessGuard(router: Router) {
         accessStore.accessToken &&
         !shouldForceLogin
       ) {
-        return decodeURIComponent(
+        return (
           (to.query?.redirect as string) ||
-            userStore.userInfo?.homePath ||
-            preferences.app.defaultHomePath,
+          userStore.userInfo?.homePath ||
+          preferences.app.defaultHomePath
         );
       }
       return true;
@@ -102,7 +102,7 @@ function setupAccessGuard(router: Router) {
           query:
             to.fullPath === preferences.app.defaultHomePath
               ? {}
-              : { redirect: encodeURIComponent(to.fullPath) },
+              : { redirect: to.fullPath },
           // 携带当前跳转的页面，登录后重新跳转该页面
           replace: true,
         };
@@ -136,7 +136,7 @@ function setupAccessGuard(router: Router) {
       (to.path === preferences.app.defaultHomePath
         ? userInfo.homePath || preferences.app.defaultHomePath
         : to.fullPath)) as string;
-    const decodedRedirectPath = decodeURIComponent(requestedRedirectPath);
+    const decodedRedirectPath = requestedRedirectPath;
     const redirectPath = resolvesToNotFound(router, decodedRedirectPath)
       ? findFirstAccessibleMenuPath(accessibleMenus) || decodedRedirectPath
       : decodedRedirectPath;

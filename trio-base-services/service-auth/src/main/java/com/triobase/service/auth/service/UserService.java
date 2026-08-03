@@ -20,6 +20,7 @@ import com.triobase.service.auth.entity.SysRole;
 import com.triobase.service.auth.entity.SysUser;
 import com.triobase.service.auth.entity.SysUserRole;
 import com.triobase.service.auth.mapper.RoleMapper;
+import com.triobase.service.auth.mapper.OrgScopeMapper;
 import com.triobase.service.auth.mapper.UserMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
@@ -31,9 +32,11 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
@@ -51,6 +54,7 @@ public class UserService {
     private final UserMapper userMapper;
     private final UserRoleMapper userRoleMapper;
     private final RoleMapper roleMapper;
+    private final OrgScopeMapper orgScopeMapper;
     private final PasswordEncoder passwordEncoder;
     private final PermissionCacheService permissionCacheService;
     private final AuthService authService;
@@ -58,7 +62,7 @@ public class UserService {
     private final UserFieldAuthorizationAdapter fieldAuthorizationAdapter;
 
     public UserInfoPayload findById(String id) {
-        SysUser user = userMapper.selectById(id);
+        SysUser user = withoutInterceptorDataScope(() -> userMapper.selectById(id));
         if (user == null) {
             throw new BizException(AuthErrorCode.USER_NOT_FOUND);
         }
@@ -109,11 +113,29 @@ public class UserService {
             return PageResult.empty(page, size);
         }
 
-        IPage<SysUser> userPage = userMapper.selectPage(new Page<>(page, size), queryWrapper);
-        List<UserInfoPayload> records = userPage.getRecords().stream()
+        IPage<SysUser> userPage = withoutInterceptorDataScope(
+                () -> userMapper.selectPage(new Page<>(page, size), queryWrapper));
+        List<UserInfoPayload> records = withoutInterceptorDataScope(() -> userPage.getRecords().stream()
                 .map(this::toPayload)
-                .collect(Collectors.toList());
+                .collect(Collectors.toList()));
         return PageResult.of(records, userPage.getTotal(), page, size);
+    }
+
+    /**
+     * USER queries enforce SELF directly against the user primary key. The generic SQL interceptor
+     * intentionally does not treat a column named only {@code id} as an ownership column, so leaving
+     * the scope installed would apply a second, fail-closed rewrite after the explicit predicate.
+     */
+    private <T> T withoutInterceptorDataScope(Supplier<T> query) {
+        DataScope previous = DataScopeContextHolder.get();
+        DataScopeContextHolder.clear();
+        try {
+            return query.get();
+        } finally {
+            if (previous != null) {
+                DataScopeContextHolder.set(previous);
+            }
+        }
     }
 
     boolean applyDataScope(LambdaQueryWrapper<SysUser> queryWrapper, DataScope dataScope) {
@@ -130,7 +152,50 @@ public class UserService {
             queryWrapper.eq(SysUser::getId, dataScope.userId());
             return true;
         }
+        List<String> orgUnitIds = allowedOrgUnitIds(dataScope);
+        if (!orgUnitIds.isEmpty()) {
+            List<String> userIds = withoutInterceptorDataScope(() ->
+                    orgScopeMapper.selectActiveUserIdsByOrgUnitIds(currentTenantId(), orgUnitIds));
+            if (userIds.isEmpty()) {
+                return false;
+            }
+            queryWrapper.in(SysUser::getId, userIds);
+            return true;
+        }
         return false;
+    }
+
+    private List<String> allowedOrgUnitIds(DataScope dataScope) {
+        if (!dataScope.orgContextResolved()) {
+            return List.of();
+        }
+        LinkedHashSet<String> allowed = new LinkedHashSet<>();
+        LinkedHashSet<String> denied = new LinkedHashSet<>();
+        for (DataScope.Policy policy : dataScope.policies()) {
+            boolean allow = "ALLOW".equalsIgnoreCase(policy.effect());
+            boolean deny = "DENY".equalsIgnoreCase(policy.effect());
+            if (!allow && !deny) {
+                continue;
+            }
+            for (DataScope.Dimension dimension : policy.dimensions()) {
+                if (!isOrganizationScope(dimension.scopeType())) {
+                    continue;
+                }
+                if (allow) {
+                    allowed.addAll(dimension.orgUnitIds());
+                } else {
+                    denied.addAll(dimension.orgUnitIds());
+                }
+            }
+        }
+        allowed.removeAll(denied);
+        return List.copyOf(allowed);
+    }
+
+    private boolean isOrganizationScope(String scopeType) {
+        return "OWN_ORG".equalsIgnoreCase(scopeType)
+                || "OWN_ORG_AND_CHILDREN".equalsIgnoreCase(scopeType)
+                || "ASSIGNED_ORGS".equalsIgnoreCase(scopeType);
     }
 
     @Transactional

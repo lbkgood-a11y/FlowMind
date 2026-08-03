@@ -7,8 +7,6 @@ import {
   Alert,
   Button,
   Checkbox,
-  Collapse,
-  CollapsePanel,
   Empty,
   Input,
   message,
@@ -62,7 +60,10 @@ const draft = ref<SystemAuthorizationApi.RoleAuthorizationDraft>();
 const validation = ref<SystemAuthorizationApi.RoleAuthorizationValidation>();
 const releases = ref<SystemAuthorizationApi.RoleAuthorizationRelease[]>([]);
 const drifts = ref<SystemAuthorizationApi.RoleAuthorizationDrift[]>([]);
-const activePageKeys = ref<string[]>([]);
+const activePageCode = ref('');
+const pageKeyword = ref('');
+const configuredOnly = ref(false);
+const changedOnly = ref(false);
 const simulationLoading = ref(false);
 const simulationResult = ref<SystemAuthorizationApi.PageCapabilitySimulation>();
 const simulationUsers = ref<SystemUserApi.SystemUser[]>([]);
@@ -76,6 +77,7 @@ const simulationForm = reactive({
 const selectionById = reactive<Record<string, Selection>>({});
 const fieldRulesByCapability = reactive<Record<string, Record<string, FieldRule>>>({});
 const loadedCapabilityIds = ref(new Set<string>());
+const baselineSelections = ref<Record<string, string>>({});
 
 const scopeOptions = [
   { label: '不能查看任何数据', value: 'NONE' },
@@ -126,6 +128,45 @@ const pages = computed(() => {
   return [...grouped.values()];
 });
 
+const filteredPages = computed(() => {
+  const keyword = pageKeyword.value.trim().toLowerCase();
+  return pages.value.filter((page) => {
+    const items = [...page.access, ...page.reads, ...page.operations];
+    if (configuredOnly.value && !items.some((item) => isSelected(item.id))) return false;
+    if (changedOnly.value && !items.some((item) => changedCapabilityIds.value.has(item.id))) return false;
+    if (!keyword) return true;
+    return `${page.name} ${page.pageCode} ${items.map((item) => item.capabilityName).join(' ')}`
+      .toLowerCase()
+      .includes(keyword);
+  });
+});
+
+const activePage = computed(() =>
+  filteredPages.value.find((page) => page.pageCode === activePageCode.value)
+  ?? filteredPages.value[0],
+);
+
+function selectionFingerprint(selection?: Selection) {
+  if (!selection) return '';
+  return JSON.stringify({
+    capabilityId: selection.capabilityId,
+    defaultScopeIds: [...(selection.defaultScopeIds ?? [])].sort(),
+    defaultScopeType: selection.defaultScopeType,
+    fieldIntentJson: selection.fieldIntentJson,
+    operationScopeIds: [...(selection.operationScopeIds ?? [])].sort(),
+    operationScopeType: selection.operationScopeType,
+    selectionSource: selection.selectionSource,
+  });
+}
+
+const changedCapabilityIds = computed(() => {
+  const ids = new Set([...Object.keys(baselineSelections.value), ...Object.keys(selectionById)]);
+  return new Set([...ids].filter((id) => baselineSelections.value[id] !== selectionFingerprint(selectionById[id])));
+});
+const addedCount = computed(() => [...changedCapabilityIds.value].filter((id) => !baselineSelections.value[id] && selectionById[id]).length);
+const removedCount = computed(() => [...changedCapabilityIds.value].filter((id) => baselineSelections.value[id] && !selectionById[id]).length);
+const modifiedCount = computed(() => changedCapabilityIds.value.size - addedCount.value - removedCount.value);
+
 const selectedCount = computed(() => Object.keys(selectionById).length);
 const selectedPages = computed(() =>
   pages.value.filter((page) =>
@@ -153,6 +194,9 @@ const statusLabel = computed(() => {
   };
   return labels[draft.value?.status ?? 'DRAFT'] ?? '草稿';
 });
+const basedRelease = computed(() =>
+  releases.value.find((release) => release.releaseId === draft.value?.basedReleaseId),
+);
 
 function isSelected(capabilityId: string) {
   return Boolean(selectionById[capabilityId]);
@@ -194,6 +238,56 @@ function toggleCapability(capability: SystemAuthorizationApi.PageCapability, che
     delete selectionById[capability.id];
   }
   markChanged();
+}
+
+function pageItems(page: (typeof pages.value)[number]) {
+  return [...page.access, ...page.reads, ...page.operations];
+}
+
+function pageSelectedCount(page: (typeof pages.value)[number]) {
+  return pageItems(page).filter((item) => isSelected(item.id)).length;
+}
+
+function selectPage(page: (typeof pages.value)[number]) {
+  if (!props.canManage) return;
+  pageItems(page).filter((item) => item.readiness === 'READY').forEach((item) => addWithDependencies(item));
+  markChanged();
+}
+
+function clearPage(page: (typeof pages.value)[number]) {
+  if (!props.canManage) return;
+  const pageIds = new Set(pageItems(page).map((item) => item.id));
+  const requiredOutsidePage = new Set(
+    capabilities.value
+      .filter((item) => isSelected(item.id) && !pageIds.has(item.id))
+      .flatMap((item) => item.requiredCapabilityIds ?? []),
+  );
+  pageIds.forEach((id) => {
+    if (!requiredOutsidePage.has(id)) delete selectionById[id];
+  });
+  markChanged();
+}
+
+function restorePage(page: (typeof pages.value)[number]) {
+  if (!props.canManage) return;
+  for (const item of pageItems(page)) {
+    const baseline = baselineSelections.value[item.id];
+    if (!baseline) {
+      delete selectionById[item.id];
+      delete fieldRulesByCapability[item.id];
+    } else {
+      const restored = JSON.parse(baseline) as Selection;
+      selectionById[item.id] = restored;
+      try {
+        const rules = restored.fieldIntentJson ? JSON.parse(restored.fieldIntentJson) as FieldRule[] : [];
+        fieldRulesByCapability[item.id] = Object.fromEntries(rules.map((rule) => [rule.fieldKey, rule]));
+      } catch {
+        fieldRulesByCapability[item.id] = {};
+      }
+    }
+  }
+  dirty.value = changedCapabilityIds.value.size > 0;
+  validation.value = undefined;
 }
 
 function markChanged() {
@@ -309,6 +403,9 @@ function applyDraft(next: SystemAuthorizationApi.RoleAuthorizationDraft) {
     }
   }
   loadedCapabilityIds.value = new Set(next.selections.map((item) => item.capabilityId));
+  baselineSelections.value = Object.fromEntries(
+    next.selections.map((item) => [item.capabilityId, selectionFingerprint(item)]),
+  );
   dirty.value = false;
 }
 
@@ -323,7 +420,7 @@ async function load() {
       getUserList({ page: 1, size: 100, status: 1 }),
     ]);
     capabilities.value = catalog;
-    activePageKeys.value = [...new Set(catalog.map((item) => item.pageCode))];
+    activePageCode.value = activePageCode.value || catalog[0]?.pageCode || '';
     releases.value = history;
     drifts.value = driftItems;
     simulationUsers.value = users.items;
@@ -448,16 +545,28 @@ onMounted(load);
         </div>
         <Space wrap>
           <Tag color="blue">{{ statusLabel }}</Tag>
+          <Tag v-if="basedRelease" color="cyan">基于第 {{ basedRelease.releaseNumber }} 版增量修改</Tag>
+          <Tag v-else>尚无已发布基线</Tag>
           <Tag>已选 {{ selectedCount }} 项功能</Tag>
         </Space>
       </div>
 
-      <Alert show-icon type="info">
-        <template #message>“可查看”和“可操作”已分开</template>
-        <template #description>
-          进入页面只决定能否看到入口；查看内容决定能读哪些数据；新增、编辑、删除、导出等操作需要单独勾选。
-        </template>
-      </Alert>
+      <div class="density-toolbar">
+        <Input
+          v-model:value="pageKeyword"
+          allow-clear
+          class="page-search"
+          placeholder="搜索页面、编码或功能"
+        />
+        <Checkbox v-model:checked="configuredOnly">仅看已配置</Checkbox>
+        <Checkbox v-model:checked="changedOnly">仅看本次变更</Checkbox>
+        <span class="toolbar-stat">显示 {{ filteredPages.length }}/{{ pages.length }} 个页面</span>
+        <Space v-if="changedCapabilityIds.size" :size="4" class="change-counter">
+          <Tag v-if="addedCount" color="success">新增 {{ addedCount }}</Tag>
+          <Tag v-if="modifiedCount" color="warning">调整 {{ modifiedCount }}</Tag>
+          <Tag v-if="removedCount" color="error">移除 {{ removedCount }}</Tag>
+        </Space>
+      </div>
 
       <Alert v-if="drifts.length" show-icon type="warning" message="页面功能映射已变化，线上权限尚未自动改变">
         <template #description>
@@ -467,16 +576,42 @@ onMounted(load);
         </template>
       </Alert>
 
-      <Collapse v-model:active-key="activePageKeys" class="page-capability-list">
-        <CollapsePanel v-for="page in pages" :key="page.pageCode">
-          <template #header>
+      <div v-if="filteredPages.length" class="permission-browser">
+        <nav class="page-directory">
+          <button
+            v-for="page in filteredPages"
+            :key="page.pageCode"
+            class="page-directory-item"
+            :class="{ active: activePage?.pageCode === page.pageCode }"
+            type="button"
+            @click="activePageCode = page.pageCode"
+          >
+            <span><strong>{{ page.name }}</strong><small>{{ page.pageCode }}</small></span>
+            <span class="directory-count" :class="{ changed: pageItems(page).some((item) => changedCapabilityIds.has(item.id)) }">
+              {{ pageSelectedCount(page) }}/{{ pageItems(page).length }}
+            </span>
+          </button>
+        </nav>
+
+        <main v-if="activePage" class="page-config-panel">
+          <template v-for="page in [activePage]" :key="page.pageCode">
             <div class="page-heading">
-              <strong>{{ page.name }}</strong>
-              <Tag v-if="[...page.access, ...page.reads, ...page.operations].some((item) => isSelected(item.id))" color="processing">
-                已配置
-              </Tag>
+              <div class="page-identity">
+                <strong>{{ page.name }}</strong>
+                <code>{{ page.pageCode }}</code>
+              </div>
+              <div class="page-summary" @click.stop>
+                <span>{{ pageSelectedCount(page) }}/{{ pageItems(page).length }}</span>
+                <Tag v-if="pageSelectedCount(page)" color="processing">已配置</Tag>
+                <Button :disabled="!canManage" size="small" type="link" @click="selectPage(page)">全选</Button>
+                <Button :disabled="!canManage || !pageSelectedCount(page)" size="small" type="link" danger @click="clearPage(page)">清空</Button>
+                <Button :disabled="!canManage || !pageItems(page).some((item) => changedCapabilityIds.has(item.id))" size="small" @click="restorePage(page)">撤销本页变更</Button>
+              </div>
             </div>
-          </template>
+
+          <div class="permission-matrix-head">
+            <span>功能权限</span><span>数据范围 / 限制</span>
+          </div>
 
           <section class="capability-section">
             <div class="section-title"><strong>允许进入页面</strong><span>控制菜单入口和页面访问</span></div>
@@ -614,8 +749,10 @@ onMounted(load);
             <div class="section-title"><strong>业务限制</strong><span>由业务服务声明并在接口侧强制执行</span></div>
             <Alert message="所选操作包含审批资格、禁止本人审批等业务限制，发布时系统会自动校验并启用。" type="info" show-icon />
           </section>
-        </CollapsePanel>
-      </Collapse>
+          </template>
+        </main>
+      </div>
+      <Empty v-if="filteredPages.length === 0" description="没有匹配的页面功能" :image="Empty.PRESENTED_IMAGE_SIMPLE" />
 
       <section class="review-panel">
         <div class="section-title"><strong>发布前确认</strong><span>草稿不会影响线上用户，只有“发布”才会生效</span></div>
@@ -695,16 +832,35 @@ onMounted(load);
 </template>
 
 <style scoped>
-.capability-workbench { display: flex; flex-direction: column; gap: 16px; }
+.capability-workbench { display: flex; flex-direction: column; gap: 10px; }
 .workbench-header, .section-title, .page-heading, .capability-row, .release-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .workbench-header h3 { margin: 0 0 4px; font-size: 18px; }
 .workbench-header p, .section-title span { margin: 0; color: var(--ant-color-text-secondary, #666); }
-.page-capability-list { background: transparent; }
-.page-heading { width: 100%; padding-right: 12px; }
-.capability-section, .review-panel, .release-panel { padding: 16px; border: 1px solid var(--ant-color-border-secondary, #f0f0f0); border-radius: 8px; }
-.capability-section + .capability-section { margin-top: 12px; }
-.section-title { margin-bottom: 12px; }
-.capability-row { min-height: 42px; padding: 8px 0; border-top: 1px dashed var(--ant-color-border-secondary, #f0f0f0); }
+.density-toolbar { position: sticky; z-index: 3; top: 0; display: flex; min-height: 42px; align-items: center; gap: 12px; padding: 6px 10px; background: var(--ant-color-bg-container, #fff); border: 1px solid var(--ant-color-border-secondary, #f0f0f0); border-radius: 6px; }
+.page-search { width: min(360px, 40vw); }
+.toolbar-stat { margin-left: auto; color: var(--ant-color-text-secondary, #666); font-size: 12px; }
+.change-counter { flex-wrap: nowrap; }
+.permission-browser { display: grid; min-height: 480px; grid-template-columns: 230px minmax(0, 1fr); overflow: hidden; border: 1px solid var(--ant-color-border-secondary, #f0f0f0); border-radius: 6px; }
+.page-directory { max-height: 680px; padding: 6px; overflow: auto; background: var(--ant-color-fill-quaternary, #fafafa); border-right: 1px solid var(--ant-color-border-secondary, #f0f0f0); }
+.page-directory-item { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; color: inherit; text-align: left; background: transparent; border: 0; border-radius: 5px; cursor: pointer; }
+.page-directory-item:hover { background: var(--ant-color-fill-secondary, #f5f5f5); }
+.page-directory-item.active { color: var(--ant-color-primary, #1677ff); background: var(--ant-color-primary-bg, #e6f4ff); }
+.page-directory-item > span:first-child { display: flex; min-width: 0; flex-direction: column; }
+.page-directory-item strong, .page-directory-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-directory-item small { color: var(--ant-color-text-tertiary, #999); font-size: 10px; }
+.directory-count { flex: none; min-width: 34px; padding: 1px 5px; color: var(--ant-color-text-secondary, #666); text-align: center; background: var(--ant-color-bg-container, #fff); border-radius: 9px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.directory-count.changed { color: #d46b08; background: #fff7e6; box-shadow: inset 0 0 0 1px #ffd591; }
+.page-config-panel { min-width: 0; max-height: 680px; padding: 10px; overflow: auto; }
+.page-heading { position: sticky; z-index: 2; top: -10px; width: 100%; margin: -10px -10px 8px; padding: 9px 12px; background: var(--ant-color-bg-container, #fff); border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0); }
+.page-identity, .page-summary { display: flex; align-items: center; gap: 8px; }
+.page-identity code { color: var(--ant-color-text-tertiary, #999); font-size: 11px; }
+.page-summary > span { min-width: 38px; color: var(--ant-color-text-secondary, #666); font-variant-numeric: tabular-nums; text-align: right; }
+.permission-matrix-head { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(230px, .8fr); padding: 5px 8px; color: var(--ant-color-text-secondary, #666); background: var(--ant-color-fill-quaternary, #fafafa); font-size: 12px; font-weight: 600; }
+.capability-section, .review-panel, .release-panel { padding: 10px 12px; border: 1px solid var(--ant-color-border-secondary, #f0f0f0); border-radius: 6px; }
+.capability-section + .capability-section { margin-top: 6px; }
+.section-title { margin-bottom: 6px; }
+.section-title span { font-size: 12px; }
+.capability-row { min-height: 34px; padding: 4px 0; border-top: 1px dashed var(--ant-color-border-secondary, #f0f0f0); }
 .capability-row-with-config { align-items: flex-start; }
 .scope-select { width: 230px; }
 .business-summary, .release-list { display: flex; flex-direction: column; gap: 8px; }
@@ -722,5 +878,5 @@ onMounted(load);
 .field-rule-row > :first-child { min-width: 220px; }
 .field-mode-select { width: 160px; }
 .workbench-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
-@media (max-width: 900px) { .capability-row, .release-row { align-items: stretch; flex-direction: column; } .scope-select { width: 100%; } }
+@media (max-width: 900px) { .density-toolbar { position: static; flex-wrap: wrap; } .page-search { width: 100%; } .toolbar-stat { margin-left: 0; } .permission-browser { grid-template-columns: 1fr; } .page-directory { display: flex; max-height: 150px; gap: 4px; border-right: 0; border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0); } .page-directory-item { min-width: 180px; } .page-config-panel { max-height: none; } .permission-matrix-head { display: none; } .capability-row, .release-row { align-items: stretch; flex-direction: column; } .scope-select { width: 100%; } }
 </style>

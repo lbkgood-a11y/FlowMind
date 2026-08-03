@@ -147,9 +147,25 @@ const builtInResourceOptions = [
   { label: '组织 ORG_UNIT', value: 'ORG_UNIT' },
 ];
 
+const governedResourceOptions = computed(() =>
+  authzCtx.resourceList.value
+    .filter((resource) =>
+      (resource.actions ?? []).some(
+        (action) =>
+          action.status !== 0 &&
+          action.dataScopeSupported === true &&
+          action.dataScopeEnforced === true,
+      ),
+    )
+    .map((resource) => ({
+      label: resource.displayName || resource.resourceCode,
+      value: resource.resourceCode,
+    })),
+);
+
 const resourceOptions = computed(() => {
   if (useEmbeddedResources.value) {
-    return [{ label: '已注册资源', options: authzCtx.resourceOptions.value }];
+    return [{ label: '已注册资源', options: governedResourceOptions.value }];
   }
   return [
     {
@@ -187,7 +203,12 @@ const actionOptions = computed(() => {
     return [];
   }
   return (resource.actions ?? [])
-    .filter((a: SystemAuthorizationApi.ActionNode) => a.status !== 0)
+    .filter(
+      (a: SystemAuthorizationApi.ActionNode) =>
+        a.status !== 0 &&
+        a.dataScopeSupported === true &&
+        a.dataScopeEnforced === true,
+    )
     .map((a: SystemAuthorizationApi.ActionNode) => ({
       label: `${a.actionCode}${a.description ? ` · ${a.description}` : ''}`,
       value: a.actionCode,

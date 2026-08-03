@@ -183,11 +183,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout(redirect: boolean = true) {
     const currentPath = router.currentRoute.value.fullPath;
+    const shouldPreserveCurrentPath =
+      redirect && router.currentRoute.value.path !== LOGIN_PATH;
     const loginHref = router.resolve({
       path: LOGIN_PATH,
-      query: redirect
+      query: shouldPreserveCurrentPath
         ? {
-            redirect: encodeURIComponent(currentPath),
+            redirect: currentPath,
           }
         : {},
     }).href;

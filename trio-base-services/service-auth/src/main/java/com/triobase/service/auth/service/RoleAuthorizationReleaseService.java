@@ -47,6 +47,7 @@ import java.util.Map;
 public class RoleAuthorizationReleaseService {
 
     private static final int VALIDATION_MINUTES = 15;
+    private static final String RELEASE_MANAGED_DESCRIPTION_PREFIX = "页面功能发布版本 ";
 
     private final RoleAuthorizationCompiler compiler;
     private final RoleAuthDraftMapper draftMapper;
@@ -234,7 +235,8 @@ public class RoleAuthorizationReleaseService {
         grantMapper.delete(new LambdaQueryWrapper<SysAuthGrant>()
                 .eq(SysAuthGrant::getTenantId, tenantId)
                 .eq(SysAuthGrant::getSubjectType, "ROLE")
-                .eq(SysAuthGrant::getSubjectId, roleId));
+                .eq(SysAuthGrant::getSubjectId, roleId)
+                .likeRight(SysAuthGrant::getDescription, RELEASE_MANAGED_DESCRIPTION_PREFIX));
         for (RoleAuthorizationCompilationPlan.GrantProjection projection : plan.getGrants()) {
             SysAuthGrant grant = new SysAuthGrant();
             grant.setTenantId(tenantId);
@@ -244,7 +246,7 @@ public class RoleAuthorizationReleaseService {
             grant.setActionCode(projection.getActionCode());
             grant.setEffect(projection.getEffect());
             grant.setStatus((short) 1);
-            grant.setDescription("页面功能发布版本 " + release.getReleaseNumber());
+            grant.setDescription(RELEASE_MANAGED_DESCRIPTION_PREFIX + release.getReleaseNumber());
             grant.setCreatedBy(currentActor());
             grant.setUpdatedBy(currentActor());
             grantMapper.insert(grant);
@@ -258,7 +260,8 @@ public class RoleAuthorizationReleaseService {
         List<SysDataPolicy> oldPolicies = dataPolicyMapper.selectList(new LambdaQueryWrapper<SysDataPolicy>()
                 .eq(SysDataPolicy::getTenantId, tenantId)
                 .eq(SysDataPolicy::getSubjectType, "ROLE")
-                .eq(SysDataPolicy::getSubjectId, roleId));
+                .eq(SysDataPolicy::getSubjectId, roleId)
+                .likeRight(SysDataPolicy::getDescription, RELEASE_MANAGED_DESCRIPTION_PREFIX));
         if (!oldPolicies.isEmpty()) {
             dimensionMapper.delete(new LambdaQueryWrapper<SysDataPolicyDimension>()
                     .in(SysDataPolicyDimension::getPolicyId,
@@ -267,7 +270,8 @@ public class RoleAuthorizationReleaseService {
         dataPolicyMapper.delete(new LambdaQueryWrapper<SysDataPolicy>()
                 .eq(SysDataPolicy::getTenantId, tenantId)
                 .eq(SysDataPolicy::getSubjectType, "ROLE")
-                .eq(SysDataPolicy::getSubjectId, roleId));
+                .eq(SysDataPolicy::getSubjectId, roleId)
+                .likeRight(SysDataPolicy::getDescription, RELEASE_MANAGED_DESCRIPTION_PREFIX));
         for (RoleAuthorizationCompilationPlan.DataProjection projection : plan.getDataPolicies()) {
             SysDataPolicy policy = new SysDataPolicy();
             policy.setTenantId(tenantId);
@@ -278,7 +282,7 @@ public class RoleAuthorizationReleaseService {
             policy.setEffect("ALLOW");
             policy.setCombineMode("ANY");
             policy.setStatus((short) 1);
-            policy.setDescription("页面功能发布版本 " + release.getReleaseNumber());
+            policy.setDescription(RELEASE_MANAGED_DESCRIPTION_PREFIX + release.getReleaseNumber());
             policy.setCreatedBy(currentActor());
             policy.setUpdatedBy(currentActor());
             dataPolicyMapper.insert(policy);
@@ -301,7 +305,8 @@ public class RoleAuthorizationReleaseService {
         fieldPolicyMapper.delete(new LambdaQueryWrapper<SysAuthFieldPolicy>()
                 .eq(SysAuthFieldPolicy::getTenantId, tenantId)
                 .eq(SysAuthFieldPolicy::getSubjectType, "ROLE")
-                .eq(SysAuthFieldPolicy::getSubjectId, roleId));
+                .eq(SysAuthFieldPolicy::getSubjectId, roleId)
+                .likeRight(SysAuthFieldPolicy::getDescription, RELEASE_MANAGED_DESCRIPTION_PREFIX));
         for (RoleAuthorizationCompilationPlan.FieldProjection projection : plan.getFieldPolicies()) {
             SysAuthFieldPolicy policy = new SysAuthFieldPolicy();
             policy.setTenantId(tenantId);
@@ -314,7 +319,7 @@ public class RoleAuthorizationReleaseService {
             policy.setMaskStrategy(projection.getMaskStrategy());
             policy.setEffect("ALLOW");
             policy.setStatus((short) 1);
-            policy.setDescription("页面功能发布版本 " + release.getReleaseNumber());
+            policy.setDescription(RELEASE_MANAGED_DESCRIPTION_PREFIX + release.getReleaseNumber());
             policy.setCreatedBy(currentActor());
             policy.setUpdatedBy(currentActor());
             fieldPolicyMapper.insert(policy);

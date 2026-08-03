@@ -1,6 +1,7 @@
 package com.triobase.service.org.controller;
 
 import com.triobase.common.core.annotation.RequirePermission;
+import com.triobase.common.core.annotation.RequireDataScope;
 import com.triobase.common.core.result.R;
 import com.triobase.service.org.dto.CreateOrgUnitRequest;
 import com.triobase.service.org.dto.OrgUnitUserResponse;
@@ -34,6 +35,7 @@ public class OrgUnitController {
 
     @GetMapping("/units")
     @RequirePermission("/api/v1/org/units:GET")
+    @RequireDataScope(resource = "ORG_UNIT", action = "QUERY")
     public R<List<SysOrgUnit>> listOrgUnits(@RequestParam(required = false) String keyword,
                                             @RequestParam(required = false) String unitType,
                                             @RequestParam(required = false) Integer status) {
@@ -42,12 +44,14 @@ public class OrgUnitController {
 
     @GetMapping("/dimensions/{dimensionCode}/tree")
     @RequirePermission("/api/v1/org/units:GET")
+    @RequireDataScope(resource = "ORG_UNIT", action = "QUERY")
     public R<List<OrgTreeNodeResponse>> listOrgTree(@PathVariable String dimensionCode) {
         return R.ok(orgUnitService.listOrgTree(dimensionCode));
     }
 
     @GetMapping("/units/legacy")
     @RequirePermission("/api/v1/org/units:GET")
+    @RequireDataScope(resource = "ORG_UNIT", action = "QUERY")
     public R<List<SysOrgUnit>> listOrgUnits() {
         return R.ok(orgUnitService.listOrgUnits());
     }

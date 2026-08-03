@@ -103,13 +103,13 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: triobase-redis
-    command: redis-server --requirepass pwd123
+    command: redis-server --requirepass '!pwd123$'
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "pwd123", "ping"]
+      test: ["CMD", "redis-cli", "-a", "!pwd123$", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20

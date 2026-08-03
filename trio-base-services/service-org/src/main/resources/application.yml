@@ -22,7 +22,7 @@ spring:
   cloud:
     nacos:
       username: nacos
-      password: nacos
+      password: "'!pwd123$'"
       discovery:
         enabled: ${NACOS_ENABLED:true}
         server-addr: 10.193.102.2:8848
@@ -40,6 +40,9 @@ triobase:
   internal:
     token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
     allowed-callers: ${INTERNAL_ALLOWED_CALLERS:service-workflow-engine,service-lowcode}
+    data-scope:
+      auth-base-url: ${AUTH_DATA_SCOPE_BASE_URL:http://localhost:8081}
+      service-name: service-org
 
 logging:
   level:

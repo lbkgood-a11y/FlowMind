@@ -397,9 +397,29 @@ const resourceOptions = computed(() =>
     value: resource.resourceCode,
   })),
 );
+const dataPolicyResources = computed(() =>
+  resourceList.value.filter((resource) =>
+    (resource.actions ?? []).some(
+      (action) =>
+        action.status !== 0 &&
+        action.dataScopeSupported === true &&
+        action.dataScopeEnforced === true,
+    ),
+  ),
+);
+const dataPolicyResourceOptions = computed(() =>
+  dataPolicyResources.value.map((resource) => ({
+    label: `${resource.displayName || resource.resourceCode} · ${resource.resourceType}`,
+    value: resource.resourceCode,
+  })),
+);
 const fieldResourceOptions = computed(() =>
   resourceList.value
-    .filter((resource) => (resource.fields ?? []).length > 0)
+    .filter(
+      (resource) =>
+        (resource.fields ?? []).length > 0 &&
+        resource.fieldEnforcementReadiness === 'READY',
+    )
     .map((resource) => ({
       label: `${resource.displayName || resource.resourceCode} · ${resource.resourceType}`,
       value: resource.resourceCode,
@@ -539,7 +559,12 @@ const maskStrategyOptions = computed(() =>
   (authorizationOptions.value?.maskStrategies ?? []).map(toSelectOption),
 );
 const dataPolicyActionOptions = computed(() =>
-  actionOptionsForResource(dataPolicyForm.resourceCode),
+  actionOptionsForResource(dataPolicyForm.resourceCode).filter((option) => {
+    const action = findResource(dataPolicyForm.resourceCode)?.actions?.find(
+      (item) => item.actionCode === option.value,
+    );
+    return action?.dataScopeSupported === true && action.dataScopeEnforced === true;
+  }),
 );
 const fieldPolicyFieldOptions = computed(() =>
   fieldOptionsForResource(fieldPolicyForm.resourceCode),
@@ -768,9 +793,15 @@ function resetAuthorizationForms() {
 }
 
 function resetAuthorizationQuickForms() {
-  const firstResource = resourceList.value[0];
+  const firstResource = dataPolicyResources.value[0];
   dataPolicyForm.resourceCode = firstResource?.resourceCode ?? '';
-  dataPolicyForm.actionCode = firstResource?.actions?.[0]?.actionCode ?? '';
+  dataPolicyForm.actionCode =
+    firstResource?.actions?.find(
+      (action) =>
+        action.status !== 0 &&
+        action.dataScopeSupported === true &&
+        action.dataScopeEnforced === true,
+    )?.actionCode ?? '';
   dataPolicyForm.dimensionCode = orgDimensions.value[0]?.dimensionCode ?? 'ADMIN';
   dataPolicyForm.orgUnitIds = [];
   dataPolicyForm.scopeType =
@@ -1818,7 +1849,7 @@ watch(() => rolePageProps.editRoleId, async (compositeKey) => {
                 <Select
                   v-model:value="dataPolicyForm.resourceCode"
                   class="auth-resource-select"
-                  :options="resourceOptions"
+                  :options="dataPolicyResourceOptions"
                   placeholder="业务资源"
                   show-search
                   @change="(value) => changeDataPolicyResource(String(value))"

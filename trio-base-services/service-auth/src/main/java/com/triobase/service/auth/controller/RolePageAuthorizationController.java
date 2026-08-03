@@ -117,7 +117,9 @@ public class RolePageAuthorizationController {
             @PathVariable String roleId,
             @PathVariable String releaseId,
             @RequestParam(required = false) String tenantId) {
-        return R.ok(releaseService.rollback(tenantId, roleId, releaseId));
+        RoleAuthorizationReleaseResponse restored = releaseService.rollback(tenantId, roleId, releaseId);
+        capabilityStore.rebaseEditableDraft(tenantId, roleId, releaseId);
+        return R.ok(restored);
     }
 
     @GetMapping("/roles/{roleId}/authorization-migration-analysis")

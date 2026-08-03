@@ -100,6 +100,11 @@ public class PageCapabilityCatalogService {
         }
         return capabilities.stream().map(item -> {
             PageCapabilityResponse response = PageCapabilityResponse.from(item);
+            response.setScopeConfigurable(
+                    enabled(item.getScopeSupported())
+                            && hasVerifiedDataScopeTarget(
+                                    tenantId,
+                                    targetsByCapability.getOrDefault(item.getId(), List.of())));
             response.setRequiredCapabilityIds(
                     dependenciesByCapability.getOrDefault(item.getId(), List.of()));
             if (enabled(item.getFieldPolicySupported())) {
@@ -119,9 +124,50 @@ public class PageCapabilityCatalogService {
                             }).toList());
                 }
             }
+            response.setFieldRestrictionConfigurable(
+                    enabled(item.getFieldPolicySupported())
+                            && hasReadyFieldTarget(
+                                    tenantId,
+                                    targetsByCapability.getOrDefault(item.getId(), List.of())));
             response.setConstraintConfigurable(hasDeclaredGuards(item));
             return response;
         }).toList();
+    }
+
+    private boolean hasVerifiedDataScopeTarget(
+            String tenantId,
+            List<SysAuthPageCapabilityTarget> targets) {
+        return targets.stream().anyMatch(target -> actionMapper.selectCount(
+                new LambdaQueryWrapper<SysAuthAction>()
+                        .eq(SysAuthAction::getTenantId, tenantId)
+                        .eq(SysAuthAction::getResourceCode, target.getResourceCode())
+                        .eq(SysAuthAction::getActionCode, target.getActionCode())
+                        .eq(SysAuthAction::getDataScopeSupported, (short) 1)
+                        .eq(SysAuthAction::getDataScopeEnforced, (short) 1)
+                        .eq(SysAuthAction::getStatus, (short) 1)) > 0);
+    }
+
+    private boolean hasReadyFieldTarget(
+            String tenantId,
+            List<SysAuthPageCapabilityTarget> targets) {
+        return targets.stream().anyMatch(target -> {
+            SysAuthResource resource = resourceMapper.selectOne(
+                    new LambdaQueryWrapper<SysAuthResource>()
+                            .eq(SysAuthResource::getTenantId, tenantId)
+                            .eq(SysAuthResource::getResourceCode, target.getResourceCode())
+                            .eq(SysAuthResource::getLifecycleStatus, "ACTIVE")
+                            .last("LIMIT 1"));
+            if (resource == null
+                    || !enabled(resource.getReadHideEnforced())
+                    || !enabled(resource.getReadMaskEnforced())
+                    || !enabled(resource.getWriteDenyEnforced())) {
+                return false;
+            }
+            return fieldMapper.selectCount(new LambdaQueryWrapper<com.triobase.service.auth.entity.SysAuthField>()
+                    .eq(com.triobase.service.auth.entity.SysAuthField::getTenantId, tenantId)
+                    .eq(com.triobase.service.auth.entity.SysAuthField::getResourceCode, target.getResourceCode())
+                    .eq(com.triobase.service.auth.entity.SysAuthField::getStatus, (short) 1)) > 0;
+        });
     }
 
     public boolean pageExists(String requestedTenantId, String pageCode) {

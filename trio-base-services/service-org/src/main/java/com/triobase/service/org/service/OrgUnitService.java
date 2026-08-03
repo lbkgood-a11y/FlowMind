@@ -1,6 +1,8 @@
 package com.triobase.service.org.service;
 
 import com.triobase.common.core.context.SecurityContextHolder;
+import com.triobase.common.core.auth.DataScope;
+import com.triobase.common.core.context.DataScopeContextHolder;
 import com.triobase.common.dto.internal.OrgOwnershipResponse;
 import com.triobase.common.core.util.StringHelpers;
 
@@ -42,6 +44,7 @@ import java.util.Map;
 import java.util.Set;
 import java.time.LocalDate;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Service
@@ -73,10 +76,18 @@ public class OrgUnitService {
     }
 
     public List<SysOrgUnit> listOrgUnits(String keyword, String unitType, Integer status) {
+        DataScope scope = DataScopeContextHolder.get();
+        Set<String> readableUnitIds = readableOrgUnitIds(scope);
+        if (readableUnitIds != null && readableUnitIds.isEmpty()) {
+            return List.of();
+        }
         LambdaQueryWrapper<SysOrgUnit> wrapper = new LambdaQueryWrapper<SysOrgUnit>()
                 .eq(SysOrgUnit::getTenantId, currentTenantId())
                 .orderByAsc(SysOrgUnit::getTreePath)
                 .orderByAsc(SysOrgUnit::getSortOrder);
+        if (readableUnitIds != null) {
+            wrapper.in(SysOrgUnit::getId, readableUnitIds);
+        }
         String normalizedKeyword = StringHelpers.normalizeBlank(keyword);
         if (normalizedKeyword != null) {
             wrapper.and(query -> query
@@ -94,7 +105,7 @@ public class OrgUnitService {
             wrapper.eq(SysOrgUnit::getStatus, toStatus(status));
         }
         List<AuthzFieldRule> rules = effectiveOrgUnitFieldRules();
-        return orgUnitMapper.selectList(wrapper).stream()
+        return withoutInterceptorDataScope(() -> orgUnitMapper.selectList(wrapper)).stream()
                 .map(unit -> fieldAuthorizationAdapter.applyRead(unit, rules))
                 .toList();
     }
@@ -107,12 +118,25 @@ public class OrgUnitService {
     }
 
     public List<OrgTreeNodeResponse> listOrgTree(String dimensionCode) {
+        DataScope scope = DataScopeContextHolder.get();
+        Set<String> readableUnitIds = readableOrgUnitIds(scope);
+        if (readableUnitIds != null && readableUnitIds.isEmpty()) {
+            return List.of();
+        }
+        return withoutInterceptorDataScope(() -> listOrgTreeScoped(dimensionCode, readableUnitIds));
+    }
+
+    private List<OrgTreeNodeResponse> listOrgTreeScoped(String dimensionCode, Set<String> readableUnitIds) {
         SysOrgDimension dimension = findDimensionByCode(dimensionCode);
-        List<SysOrgRelation> relations = orgRelationMapper.selectList(new LambdaQueryWrapper<SysOrgRelation>()
+        LambdaQueryWrapper<SysOrgRelation> relationQuery = new LambdaQueryWrapper<SysOrgRelation>()
                 .eq(SysOrgRelation::getTenantId, currentTenantId())
                 .eq(SysOrgRelation::getDimensionId, dimension.getId())
                 .orderByAsc(SysOrgRelation::getTreePath)
-                .orderByAsc(SysOrgRelation::getSortOrder));
+                .orderByAsc(SysOrgRelation::getSortOrder);
+        if (readableUnitIds != null) {
+            relationQuery.in(SysOrgRelation::getChildUnitId, readableUnitIds);
+        }
+        List<SysOrgRelation> relations = orgRelationMapper.selectList(relationQuery);
         if (relations.isEmpty()) {
             return List.of();
         }
@@ -127,6 +151,51 @@ public class OrgUnitService {
                 .map(relation -> OrgTreeNodeResponse.from(relation, units.get(relation.getChildUnitId())))
                 .map(node -> fieldAuthorizationAdapter.applyRead(node, rules))
                 .toList();
+    }
+
+    private Set<String> readableOrgUnitIds(DataScope scope) {
+        if (scope == null || scope.allowsAll()) {
+            return null;
+        }
+        if (scope.restrictive() || !scope.orgContextResolved()) {
+            return Set.of();
+        }
+        LinkedHashSet<String> allowed = new LinkedHashSet<>();
+        LinkedHashSet<String> denied = new LinkedHashSet<>();
+        for (DataScope.Policy policy : scope.policies()) {
+            boolean allow = "ALLOW".equalsIgnoreCase(policy.effect());
+            boolean deny = "DENY".equalsIgnoreCase(policy.effect());
+            for (DataScope.Dimension dimension : policy.dimensions()) {
+                if (!isOrganizationScope(dimension.scopeType())) {
+                    continue;
+                }
+                if (allow) {
+                    allowed.addAll(dimension.orgUnitIds());
+                } else if (deny) {
+                    denied.addAll(dimension.orgUnitIds());
+                }
+            }
+        }
+        allowed.removeAll(denied);
+        return Set.copyOf(allowed);
+    }
+
+    private boolean isOrganizationScope(String scopeType) {
+        return "OWN_ORG".equalsIgnoreCase(scopeType)
+                || "OWN_ORG_AND_CHILDREN".equalsIgnoreCase(scopeType)
+                || "ASSIGNED_ORGS".equalsIgnoreCase(scopeType);
+    }
+
+    private <T> T withoutInterceptorDataScope(Supplier<T> query) {
+        DataScope previous = DataScopeContextHolder.get();
+        DataScopeContextHolder.clear();
+        try {
+            return query.get();
+        } finally {
+            if (previous != null) {
+                DataScopeContextHolder.set(previous);
+            }
+        }
     }
 
     @Transactional

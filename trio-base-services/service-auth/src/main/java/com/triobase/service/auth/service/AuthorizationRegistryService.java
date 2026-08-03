@@ -551,6 +551,8 @@ public class AuthorizationRegistryService {
                 ? normalize(request.getActionCategory()) : "BUSINESS");
         action.setDescription(StringHelpers.normalizeBlank(request.getDescription()));
         action.setGuardCodes(joinCodes(request.getGuardCodes()));
+        action.setDataScopeSupported(toFlag(request.getDataScopeSupported()));
+        action.setDataScopeEnforced(toFlag(request.getDataScopeEnforced()));
         action.setStatus(toStatus(request.getStatus()));
         if (action.getCreatedAt() == null) {
             actionMapper.insert(action);
@@ -658,6 +660,8 @@ public class AuthorizationRegistryService {
         node.setActionCategory(action.getActionCategory());
         node.setDescription(action.getDescription());
         node.setGuardCodes(splitCodes(action.getGuardCodes()));
+        node.setDataScopeSupported(enabled(action.getDataScopeSupported()));
+        node.setDataScopeEnforced(enabled(action.getDataScopeEnforced()));
         node.setStatus(action.getStatus());
         return node;
     }

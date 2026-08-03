@@ -15,5 +15,7 @@ public class SysAuthAction extends BaseEntity {
     private String actionCategory;
     private String description;
     private String guardCodes;
+    private Short dataScopeSupported;
+    private Short dataScopeEnforced;
     private Short status;
 }

@@ -17,7 +17,7 @@ spring:
   cloud:
     nacos:
       username: nacos
-      password: nacos
+      password: "'!pwd123$'"
       discovery:
         enabled: ${NACOS_ENABLED:true}
         server-addr: ${NACOS_SERVER_ADDR:10.193.102.2:8848}

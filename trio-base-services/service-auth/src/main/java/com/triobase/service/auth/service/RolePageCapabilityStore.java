@@ -14,11 +14,15 @@ import com.triobase.service.auth.entity.SysAuthPageCapabilityDependency;
 import com.triobase.service.auth.entity.SysAuthPageCatalog;
 import com.triobase.service.auth.entity.SysRoleAuthDraft;
 import com.triobase.service.auth.entity.SysRoleAuthIntent;
+import com.triobase.service.auth.entity.SysRoleAuthRelease;
+import com.triobase.service.auth.entity.SysRoleAuthActiveRelease;
 import com.triobase.service.auth.mapper.AuthPageCapabilityMapper;
 import com.triobase.service.auth.mapper.AuthPageCapabilityDependencyMapper;
 import com.triobase.service.auth.mapper.AuthPageCatalogMapper;
 import com.triobase.service.auth.mapper.RoleAuthDraftMapper;
 import com.triobase.service.auth.mapper.RoleAuthIntentMapper;
+import com.triobase.service.auth.mapper.RoleAuthReleaseMapper;
+import com.triobase.service.auth.mapper.RoleAuthActiveReleaseMapper;
 import com.triobase.service.auth.mapper.RoleMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -46,6 +50,8 @@ public class RolePageCapabilityStore {
 
     private final RoleAuthDraftMapper draftMapper;
     private final RoleAuthIntentMapper intentMapper;
+    private final RoleAuthReleaseMapper releaseMapper;
+    private final RoleAuthActiveReleaseMapper activeReleaseMapper;
     private final AuthPageCatalogMapper catalogMapper;
     private final AuthPageCapabilityMapper capabilityMapper;
     private final AuthPageCapabilityDependencyMapper dependencyMapper;
@@ -65,6 +71,13 @@ public class RolePageCapabilityStore {
                 .eq(SysRoleAuthDraft::getRoleId, roleId)
                 .in(SysRoleAuthDraft::getDraftStatus, EDITABLE_STATUSES));
         if (existing != null) {
+            initializeLegacyEmptyDraft(existing);
+            SysRoleAuthRelease activeRelease = latestRelease(tenantId, roleId);
+            if (activeRelease != null
+                    && !activeRelease.getId().equals(existing.getBasedReleaseId())) {
+                rebaseEditableDraft(tenantId, roleId, activeRelease.getId());
+                return requireDraft(tenantId, existing.getId());
+            }
             return existing;
         }
 
@@ -81,14 +94,165 @@ public class RolePageCapabilityStore {
         draft.setTenantId(tenantId);
         draft.setRoleId(roleId);
         draft.setCatalogId(catalog.getId());
+        SysRoleAuthRelease latestRelease = latestRelease(tenantId, roleId);
+        draft.setBasedReleaseId(latestRelease == null ? null : latestRelease.getId());
         draft.setDraftStatus(RoleAuthorizationDraftStatus.DRAFT.name());
         draft.setIntentVersion(1L);
         draft.setCreatedBy(currentActor());
         draft.setUpdatedBy(currentActor());
         draftMapper.insert(draft);
+        int inheritedCount = inheritLatestRelease(draft, latestRelease);
         auditService.record(tenantId, roleId, draft.getId(), null,
-                "DRAFT_CREATED", "已为角色创建页面权限草稿", Map.of("catalogId", catalog.getId()));
+                "DRAFT_CREATED",
+                latestRelease == null ? "已为角色创建空白页面权限草稿" : "已基于最新发布版本创建增量草稿",
+                Map.of("catalogId", catalog.getId(),
+                        "basedReleaseId", latestRelease == null ? "" : latestRelease.getId(),
+                        "inheritedSelectionCount", inheritedCount));
         return draft;
+    }
+
+    private void initializeLegacyEmptyDraft(SysRoleAuthDraft draft) {
+        if (StringUtils.hasText(draft.getBasedReleaseId())) {
+            return;
+        }
+        Long intentCount = intentMapper.selectCount(new LambdaQueryWrapper<SysRoleAuthIntent>()
+                .eq(SysRoleAuthIntent::getTenantId, draft.getTenantId())
+                .eq(SysRoleAuthIntent::getDraftId, draft.getId()));
+        if (intentCount != null && intentCount > 0) {
+            return;
+        }
+        SysRoleAuthRelease latestRelease = latestRelease(draft.getTenantId(), draft.getRoleId());
+        if (latestRelease == null) {
+            return;
+        }
+        draft.setBasedReleaseId(latestRelease.getId());
+        draft.setUpdatedBy(currentActor());
+        draftMapper.updateById(draft);
+        int inheritedCount = inheritLatestRelease(draft, latestRelease);
+        auditService.record(draft.getTenantId(), draft.getRoleId(), draft.getId(), latestRelease.getId(),
+                "DRAFT_REBASED", "旧空白草稿已基于最新发布版本转换为增量草稿",
+                Map.of("inheritedSelectionCount", inheritedCount));
+    }
+
+    private SysRoleAuthRelease latestRelease(String tenantId, String roleId) {
+        SysRoleAuthActiveRelease active = activeReleaseMapper.selectOne(
+                new LambdaQueryWrapper<SysRoleAuthActiveRelease>()
+                        .eq(SysRoleAuthActiveRelease::getTenantId, tenantId)
+                        .eq(SysRoleAuthActiveRelease::getRoleId, roleId));
+        if (active != null && StringUtils.hasText(active.getReleaseId())) {
+            return releaseMapper.selectOne(new LambdaQueryWrapper<SysRoleAuthRelease>()
+                    .eq(SysRoleAuthRelease::getTenantId, tenantId)
+                    .eq(SysRoleAuthRelease::getRoleId, roleId)
+                    .eq(SysRoleAuthRelease::getId, active.getReleaseId()));
+        }
+        return releaseMapper.selectOne(new LambdaQueryWrapper<SysRoleAuthRelease>()
+                .eq(SysRoleAuthRelease::getTenantId, tenantId)
+                .eq(SysRoleAuthRelease::getRoleId, roleId)
+                .orderByDesc(SysRoleAuthRelease::getReleaseNumber)
+                .last("LIMIT 1"));
+    }
+
+    @Transactional
+    public void rebaseEditableDraft(String requestedTenantId, String roleId, String releaseId) {
+        String tenantId = authorizationRegistryService.effectiveTenant(requestedTenantId);
+        SysRoleAuthRelease release = releaseMapper.selectOne(new LambdaQueryWrapper<SysRoleAuthRelease>()
+                .eq(SysRoleAuthRelease::getTenantId, tenantId)
+                .eq(SysRoleAuthRelease::getRoleId, roleId)
+                .eq(SysRoleAuthRelease::getId, releaseId));
+        if (release == null) {
+            throw new BizException(40496, "ROLE_AUTH_RELEASE_NOT_FOUND");
+        }
+        SysRoleAuthDraft draft = draftMapper.selectOne(new LambdaQueryWrapper<SysRoleAuthDraft>()
+                .eq(SysRoleAuthDraft::getTenantId, tenantId)
+                .eq(SysRoleAuthDraft::getRoleId, roleId)
+                .in(SysRoleAuthDraft::getDraftStatus, EDITABLE_STATUSES));
+        if (draft == null) {
+            return;
+        }
+        intentMapper.delete(new LambdaQueryWrapper<SysRoleAuthIntent>()
+                .eq(SysRoleAuthIntent::getTenantId, tenantId)
+                .eq(SysRoleAuthIntent::getDraftId, draft.getId()));
+        SysAuthPageCatalog activeCatalog = findActiveCatalog(tenantId);
+        draft.setCatalogId(activeCatalog == null ? release.getCatalogId() : activeCatalog.getId());
+        draft.setBasedReleaseId(releaseId);
+        draft.setDraftStatus(RoleAuthorizationDraftStatus.DRAFT.name());
+        draft.setIntentVersion((draft.getIntentVersion() == null ? 0L : draft.getIntentVersion()) + 1L);
+        draft.setValidationTokenHash(null);
+        draft.setValidationPlanHash(null);
+        draft.setValidatedBy(null);
+        draft.setValidatedAt(null);
+        draft.setValidationExpiresAt(null);
+        draft.setValidationSummary(null);
+        draft.setUpdatedBy(currentActor());
+        draftMapper.updateById(draft);
+        int inheritedCount = inheritLatestRelease(draft, release);
+        auditService.record(tenantId, roleId, draft.getId(), releaseId,
+                "DRAFT_REBASED_AFTER_ROLLBACK", "编辑草稿已同步到恢复后的线上版本",
+                Map.of("inheritedSelectionCount", inheritedCount));
+    }
+
+    private int inheritLatestRelease(SysRoleAuthDraft draft, SysRoleAuthRelease release) {
+        if (release == null || !StringUtils.hasText(release.getIntentSnapshot())) {
+            return 0;
+        }
+        List<SysRoleAuthIntent> releasedIntents;
+        try {
+            releasedIntents = objectMapper.readValue(release.getIntentSnapshot(),
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, SysRoleAuthIntent.class));
+        } catch (JsonProcessingException exception) {
+            throw new BizException(40996, "ROLE_AUTH_RELEASE_SNAPSHOT_INVALID");
+        }
+
+        Map<String, String> capabilityMapping = capabilityMapping(
+                draft.getTenantId(), release.getCatalogId(), draft.getCatalogId(), releasedIntents);
+        int inherited = 0;
+        for (SysRoleAuthIntent released : releasedIntents) {
+            String targetCapabilityId = capabilityMapping.get(released.getCapabilityId());
+            if (!StringUtils.hasText(targetCapabilityId)) {
+                continue;
+            }
+            SysRoleAuthIntent intent = new SysRoleAuthIntent();
+            intent.setTenantId(draft.getTenantId());
+            intent.setDraftId(draft.getId());
+            intent.setCapabilityId(targetCapabilityId);
+            intent.setSelectionSource(released.getSelectionSource());
+            intent.setDefaultScopeType(released.getDefaultScopeType());
+            intent.setDefaultScopeIds(released.getDefaultScopeIds());
+            intent.setOperationScopeType(released.getOperationScopeType());
+            intent.setOperationScopeIds(released.getOperationScopeIds());
+            intent.setFieldIntentJson(released.getFieldIntentJson());
+            intent.setConstraintIntentJson(released.getConstraintIntentJson());
+            intent.setCreatedBy(currentActor());
+            intent.setUpdatedBy(currentActor());
+            intentMapper.insert(intent);
+            inherited++;
+        }
+        return inherited;
+    }
+
+    private Map<String, String> capabilityMapping(String tenantId, String sourceCatalogId,
+                                                   String targetCatalogId,
+                                                   List<SysRoleAuthIntent> intents) {
+        Map<String, String> mapping = new LinkedHashMap<>();
+        Set<String> sourceIds = intents.stream().map(SysRoleAuthIntent::getCapabilityId).collect(java.util.stream.Collectors.toSet());
+        if (sourceCatalogId.equals(targetCatalogId)) {
+            sourceIds.forEach(id -> mapping.put(id, id));
+            return mapping;
+        }
+        Map<String, String> sourceCodeById = new LinkedHashMap<>();
+        capabilityMapper.selectList(new LambdaQueryWrapper<SysAuthPageCapability>()
+                        .eq(SysAuthPageCapability::getTenantId, tenantId)
+                        .eq(SysAuthPageCapability::getCatalogId, sourceCatalogId)
+                        .in(SysAuthPageCapability::getId, sourceIds))
+                .forEach(item -> sourceCodeById.put(item.getId(), item.getCapabilityCode()));
+        Map<String, String> targetIdByCode = new LinkedHashMap<>();
+        capabilityMapper.selectList(new LambdaQueryWrapper<SysAuthPageCapability>()
+                        .eq(SysAuthPageCapability::getTenantId, tenantId)
+                        .eq(SysAuthPageCapability::getCatalogId, targetCatalogId)
+                        .in(SysAuthPageCapability::getCapabilityCode, sourceCodeById.values()))
+                .forEach(item -> targetIdByCode.put(item.getCapabilityCode(), item.getId()));
+        sourceCodeById.forEach((id, code) -> mapping.put(id, targetIdByCode.get(code)));
+        return mapping;
     }
 
     private SysAuthPageCatalog findActiveCatalog(String tenantId) {

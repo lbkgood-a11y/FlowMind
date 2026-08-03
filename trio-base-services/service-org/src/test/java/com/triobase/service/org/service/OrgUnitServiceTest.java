@@ -1,5 +1,9 @@
 package com.triobase.service.org.service;
 
+import com.triobase.common.core.auth.DataScope;
+import com.triobase.common.core.context.DataScopeContextHolder;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.service.org.dto.CreateOrgUnitRequest;
 import com.triobase.service.org.dto.OrgTreeNodeResponse;
@@ -21,6 +25,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 
 import java.util.List;
 import java.util.stream.Stream;
@@ -30,6 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class OrgUnitServiceTest {
@@ -60,6 +67,9 @@ class OrgUnitServiceTest {
 
     @org.junit.jupiter.api.BeforeEach
     void setUpFieldRules() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), "org-unit-test"),
+                SysOrgUnit.class);
         List<com.triobase.common.dto.authz.AuthzFieldRule> rules = Stream.of("unitCode", "unitName", "unitType", "status")
                 .map(key -> {
                     com.triobase.common.dto.authz.AuthzFieldRule rule = new com.triobase.common.dto.authz.AuthzFieldRule();
@@ -69,6 +79,34 @@ class OrgUnitServiceTest {
                     return rule;
                 }).toList();
         lenient().when(fieldDecisionClient.effectiveRules(any(), any(), any(), any())).thenReturn(rules);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void clearDataScope() {
+        DataScopeContextHolder.clear();
+    }
+
+    @Test
+    void listOrgUnits_shouldFailClosedWhenOrganizationScopeIsUnresolved() {
+        DataScopeContextHolder.set(DataScope.restrictive("U001", "ORG_UNIT", "QUERY"));
+
+        assertEquals(List.of(), orgUnitService.listOrgUnits(null, null, null));
+        verify(orgUnitMapper, never()).selectList(any());
+    }
+
+    @Test
+    void listOrgUnits_shouldQueryOnlyResolvedOrganizationUnits() {
+        DataScopeContextHolder.set(new DataScope(
+                "U001", "ORG_UNIT", "QUERY", false, true, List.of("R003"),
+                List.of(new DataScope.Policy(
+                        "DP1", "R003", "ALLOW", "AND",
+                        List.of(new DataScope.Dimension(
+                                "ADMIN", "OWN_ORG_AND_CHILDREN", List.of("OU1", "OU2")))))));
+        when(orgUnitMapper.selectList(any())).thenReturn(List.of());
+
+        assertEquals(List.of(), orgUnitService.listOrgUnits(null, null, null));
+
+        verify(orgUnitMapper).selectList(any());
     }
 
     @Test

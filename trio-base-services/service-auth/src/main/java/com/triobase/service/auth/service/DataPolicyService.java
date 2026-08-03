@@ -358,6 +358,8 @@ public class DataPolicyService {
                 .eq(SysAuthAction::getTenantId, tenantId)
                 .eq(SysAuthAction::getResourceCode, resourceCode)
                 .eq(SysAuthAction::getActionCode, actionCode)
+                .eq(SysAuthAction::getDataScopeSupported, STATUS_ENABLED)
+                .eq(SysAuthAction::getDataScopeEnforced, STATUS_ENABLED)
                 .eq(SysAuthAction::getStatus, STATUS_ENABLED));
         if (resourceCount == null || resourceCount == 0 || actionCount == null || actionCount == 0) {
             throw new BizException(40468, "DATA_POLICY_ACTION_NOT_REGISTERED");

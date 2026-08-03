@@ -46,6 +46,8 @@ public class AuthorizationResourceTreeResponse {
         private String actionCategory;
         private String description;
         private List<String> guardCodes = new ArrayList<>();
+        private Boolean dataScopeSupported;
+        private Boolean dataScopeEnforced;
         private Short status;
     }
 

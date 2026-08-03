@@ -13,6 +13,8 @@ import com.triobase.service.auth.mapper.AuthPageCapabilityMapper;
 import com.triobase.service.auth.mapper.AuthPageCatalogMapper;
 import com.triobase.service.auth.mapper.RoleAuthDraftMapper;
 import com.triobase.service.auth.mapper.RoleAuthIntentMapper;
+import com.triobase.service.auth.mapper.RoleAuthReleaseMapper;
+import com.triobase.service.auth.mapper.RoleAuthActiveReleaseMapper;
 import com.triobase.service.auth.mapper.RoleMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +38,8 @@ class RolePageCapabilityStoreTest {
 
     @Mock private RoleAuthDraftMapper draftMapper;
     @Mock private RoleAuthIntentMapper intentMapper;
+    @Mock private RoleAuthReleaseMapper releaseMapper;
+    @Mock private RoleAuthActiveReleaseMapper activeReleaseMapper;
     @Mock private AuthPageCatalogMapper catalogMapper;
     @Mock private AuthPageCapabilityMapper capabilityMapper;
     @Mock private AuthPageCapabilityDependencyMapper dependencyMapper;
@@ -51,7 +55,7 @@ class RolePageCapabilityStoreTest {
     @BeforeEach
     void setUp() {
         MybatisPlusTestMetadata.initialize();
-        store = new RolePageCapabilityStore(draftMapper, intentMapper, catalogMapper,
+        store = new RolePageCapabilityStore(draftMapper, intentMapper, releaseMapper, activeReleaseMapper, catalogMapper,
                 capabilityMapper, dependencyMapper, roleMapper, registryService,
                 manifestMaterializer, auditService,
                 new ObjectMapper());

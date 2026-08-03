@@ -37,6 +37,24 @@ public interface OrgScopeMapper {
 
     @Select("""
             <script>
+            SELECT DISTINCT user_id
+            FROM sys_user_org_unit
+            WHERE tenant_id = #{tenantId}
+              AND status = 1
+              AND (effective_from IS NULL OR effective_from &lt;= CURRENT_DATE)
+              AND (effective_to IS NULL OR effective_to &gt;= CURRENT_DATE)
+              AND org_unit_id IN
+              <foreach collection="orgUnitIds" item="orgUnitId" open="(" separator="," close=")">
+                #{orgUnitId}
+              </foreach>
+            ORDER BY user_id
+            </script>
+            """)
+    List<String> selectActiveUserIdsByOrgUnitIds(@Param("tenantId") String tenantId,
+                                                  @Param("orgUnitIds") List<String> orgUnitIds);
+
+    @Select("""
+            <script>
             SELECT DISTINCT child.child_unit_id
             FROM sys_org_relation root
             JOIN sys_org_relation child

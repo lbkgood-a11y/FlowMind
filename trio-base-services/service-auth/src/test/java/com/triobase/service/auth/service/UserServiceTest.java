@@ -15,6 +15,7 @@ import com.triobase.service.auth.dto.UserProfileResponse;
 import com.triobase.service.auth.entity.SysUser;
 import com.triobase.service.auth.entity.SysRole;
 import com.triobase.service.auth.mapper.RoleMapper;
+import com.triobase.service.auth.mapper.OrgScopeMapper;
 import com.triobase.service.auth.mapper.UserMapper;
 import com.triobase.service.auth.mapper.UserRoleMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -53,6 +54,9 @@ class UserServiceTest {
 
     @Mock
     private RoleMapper roleMapper;
+
+    @Mock
+    private OrgScopeMapper orgScopeMapper;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -157,6 +161,24 @@ class UserServiceTest {
         );
 
         assertFalse(userService.applyDataScope(queryWrapper, orgScope));
+    }
+
+    @Test
+    void applyDataScope_shouldLimitToUsersInResolvedOrganizationScope() {
+        LambdaQueryWrapper<SysUser> queryWrapper = new LambdaQueryWrapper<>();
+        DataScope orgScope = new DataScope(
+                "U003", "USER", "QUERY", false, true, List.of("R003"),
+                List.of(new DataScope.Policy(
+                        "DP003", "R003", "ALLOW", "AND",
+                        List.of(new DataScope.Dimension(
+                                "ADMIN", "OWN_ORG_AND_CHILDREN", List.of("OU1", "OU2"))))));
+        when(orgScopeMapper.selectActiveUserIdsByOrgUnitIds("default", List.of("OU1", "OU2")))
+                .thenReturn(List.of("U003", "U004"));
+
+        assertTrue(userService.applyDataScope(queryWrapper, orgScope));
+
+        assertFalse(queryWrapper.getExpression().getNormal().isEmpty());
+        verify(orgScopeMapper).selectActiveUserIdsByOrgUnitIds("default", List.of("OU1", "OU2"));
     }
 
     @Test

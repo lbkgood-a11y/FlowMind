@@ -1,5 +1,6 @@
 package com.triobase.service.auth.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.triobase.common.core.exception.BizException;
 import com.triobase.service.auth.dto.PublishRoleAuthorizationRequest;
@@ -7,6 +8,7 @@ import com.triobase.service.auth.dto.RoleAuthorizationCompilationPlan;
 import com.triobase.service.auth.dto.RoleAuthorizationValidationResponse;
 import com.triobase.service.auth.entity.SysRoleAuthDraft;
 import com.triobase.service.auth.entity.SysRoleAuthRelease;
+import com.triobase.service.auth.entity.SysDataPolicy;
 import com.triobase.service.auth.entity.SysRoleAuthActiveRelease;
 import com.triobase.service.auth.entity.SysRoleAuthCompiledEvidence;
 import com.triobase.service.auth.mapper.AuthFieldPolicyMapper;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -148,5 +151,17 @@ class RoleAuthorizationReleaseServiceTest {
 
         verify(evidenceMapper, never()).insert(any(SysRoleAuthCompiledEvidence.class));
         verify(activeReleaseMapper).insert(any(SysRoleAuthActiveRelease.class));
+        ArgumentCaptor<LambdaQueryWrapper<com.triobase.service.auth.entity.SysAuthGrant>> grantDelete =
+                ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(grantMapper).delete(grantDelete.capture());
+        assertThat(grantDelete.getValue().getSqlSegment()).contains("description LIKE");
+        ArgumentCaptor<LambdaQueryWrapper<SysDataPolicy>> policyDelete = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(dataPolicyMapper).delete(policyDelete.capture());
+        assertThat(policyDelete.getValue().getSqlSegment())
+                .contains("description LIKE");
+        ArgumentCaptor<LambdaQueryWrapper<com.triobase.service.auth.entity.SysAuthFieldPolicy>> fieldDelete =
+                ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(fieldPolicyMapper).delete(fieldDelete.capture());
+        assertThat(fieldDelete.getValue().getSqlSegment()).contains("description LIKE");
     }
 }
