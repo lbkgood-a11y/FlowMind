@@ -1,3 +1,9 @@
+"""LLM 网关的 Prompt 二次脱敏。
+
+API 网关负责拒绝明显敏感请求；本模块在模型调用前再次清洗 Prompt，覆盖服务内拼装、
+历史消息和工具结果带入的敏感内容。调用方必须使用返回后的文本，不能继续发送原始内容。
+"""
+
 from __future__ import annotations
 
 import re
@@ -13,12 +19,15 @@ FINANCE_KEY_PATTERN = re.compile(
 
 
 def scan_and_redact(content: str) -> Tuple[str, List[str]]:
+    """替换已识别的敏感片段并返回命中的类别。
+
+    返回的类别仅用于审计和指标，禁止记录被替换的原始值。规则按长标识符优先执行，
+    防止手机号模式截取身份证或银行卡号的一部分而降低脱敏强度。
+    """
     redactions: List[str] = []
     result = content
 
-    # Replace the longest numeric identifiers first. Otherwise the 11-digit
-    # phone expression can consume a substring of an 18-digit ID card and
-    # prevent the stronger identifier rule from seeing it.
+    # 先处理最长数字标识；否则手机号规则可能吞掉身份证片段，使更强规则无法命中。
     if ID_CARD_PATTERN.search(result):
         redactions.append("id_card")
         result = ID_CARD_PATTERN.sub("[REDACTED_ID_CARD]", result)

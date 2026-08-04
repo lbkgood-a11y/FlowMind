@@ -9,6 +9,12 @@ import org.springframework.stereotype.Service;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 维护授权事实版本，用于缓存失效和决策证据关联。
+ *
+ * <p>数据库版本是跨实例事实；内存值只在数据库短暂不可用时保持当前进程可读，不能作为多个
+ * service-auth 实例间的一致性来源。写入成功后必须递增对应事实类别。</p>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -32,6 +38,7 @@ public class AuthorizationVersionService {
                 return version.getVersionValue();
             }
         } catch (Exception e) {
+            // 降级仅保留最近已知版本，不能把读取失败解释为版本回退或重新授权。
             log.warn("Failed to read auth version for key={} from DB — falling back to in-memory value", key, e);
         }
         return fallbackVersions.computeIfAbsent(key, ignored -> 1L);

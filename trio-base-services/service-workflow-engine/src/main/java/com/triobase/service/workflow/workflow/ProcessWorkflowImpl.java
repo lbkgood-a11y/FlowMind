@@ -22,6 +22,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 以确定性状态机执行流程定义。
+ *
+ * <p>本类只使用 Temporal 提供的时间、等待和 Activity Stub；禁止引入系统时间、随机数、
+ * 线程、数据库或网络 I/O。字段属于可重放的 Workflow 状态，其演进必须保持版本兼容。</p>
+ */
 @Slf4j
 @WorkflowImpl(taskQueues = "service-workflow-engine")
 public class ProcessWorkflowImpl implements ProcessWorkflow {
@@ -38,6 +44,7 @@ public class ProcessWorkflowImpl implements ProcessWorkflow {
             Workflow.newActivityStub(ProcessActivity.class, activityOptions);
 
     private final List<WorkflowCommand> commandQueue = new ArrayList<>();
+    // Signal 可能重复投递；operationId 去重保证同一操作只推进一次 Workflow 状态。
     private final Set<String> receivedOperationIds = new HashSet<>();
 
     @Override
@@ -248,6 +255,10 @@ public class ProcessWorkflowImpl implements ProcessWorkflow {
     }
 
     private WorkflowCommand awaitRelevantCommand(Set<String> requiredTaskIds) {
+        /*
+         * Workflow.await 会在 Signal 到达时由 Temporal 确定性唤醒，不占用线程。
+         * 非活动任务命令不能驱动当前节点，但其 operationId 已消费，避免稍后错误重放。
+         */
         while (true) {
             Workflow.await(() -> !commandQueue.isEmpty());
             WorkflowCommand command = commandQueue.removeFirst();

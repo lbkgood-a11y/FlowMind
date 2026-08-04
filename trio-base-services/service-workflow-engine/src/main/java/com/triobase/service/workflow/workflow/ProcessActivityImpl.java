@@ -31,6 +31,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 流程 Activity 的持久化实现。
+ *
+ * <p>所有写操作都可能因 Temporal 重试而再次到达；实现通过稳定业务键、唯一约束和状态前置
+ * 校验保证幂等。这里允许数据库和参与人解析 I/O，但不得把不可序列化对象返回给 Workflow。</p>
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -56,6 +62,7 @@ public class ProcessActivityImpl implements ProcessActivity {
                                   String participantVersion) {
         String assignmentVersion = participantResolver.participantVersion(assignment);
         String effectiveVersion = participantVersion + ":" + assignmentVersion;
+        // resolutionKey 固定参与人快照；重试或组织变化都不能改变同一次节点访问的审批人。
         String resolutionKey = instanceId + ":" + nodeId + ":" + effectiveVersion;
         ParticipantResolution existing = participantResolutionMapper.selectOne(
                 new LambdaQueryWrapper<ParticipantResolution>()
@@ -84,6 +91,7 @@ public class ProcessActivityImpl implements ProcessActivity {
         try {
             participantResolutionMapper.insert(resolution);
         } catch (DuplicateKeyException duplicate) {
+            // 并发重试命中唯一键时读取胜出快照，保证所有执行返回同一参与人集合。
             ParticipantResolution persisted = participantResolutionMapper.selectOne(
                     new LambdaQueryWrapper<ParticipantResolution>()
                             .eq(ParticipantResolution::getResolutionKey, resolutionKey)

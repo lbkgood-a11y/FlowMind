@@ -40,6 +40,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * 管理并解析角色数据权限策略。
+ *
+ * <p>策略只描述授权范围，组织事实仍由 service-org 拥有。多角色策略合并时 DENY 覆盖 ALLOW；
+ * OWN_ORG 等范围必须在组织上下文成功解析后才能生效，否则结果保持 restrictive。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class DataPolicyService {

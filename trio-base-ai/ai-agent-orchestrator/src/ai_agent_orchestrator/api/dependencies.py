@@ -1,3 +1,5 @@
+"""Resolve application services and gateway-authenticated request context."""
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -10,10 +12,12 @@ from ai_agent_orchestrator.runtime.run_service import AgentRunService
 
 
 def run_service(request: Request) -> AgentRunService:
+    """Return the process-scoped run service installed during application startup."""
     return request.app.state.run_service
 
 
 def settings(request: Request) -> Settings:
+    """Return immutable runtime settings installed during application startup."""
     return request.app.state.settings
 
 
@@ -29,6 +33,12 @@ async def trusted_context(
     x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
     accept_language: str | None = Header(default=None, alias="Accept-Language"),
 ) -> TrustedRequestContext:
+    """Build trusted actor, tenant, locale, and trace context from gateway headers.
+
+    Production requests fail closed when identity or trace context is missing. The
+    development identity is accepted only when explicitly enabled outside production;
+    callers must never treat these headers as end-user supplied authorization claims.
+    """
     config: Settings = request.app.state.settings
     if not x_user_id:
         if not config.allow_development_identity or config.environment == "production":
@@ -59,6 +69,7 @@ async def trusted_context(
 
 
 def authorization_header(request: Request) -> str | None:
+    """Forward the bearer credential for governed downstream tool calls only."""
     return request.headers.get("Authorization")
 
 

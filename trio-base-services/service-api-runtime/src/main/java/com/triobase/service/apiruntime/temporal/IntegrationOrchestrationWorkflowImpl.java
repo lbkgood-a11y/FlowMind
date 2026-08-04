@@ -19,6 +19,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 确定性执行已发布的集成编排定义，并在失败或取消时按逆序补偿。
+ *
+ * <p>系统时间必须来自 {@link Workflow#currentTimeMillis()}；所有网络、持久化、转换和 Action
+ * 调用均通过 Activity。状态集合写入顺序会进入 Workflow 历史，不得替换为无序或非确定性来源。</p>
+ */
 @WorkflowImpl(taskQueues = "service-api-runtime")
 public class IntegrationOrchestrationWorkflowImpl implements IntegrationOrchestrationWorkflow {
 
@@ -36,6 +42,11 @@ public class IntegrationOrchestrationWorkflowImpl implements IntegrationOrchestr
                     .setHeartbeatTimeout(Duration.ofSeconds(15))
                     .setRetryOptions(RetryPolicyPresets.idempotent())
                     .build());
+
+    /*
+     * standardActivities 仅用于可安全重试的读取/纯转换；具有外部副作用或长耗时的步骤必须使用
+     * idempotentActivities，并通过心跳支持取消和恢复，不能仅依赖 Temporal 的次数限制防重。
+     */
 
     private final Map<String, JsonNode> receivedSignals = new LinkedHashMap<>();
     private final Map<String, Integer> waitIterations = new HashMap<>();

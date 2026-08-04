@@ -15,7 +15,12 @@ import org.springframework.web.client.RestClient;
 import java.time.Duration;
 import java.util.List;
 
-/** Fetches centrally calculated rules for enforcement inside the organization Owner service. */
+/**
+ * 从 service-auth 获取组织字段规则，由 service-org 在 Owner 边界内执行。
+ *
+ * <p>授权服务不能直接读取组织表；本客户端只传递字段决策。请求失败时禁止返回“无限制”规则，
+ * 否则授权基础设施故障会扩大敏感组织字段的可见范围。</p>
+ */
 @Component
 public class OrgFieldDecisionClient {
 

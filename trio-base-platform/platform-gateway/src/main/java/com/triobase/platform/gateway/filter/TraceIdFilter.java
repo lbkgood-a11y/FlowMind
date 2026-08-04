@@ -11,8 +11,10 @@ import reactor.core.publisher.Mono;
 import java.util.UUID;
 
 /**
- * TraceId 生成与注入 — 铁律 8 的第一站。
- * 若无上游传入的 X-B3-TraceId，则自动生成一个并注入到请求头和 MDC 中。
+ * TraceId 生成与注入——铁律 8 的第一站。
+ *
+ * <p>保留合法上游 TraceId 以延续分布式链路；缺失时生成新值并写入下游请求头。
+ * 后续跨 Temporal 边界时必须通过 Header 传播，不能在 Activity 中重新生成。</p>
  */
 @Component
 public class TraceIdFilter implements GlobalFilter, Ordered {

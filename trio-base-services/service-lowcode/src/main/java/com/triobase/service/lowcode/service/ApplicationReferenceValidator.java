@@ -20,6 +20,12 @@ import java.util.Locale;
 import java.util.Set;
 
 @Component
+/**
+ * 在低代码应用发布前验证跨服务引用是否真实可用。
+ *
+ * <p>校验采用失败关闭：权限注册中心或工作流注册中心不可达、返回契约异常时，
+ * 发布必须失败，避免产生“应用已发布但权限或流程不可执行”的不一致版本。</p>
+ */
 public class ApplicationReferenceValidator {
 
     private static final String SERVICE_NAME = "service-lowcode";
@@ -59,10 +65,15 @@ public class ApplicationReferenceValidator {
         List<String> permissionCodes = collectPermissionCodes(version, actions);
         JsonNode envelope;
         try {
+            /*
+             * tenantId 必须来自待发布版本，而不能依赖调用线程的默认租户。
+             * 发布校验可能由后台流程触发，遗漏该参数会错误查询 default 租户并误报未注册。
+             */
             envelope = authClient.get()
                     .uri(uriBuilder -> {
                         var builder = uriBuilder.path("/internal/v1/authz/codes/missing");
                         permissionCodes.forEach(code -> builder.queryParam("codes", code));
+                        builder.queryParam("tenantId", version.getTenantId());
                         return builder.build();
                     })
                     .header(InternalServiceTokenFilter.HEADER_SERVICE_NAME, SERVICE_NAME)
@@ -70,6 +81,7 @@ public class ApplicationReferenceValidator {
                     .retrieve()
                     .body(JsonNode.class);
         } catch (Exception e) {
+            // 注册中心异常不能被解释为“没有缺失编码”；该状态必须保留为可重试的基础设施错误。
             throw new BizException(50250, "APPLICATION_PERMISSION_REGISTRY_UNAVAILABLE");
         }
         if (envelope == null || envelope.path("code").asInt(-1) != 0 || !envelope.path("data").isArray()) {
@@ -87,6 +99,7 @@ public class ApplicationReferenceValidator {
     }
 
     private List<String> collectPermissionCodes(LcApplicationVersion version, List<ApplicationActionRequest> actions) {
+        // LinkedHashSet 同时去重并保持声明顺序，使错误诊断和发布审计具有稳定输出。
         Set<String> codes = new LinkedHashSet<>();
         codes.add(version.getViewPermissionCode().trim());
         if (actions != null) {

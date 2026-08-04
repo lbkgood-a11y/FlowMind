@@ -39,6 +39,12 @@ import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+/**
+ * 管理角色页面能力的增量草稿、发布版本和当前生效版本。
+ *
+ * <p>发布版本是不可变授权事实；可编辑草稿必须基于最新发布版本继承后再记录增量，
+ * 不能要求管理员每次重新进行全量配置。租户、角色和版本条件必须参与所有读写。</p>
+ */
 public class RolePageCapabilityStore {
 
     private static final Set<String> EDITABLE_STATUSES = Set.of(
@@ -62,6 +68,11 @@ public class RolePageCapabilityStore {
     private final ObjectMapper objectMapper;
 
     @Transactional
+    /**
+     * 获取当前可编辑草稿；没有草稿时以最新发布版本为基线创建增量草稿。
+     *
+     * <p>若草稿基线落后于当前生效版本，会先 rebase，避免旧页面保存覆盖新发布权限。</p>
+     */
     public SysRoleAuthDraft getOrCreateDraft(String requestedTenantId, String roleId) {
         String tenantId = authorizationRegistryService.effectiveTenant(requestedTenantId);
         requireRole(tenantId, roleId);
@@ -112,6 +123,10 @@ public class RolePageCapabilityStore {
     }
 
     private void initializeLegacyEmptyDraft(SysRoleAuthDraft draft) {
+        /*
+         * 历史版本可能已创建空草稿但没有 basedReleaseId。仅在草稿确实没有任何 intent 时
+         * 才继承最新发布版本，避免把管理员已经编辑的显式空选择误判为迁移缺口。
+         */
         if (StringUtils.hasText(draft.getBasedReleaseId())) {
             return;
         }

@@ -52,6 +52,7 @@
         <maven-checkstyle.version>3.6.0</maven-checkstyle.version>
         <jacoco.version>0.8.12</jacoco.version>
         <sonar.version>4.0.1.5213</sonar.version>
+        <exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -109,9 +110,35 @@
                     <artifactId>sonar-maven-plugin</artifactId>
                     <version>${sonar.version}</version>
                 </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>exec-maven-plugin</artifactId>
+                    <version>${exec-maven-plugin.version}</version>
+                </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <inherited>false</inherited>
+                <executions>
+                    <execution>
+                        <id>comment-governance</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>python</executable>
+                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                            <arguments>
+                                <argument>cicd/scripts/comment_governance.py</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

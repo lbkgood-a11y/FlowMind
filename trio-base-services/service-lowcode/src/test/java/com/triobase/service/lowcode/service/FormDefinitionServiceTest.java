@@ -88,7 +88,7 @@ class FormDefinitionServiceTest {
         var resources = service.listPublishedDataResources();
 
         assertEquals(1, resources.size());
-        assertEquals("FORM:EXPENSE", resources.get(0).getResourceCode());
+        assertEquals("LOWCODE_FORM:EXPENSE", resources.get(0).getResourceCode());
         assertEquals("费用报销", resources.get(0).getResourceName());
         assertEquals("LOWCODE_FORM", resources.get(0).getResourceType());
         assertEquals("FORM001", resources.get(0).getBusinessObjectId());

@@ -6,12 +6,11 @@ import io.temporal.activity.ActivityInterface;
 import io.temporal.activity.ActivityMethod;
 
 /**
- * 流程 Activity 接口 — 铁律 7：所有 Activity 必须幂等。
+ * 承载流程运行中的全部 I/O 和业务副作用。
  *
- * 第二阶段新增：
- * - createCountersignTasks / getCountersignTaskCount
- * - completeCountersignTask / cancelRemainingCountersignTasks
- * - rejectToNode
+ * <p>Workflow 不得直接访问数据库或网络；任务创建、状态写入、参与人解析和条件求值均通过
+ * Activity 完成。Temporal 可能重试任一方法，因此实现必须以实例、节点、访问次数或 operationId
+ * 组成业务幂等身份，重复执行必须返回等价结果。</p>
  */
 @ActivityInterface
 public interface ProcessActivity {
@@ -33,7 +32,7 @@ public interface ProcessActivity {
     @ActivityMethod
     ConditionEvaluationResult evaluateCondition(String expression, String formDataJson);
 
-    // ── 会签 ──
+    // 会签任务属于同一节点访问批次，重试不得重复扩大任务集合。
 
     @ActivityMethod
     java.util.List<String> createCountersignTasks(String instanceId, String nodeId, String nodeName,
@@ -49,7 +48,7 @@ public interface ProcessActivity {
     @ActivityMethod
     void cancelRemainingCountersignTasks(String instanceId, String nodeId);
 
-    // ── 驳回/转办 ──
+    // 驳回和转办改变持久化任务事实，Activity 实现必须校验当前状态并保持幂等。
 
     @ActivityMethod
     void rejectToNode(String instanceId, String currentNodeId,
@@ -62,7 +61,7 @@ public interface ProcessActivity {
     void addSignTask(String instanceId, String nodeId, String nodeName,
                      String assigneeId, String assigneeName);
 
-    // ── 节点/实例生命周期 ──
+    // 生命周期记录是审计事实；相同节点访问次数的重复写入必须合并而非追加。
 
     @ActivityMethod
     void recordNodeEnter(String instanceId, String nodeId, String nodeName,

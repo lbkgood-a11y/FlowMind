@@ -27,6 +27,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 在业务 Owner 进程内执行受治理的 Global Action。
+ *
+ * <p>运行顺序固定为定义注册、Schema 校验、确认校验、Owner Guard、幂等执行和审计。AI、LUI
+ * 与外部编排只能提交 ActionCandidate/GlobalActionRequest，不能绕过本运行时直接调用任意 URL
+ * 或写业务库。</p>
+ */
 public class OwnerHostedActionRuntime {
 
     private static final int ERROR_CANDIDATE_NOT_DISPATCHABLE = 40048;
@@ -153,6 +160,7 @@ public class OwnerHostedActionRuntime {
         if (normalized.getActionId() == null || normalized.getActionId().isBlank()) {
             normalized.setActionId(ActionCorrelationIds.newActionId());
         }
+        // 幂等存储包裹真正副作用；重复请求返回首次结果，但仍记录重复接收的审计证据。
         OwnerActionIdempotencyResult idempotencyResult = idempotencyStore.execute(
                 normalized,
                 () -> dispatchOnce(definition, normalized));

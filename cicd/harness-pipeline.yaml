@@ -24,6 +24,12 @@ pipeline:
                   spec:
                     command: bash cicd/scripts/verify-openapi-contract.sh
               - step:
+                  name: Incremental comment governance gate
+                  type: Run
+                  spec:
+                    # 无远端比较基线时扫描器自动退化为全量报告，并用存量基线隔离历史债务。
+                    command: python cicd/scripts/comment_governance.py --base "${COMMENT_GOVERNANCE_BASE:-origin/main}"
+              - step:
                   name: OpenAPI delivery acceptance
                   type: Run
                   spec:

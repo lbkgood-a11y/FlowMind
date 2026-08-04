@@ -49,6 +49,12 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+/**
+ * 维护组织事实并将 service-auth 解析的数据范围、字段规则应用到组织查询和写入。
+ *
+ * <p>组织表属于 service-org；授权服务不得直接读取这些表。所有查询同时受租户隔离、
+ * 组织范围和字段规则约束，任一授权上下文无法解析时都不得回退为更宽范围。</p>
+ */
 public class OrgUnitService {
 
     private static final String DEFAULT_DIMENSION_CODE = "ADMIN";
@@ -157,6 +163,10 @@ public class OrgUnitService {
         if (scope == null || scope.allowsAll()) {
             return null;
         }
+        /*
+         * restrictive 或组织上下文未解析都表示没有可证明的授权范围。
+         * 返回空集合而非 null；本类用 null 表示“允许全部”，混用会造成越权读取。
+         */
         if (scope.restrictive() || !scope.orgContextResolved()) {
             return Set.of();
         }
@@ -177,6 +187,7 @@ public class OrgUnitService {
             }
         }
         allowed.removeAll(denied);
+        // DENY 始终覆盖 ALLOW，确保多角色或多策略合并不会意外扩大组织可见范围。
         return Set.copyOf(allowed);
     }
 
@@ -187,6 +198,10 @@ public class OrgUnitService {
     }
 
     private <T> T withoutInterceptorDataScope(Supplier<T> query) {
+        /*
+         * 当前方法的查询已经显式应用 readableUnitIds。临时关闭通用拦截器可避免重复过滤，
+         * 但必须在 finally 中恢复线程上下文，防止同一请求后续查询失去数据权限。
+         */
         DataScope previous = DataScopeContextHolder.get();
         DataScopeContextHolder.clear();
         try {

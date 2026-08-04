@@ -34,16 +34,18 @@ class ApplicationReferenceValidatorTest {
     @Test
     void acceptsRegisteredPermissionsAndPublishedWorkflowBinding() throws IOException {
         AtomicReference<String> authHeader = new AtomicReference<>();
+        AtomicReference<String> authQuery = new AtomicReference<>();
         startServer("""
                 {"code":0,"message":"success","data":[]}
                 """, """
                 {"code":0,"message":"success","data":true}
-                """, authHeader);
+                """, authHeader, authQuery);
 
         ApplicationReferenceValidator validator = validator(baseUrl());
 
         assertDoesNotThrow(() -> validator.validatePublication(version(), List.of(workflowAction())));
         assertEquals("service-lowcode", authHeader.get());
+        org.junit.jupiter.api.Assertions.assertTrue(authQuery.get().contains("tenantId=default"));
     }
 
     @Test
@@ -52,7 +54,7 @@ class ApplicationReferenceValidatorTest {
                 {"code":0,"message":"success","data":["/api/v1/forms/*/submit:POST"]}
                 """, """
                 {"code":0,"message":"success","data":true}
-                """, new AtomicReference<>());
+                """, new AtomicReference<>(), new AtomicReference<>());
         ApplicationReferenceValidator validator = validator(baseUrl());
 
         BizException exception = assertThrows(BizException.class,
@@ -67,7 +69,7 @@ class ApplicationReferenceValidatorTest {
                 {"code":0,"message":"success","data":[]}
                 """, """
                 {"code":0,"message":"success","data":false}
-                """, new AtomicReference<>());
+                """, new AtomicReference<>(), new AtomicReference<>());
         ApplicationReferenceValidator validator = validator(baseUrl());
 
         BizException exception = assertThrows(BizException.class,
@@ -82,7 +84,7 @@ class ApplicationReferenceValidatorTest {
                 {"code":0,"message":"success","data":[]}
                 """, """
                 {"code":0,"message":"success","data":true}
-                """, new AtomicReference<>());
+                """, new AtomicReference<>(), new AtomicReference<>());
         ApplicationActionRequest action = workflowAction();
         action.setPermissionCode(null);
         ApplicationReferenceValidator validator = validator(baseUrl());
@@ -95,10 +97,12 @@ class ApplicationReferenceValidatorTest {
 
     private void startServer(String permissionsBody,
                              String workflowBody,
-                             AtomicReference<String> authHeader) throws IOException {
+                             AtomicReference<String> authHeader,
+                             AtomicReference<String> authQuery) throws IOException {
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/internal/v1/authz/codes/missing", exchange -> {
             authHeader.set(exchange.getRequestHeaders().getFirst(InternalServiceTokenFilter.HEADER_SERVICE_NAME));
+            authQuery.set(exchange.getRequestURI().getRawQuery());
             respond(exchange, permissionsBody);
         });
         server.createContext("/internal/v1/process-packages/published/exists",
@@ -126,6 +130,7 @@ class ApplicationReferenceValidatorTest {
 
     private LcApplicationVersion version() {
         LcApplicationVersion version = new LcApplicationVersion();
+        version.setTenantId("default");
         version.setViewPermissionCode("/api/v1/forms/expense/instances:GET");
         return version;
     }

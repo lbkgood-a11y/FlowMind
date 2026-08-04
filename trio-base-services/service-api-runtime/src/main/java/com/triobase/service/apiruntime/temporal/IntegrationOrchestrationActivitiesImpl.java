@@ -50,6 +50,13 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 集成编排 Activity 的受治理实现。
+ *
+ * <p>发布快照、租户和固定依赖在任何外部调用前校验；连接器凭证只能通过 CredentialProvider
+ * 获取，Owner 副作用只能通过 owner-hosted Action。Activity 重试依赖执行步骤和幂等记录，
+ * 禁止把“最大重试次数”当作防重机制。</p>
+ */
 @Component
 @ActivityImpl(taskQueues = "service-api-runtime")
 @RequiredArgsConstructor
@@ -81,6 +88,7 @@ public class IntegrationOrchestrationActivitiesImpl implements IntegrationOrches
         }
         String tenantId = command.path("context").path(OpenApiTemporalContext.TENANT_ID).asText();
         if (StringUtils.hasText(tenantId) && !tenantId.equals(release.getTenantId())) {
+            // Workflow 命令中的租户必须与不可变发布快照一致，禁止跨租户复用 releaseId。
             throw nonRetryable("OPENAPI_ORCHESTRATION_TENANT_MISMATCH");
         }
         RouteVersion route = routeMapper.selectById(release.getRouteVersionId());

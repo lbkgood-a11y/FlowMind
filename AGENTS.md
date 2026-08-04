@@ -294,3 +294,14 @@ TrioBase/
 | 编码期 | 架构测试 + 契约测试 | 跨库访问、未注册 Action、绕过 owner-hosted runtime、投影服务读取 owner 表 |
 | CI 门禁 | Harness Pipeline + SonarQube + Checkstyle | Activity 缺少 RetryPolicy、代码规范不合规 → 拒绝 Merge |
 | CI 门禁 | 前端 Bundle Analysis + Lighthouse | Streaming 降级为阻塞请求、首屏性能不达标 |
+
+---
+
+## 注释治理（强制）
+
+- 所有新增和修改必须评估并维护必要的语义注释；行为、权限边界、事务/幂等、跨服务契约、失败策略或复杂状态发生变化时，必须在同一变更中更新相关注释。
+- 注释必须解释代码无法完整表达的业务原因、不变量、边界和取舍，禁止逐行复述代码、保留注释掉的旧代码或记录个人修改历史。
+- 公共契约和高风险逻辑必须按规范编写注释；权限、默认拒绝、降级、幂等、补偿、顺序和兼容承诺必须有对应测试或可执行验证。
+- TODO/FIXME、临时兼容和扫描豁免必须包含负责人、可跟踪任务以及到期日或可验证的移除条件。
+- 禁止在注释中写入真实密钥、Token、个人数据、内部凭证或可利用的安全细节。
+- 唯一规范来源：[`docs/engineering/commenting-standard.md`](docs/engineering/commenting-standard.md)。代码评审和 AI 生成代码均必须遵守该规范。

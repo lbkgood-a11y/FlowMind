@@ -348,6 +348,8 @@ public class FormDefinitionService {
 
     private FormDataResourceResponse toDataResource(LcFormDefinition definition) {
         FormDataResourceResponse response = new FormDataResourceResponse();
+        // Keep this code identical to the authorization registry key. A legacy FORM: prefix
+        // makes the data-scope selector produce grants that runtime LOWCODE_FORM checks never match.
         response.setResourceCode("LOWCODE_FORM:" + definition.getFormKey().trim().toUpperCase(Locale.ROOT));
         response.setResourceName(definition.getName());
         response.setResourceType("LOWCODE_FORM");

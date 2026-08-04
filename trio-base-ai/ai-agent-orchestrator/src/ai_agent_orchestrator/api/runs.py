@@ -1,3 +1,5 @@
+"""Expose authenticated agent-run lifecycle and resumable SSE contracts."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -23,6 +25,7 @@ async def create_run(
     context: Context,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> AgentRunResponse:
+    """Create an asynchronous run, deduplicated when the caller supplies a stable key."""
     if not request.app.state.settings.enabled:
         raise HTTPException(status_code=503, detail="AGENT_RUNTIME_DISABLED")
     service = run_service(request)
@@ -41,6 +44,7 @@ async def create_run(
 
 @router.get("/runs/{run_id}", response_model=AgentRunResponse)
 async def get_run(run_id: str, request: Request, context: Context) -> AgentRunResponse:
+    """Return a run visible to the trusted tenant and actor, or HTTP 404."""
     result = await run_service(request).get(run_id, context)
     if result is None:
         raise HTTPException(status_code=404, detail="AGENT_RUN_NOT_FOUND")
@@ -55,6 +59,11 @@ async def stream_run_events(
     cursor: int = 0,
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
+    """Stream ordered run events after the greatest cursor supplied by the client.
+
+    Event IDs make reconnects resumable. Proxy buffering and caching are disabled so
+    partial model and tool states reach the UI without waiting for run completion.
+    """
     after_sequence = _event_sequence(last_event_id, cursor)
 
     async def generate():
@@ -77,6 +86,7 @@ async def resume_run(
     request: Request,
     context: Context,
 ) -> AgentRunResponse:
+    """Resume a suspended run with an authorization-bearing human response."""
     try:
         return await run_service(request).resume(
             run_id,
@@ -92,6 +102,7 @@ async def resume_run(
 
 @router.post("/runs/{run_id}/cancel", response_model=AgentRunResponse)
 async def cancel_run(run_id: str, request: Request, context: Context) -> AgentRunResponse:
+    """Request cancellation without exposing runs outside the trusted context."""
     try:
         return await run_service(request).cancel(run_id, context)
     except KeyError as exception:
@@ -100,6 +111,7 @@ async def cancel_run(run_id: str, request: Request, context: Context) -> AgentRu
 
 @router.delete("/threads/{thread_id}", status_code=204)
 async def delete_thread(thread_id: str, request: Request, context: Context) -> Response:
+    """Delete persisted conversation state owned by the trusted tenant and actor."""
     await run_service(request).delete_thread(thread_id, context)
     return Response(status_code=204)
 

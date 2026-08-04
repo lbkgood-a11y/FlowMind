@@ -21,6 +21,12 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 
+/**
+ * 将低代码 Owner 发布的资源快照同步到 service-auth 权限目录。
+ *
+ * <p>该客户端只注册资源和动作，不授予角色权限。请求必须携带资源所属租户和内部服务身份；
+ * service-auth 返回异常或契约不完整时失败关闭，由 Outbox 使用相同 eventId 重试。</p>
+ */
 @Component
 public class AuthorizationResourceSyncClient {
 
@@ -137,6 +143,7 @@ public class AuthorizationResourceSyncClient {
     }
 
     public long synchronize(AuthorizationResourceSyncRequest request) {
+        // request.eventId 在首次入队时生成，所有重试必须原样复用以保证接收方幂等。
         JsonNode envelope = restClient.post()
                 .uri("/internal/v1/authz/resources/sync")
                 .header(InternalServiceTokenFilter.HEADER_SERVICE_NAME, SERVICE_NAME)

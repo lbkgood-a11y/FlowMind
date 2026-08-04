@@ -27,6 +27,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 通过事务 Outbox 将低代码发布事实投影到 service-auth 权限目录。
+ *
+ * <p>eventId 是跨重试幂等身份，snapshotHash 用于拒绝过期投影覆盖新版本。入队必须与聚合状态
+ * 变更位于同一事务；分发允许至少一次投递，因此接收方也必须按 eventId 幂等。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class AuthorizationPublicationService {
@@ -108,7 +114,7 @@ public class AuthorizationPublicationService {
 
     @Transactional
     public int dispatchPending(int limit) {
-        // Reclaim records abandoned by a crashed dispatcher after the lease expires.
+        // 超过租约的 RUNNING 记录视为进程崩溃遗留；回收后仍使用原 eventId，避免重复权限资源。
         outboxMapper.update(null, new LambdaUpdateWrapper<LcAuthorizationOutbox>()
                 .eq(LcAuthorizationOutbox::getStatus, "RUNNING")
                 .lt(LcAuthorizationOutbox::getLockedAt, LocalDateTime.now().minusMinutes(2))

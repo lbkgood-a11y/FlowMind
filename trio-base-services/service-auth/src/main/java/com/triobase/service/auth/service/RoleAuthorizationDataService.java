@@ -24,6 +24,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * 从当前生效发布版本读取角色授权投影。
+ *
+ * <p>草稿不是运行时授权事实，菜单、字段和数据策略查询必须绑定 active release；读取不到有效
+ * 发布证据时不得回退到未发布草稿或旧式宽权限。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class RoleAuthorizationDataService {

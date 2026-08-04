@@ -37,6 +37,12 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * 管理低代码应用及其不可变发布版本。
+ *
+ * <p>发布前必须同时验证表单快照、字段引用、关系图、权限编码和流程绑定；任一外部注册中心
+ * 不可用时失败关闭。版本状态与授权 Outbox 在同一事务写入，权限同步由异步分发器最终完成。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class ApplicationService {
@@ -230,6 +236,12 @@ public class ApplicationService {
     }
 
     @Transactional
+    /**
+     * 发布指定草稿，并冻结本次运行需要的表单版本、Schema 和元数据哈希。
+     *
+     * <p>发布只在全部引用校验通过后改变状态；事务回滚时发布版本和授权 Outbox 必须一起回滚，
+     * 防止应用可见但权限资源尚未登记。</p>
+     */
     public ApplicationResponse publish(String versionId) {
         LcApplicationVersion version = requireMutableVersion(versionId);
         if (!STATUS_DRAFT.equals(version.getStatus())) {

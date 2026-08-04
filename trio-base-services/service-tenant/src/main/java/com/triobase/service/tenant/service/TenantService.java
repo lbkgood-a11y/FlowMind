@@ -33,6 +33,12 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+/**
+ * 管理租户生命周期和租户级配置事实。
+ *
+ * <p>非平台管理员只能读取和修改认证上下文中的当前租户；请求参数不得扩大该边界。停用或挂起
+ * 租户必须保持事实可审计，不能通过删除记录规避下游隔离检查。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class TenantService {
@@ -60,6 +66,7 @@ public class TenantService {
         String normalizedStatus = normalizeStatus(status, false);
         String normalizedKeyword = StringHelpers.normalizeBlank(keyword);
         LambdaQueryWrapper<SysTenant> wrapper = new LambdaQueryWrapper<SysTenant>()
+                // 平台管理员以外的调用者始终固定到当前租户，搜索条件不能用于枚举其他租户。
                 .eq(!isPlatformAdmin(), SysTenant::getId, currentTenantId())
                 .eq(normalizedStatus != null, SysTenant::getStatus, normalizedStatus)
                 .and(normalizedKeyword != null, query -> query

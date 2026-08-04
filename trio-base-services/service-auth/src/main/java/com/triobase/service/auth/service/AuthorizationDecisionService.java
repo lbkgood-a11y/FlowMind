@@ -56,6 +56,12 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+/**
+ * 汇总用户、角色、资源、动作、字段和数据策略，生成最终授权决策。
+ *
+ * <p>未注册资源/动作、无有效授权或证据不完整时默认拒绝。DENY 优先于 ALLOW；管理员捷径也必须
+ * 受租户边界和生效发布版本约束。决策日志不得保存请求中的敏感业务值。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class AuthorizationDecisionService {

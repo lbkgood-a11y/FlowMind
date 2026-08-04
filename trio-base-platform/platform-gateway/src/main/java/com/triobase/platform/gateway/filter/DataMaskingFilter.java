@@ -26,9 +26,11 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * AI 数据脱敏过滤器 — 铁律 2 第一道防线。
- * 拦截发往 LLM 服务的请求，扫描请求体中是否包含明文敏感数据。
- * 若检测到敏感字段，直接拒绝请求 (403)，不允许绕开 LLM 网关直接请求大模型。
+ * AI 数据脱敏过滤器——铁律 2 的第一道防线。
+ *
+ * <p>这里只负责在 API 入口拒绝明显的明文敏感数据；LLM 网关仍必须执行二次清洗，
+ * 因为服务内部拼装的 Prompt 和工具结果不会再次经过本过滤器。发现敏感内容时失败关闭，
+ * 审计日志只记录命中类别，绝不记录原始值。</p>
  */
 @Component
 public class DataMaskingFilter implements GlobalFilter, Ordered {
@@ -72,6 +74,7 @@ public class DataMaskingFilter implements GlobalFilter, Ordered {
                     String body = new String(bodyBytes, StandardCharsets.UTF_8);
                     List<String> findings = detectFindings(body);
                     if (!findings.isEmpty()) {
+                        // findings 只包含规则类别；禁止把 body 写入日志，否则脱敏防线本身会泄露数据。
                         log.warn("Sensitive data detected on path {} findings={}", path, findings);
                         return reject(exchange, findings);
                     }
