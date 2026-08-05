@@ -27,6 +27,7 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
     private static final String HEADER_USERNAME = "X-Username";
     private static final String HEADER_TENANT_ID = "X-Tenant-Id";
     private static final String HEADER_ROLES = "X-User-Roles";
+    private static final String HEADER_ROLE_IDS = "X-User-Role-Ids";
     private static final String HEADER_PERMISSIONS = "X-User-Permissions";
     private static final String HEADER_DENIED_PERMISSIONS = "X-User-Denied-Permissions";
     private static final String HEADER_AUTH_VERSION = "X-Auth-Version";
@@ -62,6 +63,7 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
             String username = request.getHeader(HEADER_USERNAME);
             String tenantId = request.getHeader(HEADER_TENANT_ID);
             String rolesHeader = request.getHeader(HEADER_ROLES);
+            String roleIdsHeader = request.getHeader(HEADER_ROLE_IDS);
             String permissionsHeader = request.getHeader(HEADER_PERMISSIONS);
             String deniedPermissionsHeader = request.getHeader(HEADER_DENIED_PERMISSIONS);
 
@@ -76,6 +78,9 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
                 }
                 List<String> roles = rolesHeader != null && !rolesHeader.isBlank()
                         ? List.of(rolesHeader.split(","))
+                        : Collections.emptyList();
+                List<String> roleIds = roleIdsHeader != null && !roleIdsHeader.isBlank()
+                        ? List.of(roleIdsHeader.split(","))
                         : Collections.emptyList();
                 List<String> permissions = permissionsHeader != null && !permissionsHeader.isBlank()
                         ? List.of(permissionsHeader.split(","))
@@ -98,6 +103,7 @@ public class AuditSecurityFilter extends OncePerRequestFilter {
                         parseLong(request.getHeader(HEADER_FIELD_POLICY_VERSION)),
                         parseLong(request.getHeader(HEADER_GUARD_TEMPLATE_VERSION))
                 ));
+                SecurityContextHolder.setRoleIds(roleIds);
             }
 
             filterChain.doFilter(request, response);

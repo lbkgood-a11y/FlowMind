@@ -11,6 +11,8 @@ import com.triobase.service.ops.entity.OpsAnnouncement;
 import com.triobase.service.ops.entity.OpsAnnouncementRead;
 import com.triobase.service.ops.mapper.AnnouncementMapper;
 import com.triobase.service.ops.mapper.AnnouncementReadMapper;
+import com.triobase.service.ops.notification.service.LegacyNotificationDualWriteService;
+import com.triobase.service.ops.notification.service.NotificationCutoverService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +25,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 维护兼容窗口内的旧版公告事实，并按租户开关同步到新版公告投影。
+ *
+ * <p>旧写入仍由本服务拥有；双写失败必须回滚同一事务，避免切换新版读取后出现不可解释的
+ * 公告缺口。已发布公告的新版治理操作由公告聚合服务负责。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class AnnouncementService {
@@ -37,6 +45,8 @@ public class AnnouncementService {
     private final AnnouncementMapper announcementMapper;
     private final AnnouncementReadMapper announcementReadMapper;
     private final RequestContextService contextService;
+    private final LegacyNotificationDualWriteService dualWriteService;
+    private final NotificationCutoverService cutoverService;
 
     public PageResult<OpsAnnouncement> page(int page,
                                             int size,
@@ -62,45 +72,58 @@ public class AnnouncementService {
 
     @Transactional
     public OpsAnnouncement create(SaveAnnouncementRequest request) {
+        requireLegacyWrite();
         OpsAnnouncement announcement = new OpsAnnouncement();
         announcement.setId(UlidGenerator.nextUlid());
         announcement.setTenantId(contextService.tenantId());
         applyRequest(announcement, request);
         announcement.setStatus(STATUS_DRAFT);
         announcementMapper.insert(announcement);
+        dualWriteService.announcementChanged(announcement.getTenantId(), announcement.getId(), true);
         return announcement;
     }
 
     @Transactional
     public OpsAnnouncement update(String id, SaveAnnouncementRequest request) {
+        requireLegacyWrite();
         OpsAnnouncement announcement = requireAnnouncement(id);
         applyRequest(announcement, request);
         announcementMapper.updateById(announcement);
+        dualWriteService.announcementChanged(announcement.getTenantId(), announcement.getId(), true);
         return announcement;
     }
 
     @Transactional
     public void delete(String id) {
-        requireAnnouncement(id);
+        requireLegacyWrite();
+        OpsAnnouncement announcement = requireAnnouncement(id);
+        // 已发布内容是阅读与审计证据，管理端只能下线/撤回；物理删除仅保留给未发布草稿。
+        if (!STATUS_DRAFT.equals(announcement.getStatus())) {
+            throw new BizException(45003, "ANNOUNCEMENT_PUBLISHED_DELETE_FORBIDDEN");
+        }
         announcementMapper.deleteById(id);
     }
 
     @Transactional
     public OpsAnnouncement publish(String id) {
+        requireLegacyWrite();
         OpsAnnouncement announcement = requireAnnouncement(id);
         announcement.setStatus(STATUS_PUBLISHED);
         announcement.setPublishAt(LocalDateTime.now());
         announcement.setUnpublishAt(null);
         announcementMapper.updateById(announcement);
+        dualWriteService.announcementChanged(announcement.getTenantId(), announcement.getId(), false);
         return announcement;
     }
 
     @Transactional
     public OpsAnnouncement unpublish(String id) {
+        requireLegacyWrite();
         OpsAnnouncement announcement = requireAnnouncement(id);
         announcement.setStatus(STATUS_OFFLINE);
         announcement.setUnpublishAt(LocalDateTime.now());
         announcementMapper.updateById(announcement);
+        dualWriteService.announcementChanged(announcement.getTenantId(), announcement.getId(), false);
         return announcement;
     }
 
@@ -121,6 +144,7 @@ public class AnnouncementService {
 
     @Transactional
     public void markRead(String id) {
+        requireLegacyWrite();
         OpsAnnouncement announcement = requireAnnouncement(id);
         if (!STATUS_PUBLISHED.equals(announcement.getStatus())) {
             throw new BizException(45002, "ANNOUNCEMENT_NOT_PUBLISHED");
@@ -139,6 +163,7 @@ public class AnnouncementService {
         read.setUserId(userId);
         read.setReadAt(LocalDateTime.now());
         announcementReadMapper.insert(read);
+        dualWriteService.announcementRead(read.getTenantId(), read.getId());
     }
 
     public long unreadCount(List<String> orgIds) {
@@ -195,5 +220,9 @@ public class AnnouncementService {
                 .map(String::trim)
                 .filter(StringUtils::hasText)
                 .toList());
+    }
+
+    private void requireLegacyWrite() {
+        cutoverService.requireLegacyWrite(contextService.tenantId());
     }
 }

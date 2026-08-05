@@ -171,23 +171,27 @@ public class AuthService {
         }
 
         List<String> roles;
+        List<String> roleIds;
         List<String> permissions;
         List<String> deniedPermissions;
 
         var cached = permissionCacheService.get(tenantId(user), payload.userId());
         if (cached.isPresent()) {
             roles = cached.get().roles();
+            roleIds = cached.get().roleIds();
             permissions = cached.get().permissions();
             deniedPermissions = cached.get().deniedPermissions();
         } else {
             roles = userMapper.selectRoleCodesByUserId(payload.userId());
+            roleIds = userMapper.selectRoleIdsByUserId(payload.userId());
             permissions = userMapper.selectPermissionsByUserId(payload.userId());
             deniedPermissions = userMapper.selectDeniedPermissionsByUserId(payload.userId());
-            permissionCacheService.put(tenantId(user), payload.userId(), roles, permissions, deniedPermissions);
+            permissionCacheService.put(tenantId(user), payload.userId(), roles, roleIds, permissions, deniedPermissions);
         }
 
         TokenValidateResult result = TokenValidateResult.success(payload.userId(), payload.username(), tenantId(user),
                 roles,
+                roleIds,
                 permissions,
                 authorizationVersionService.current(AuthorizationVersionService.AUTHORIZATION),
                 authorizationVersionService.current(AuthorizationVersionService.GRANT),

@@ -22,9 +22,25 @@ const routes: RouteRecordRaw[] = [
         component: () => import('#/views/operations/announcement/list.vue'),
       },
       {
+        path: 'inbox',
+        name: 'OperationsInbox',
+        meta: {
+          icon: 'lucide:inbox',
+          title: '消息中心',
+        },
+        component: () => import('#/views/operations/inbox/index.vue'),
+      },
+      {
+        path: 'notification-configuration',
+        name: 'OperationsNotificationConfiguration',
+        meta: { icon: 'lucide:send-cog', title: '通知渠道配置' },
+        component: () => import('#/views/operations/notification-configuration/index.vue'),
+      },
+      {
         path: 'message',
         name: 'OperationsMessage',
         meta: {
+          authority: ['/api/v1/messages:GET'],
           icon: 'lucide:message-square-dot',
           title: $t('operations.message.title'),
         },

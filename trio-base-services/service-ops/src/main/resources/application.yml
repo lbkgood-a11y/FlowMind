@@ -13,6 +13,7 @@ spring:
     driver-class-name: org.postgresql.Driver
     type: com.alibaba.druid.pool.DruidDataSource
   flyway:
+    # 迁移在启动时执行；生产禁用会导致新版表契约不可用，修改后需重启服务。
     enabled: true
     locations: classpath:db/migration
     validate-on-migrate: false
@@ -26,14 +27,25 @@ spring:
   cloud:
     nacos:
       username: nacos
+      # Nacos 凭据不提供源码默认值；缺失时注册和配置拉取按客户端策略失败。
       password: "'!pwd123$'"
       discovery:
+        # 默认启用服务发现；本地无 Nacos 时显式关闭，修改后需重启服务。
         enabled: ${NACOS_ENABLED:true}
         server-addr: 10.193.102.2:8848
       config:
+        # 配置中心与服务发现共用启停开关，避免只注册但未加载治理配置。
         enabled: ${NACOS_ENABLED:true}
         server-addr: 10.193.102.2:8848
         file-extension: yml
+  temporal:
+    namespace: ${TEMPORAL_NAMESPACE:default}
+    start-workers: ${TEMPORAL_WORKERS_ENABLED:false}
+    connection:
+      target: ${TEMPORAL_TARGET:10.193.102.2:7233}
+    workers-auto-discovery:
+      packages:
+        - com.triobase.service.ops.notification.temporal
 
 mybatis-plus:
   configuration:
@@ -46,7 +58,33 @@ ops:
     allowed-extensions: ${OPS_STORAGE_ALLOWED_EXTENSIONS:txt,csv,xlsx,xls,pdf,png,jpg,jpeg,doc,docx,json,zip}
     max-file-size-bytes: ${OPS_STORAGE_MAX_FILE_SIZE_BYTES:52428800}
 
+triobase:
+  internal:
+    token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
+    allowed-callers: ${INTERNAL_ALLOWED_CALLERS:platform-gateway}
+  notification:
+    cutover:
+      # 两层门禁默认关闭；事故回滚先关闭 read-v2，再关闭 dual-write，已写 v2 证据不得删除。
+      dual-write-enabled: ${NOTIFICATION_DUAL_WRITE_ENABLED:false}
+      read-v2-enabled: ${NOTIFICATION_READ_V2_ENABLED:true}
+      # 默认保留 legacy 写；试点完成对账后通过 disabled-tenants 单独停写，事故回滚可重新启用。
+      legacy-write-enabled: ${NOTIFICATION_LEGACY_WRITE_ENABLED:true}
+      dual-write-tenants: ${NOTIFICATION_DUAL_WRITE_TENANTS:}
+      read-v2-tenants: ${NOTIFICATION_READ_V2_TENANTS:default}
+      legacy-write-disabled-tenants: ${NOTIFICATION_LEGACY_WRITE_DISABLED_TENANTS:}
+    retention:
+      # 数据清理默认关闭；启用前必须配置租户策略、冻结审批和可验证的备份恢复流程。
+      enabled: ${NOTIFICATION_RETENTION_ENABLED:false}
+      cron: ${NOTIFICATION_RETENTION_CRON:0 30 2 * * *}
+
 logging:
   level:
     root: DEBUG
     com.triobase: DEBUG
+
+management:
+  endpoints:
+    web:
+      # Prometheus 只暴露低基数聚合指标；租户级调查必须走受权运营诊断接口。
+      exposure:
+        include: health,info,metrics,prometheus

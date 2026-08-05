@@ -72,10 +72,17 @@ spring:
           uri: ${AUTH_SERVICE_URL:http://localhost:8081}
           predicates:
             - Path=/api/v1/users,/api/v1/users/**,/api/v1/roles,/api/v1/roles/**,/api/v1/menus,/api/v1/menus/**,/api/v1/menu,/api/v1/menu/**,/api/v1/authz,/api/v1/authz/**,/api/v1/data-policies,/api/v1/data-policies/**,/api/v1/audit-logs,/api/v1/audit-logs/**,/api/v1/sessions,/api/v1/sessions/**,/api/v1/dictionaries,/api/v1/dictionaries/**,/api/v1/system-configs,/api/v1/system-configs/**
+        - id: service-ops-inbox-sse
+          uri: ${OPS_SERVICE_URL:http://localhost:8087}
+          predicates:
+            - Path=/api/v2/inbox/events
+          metadata:
+            # SSE 由应用心跳和连接治理主动回收，禁用普通 HTTP 响应超时。
+            response-timeout: -1
         - id: service-ops
           uri: ${OPS_SERVICE_URL:http://localhost:8087}
           predicates:
-            - Path=/api/v1/announcements,/api/v1/announcements/**,/api/v1/messages,/api/v1/messages/**,/api/v1/files,/api/v1/files/**,/api/v1/file-references,/api/v1/file-references/**,/api/v1/import-export-tasks,/api/v1/import-export-tasks/**,/api/v1/jobs,/api/v1/jobs/**
+            - Path=/api/v1/announcements,/api/v1/announcements/**,/api/v1/messages,/api/v1/messages/**,/api/v1/files,/api/v1/files/**,/api/v1/file-references,/api/v1/file-references/**,/api/v1/import-export-tasks,/api/v1/import-export-tasks/**,/api/v1/jobs,/api/v1/jobs/**,/api/v2/inbox,/api/v2/inbox/**,/api/v2/announcements,/api/v2/announcements/**,/api/v2/notification-channels,/api/v2/notification-channels/**,/api/v2/notification-templates,/api/v2/notification-templates/**
         - id: service-openapi-management
           uri: ${OPENAPI_SERVICE_URL:http://localhost:8088}
           predicates:
@@ -111,7 +118,13 @@ tenant:
 
 triobase:
   internal:
-    token: ${INTERNAL_SERVICE_TOKEN:triobase-local-internal-token}
+    # 内部调用凭据必须由部署环境注入；空值会使内部租户校验失败关闭，不提供源码默认凭据。
+    token: ${INTERNAL_SERVICE_TOKEN:}
+  sse:
+    max-connections: ${SSE_MAX_CONNECTIONS:10000}
+    max-connections-per-user: ${SSE_MAX_CONNECTIONS_PER_USER:3}
+    # 最大连接生命周期用于回收失联客户端；客户端需按协议重连并查询权威状态。
+    max-connection-duration: ${SSE_MAX_CONNECTION_DURATION:PT30M}
   openapi:
     service-url: ${OPENAPI_SERVICE_URL:http://localhost:8088}
     gateway-auth-secret: ${OPENAPI_GATEWAY_AUTH_SECRET:}

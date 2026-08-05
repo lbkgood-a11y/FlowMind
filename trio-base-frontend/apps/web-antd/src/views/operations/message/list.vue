@@ -30,12 +30,14 @@ import {
   markInboxMessageRead,
   sendMessage,
 } from '#/api';
+import { getUserList } from '#/api/system/user';
 import {
   BusinessPageScaffold,
   CompactQueryBar,
   CompactTableFrame,
   CompactToolbar,
 } from '#/shared';
+import { authorizedRecipientIds } from './recipient-selection';
 
 const Textarea = Input.TextArea;
 const TabPane = Tabs.TabPane;
@@ -56,6 +58,7 @@ const adminLoading = ref(false);
 const inboxLoading = ref(false);
 const sending = ref(false);
 const sendOpen = ref(false);
+const recipientOptions = ref<Array<{ label: string; value: string }>>([]);
 const adminRecords = ref<OperationsApi.MessageAdminResponse[]>([]);
 const inboxRecords = ref<OperationsApi.MessageInboxResponse[]>([]);
 
@@ -71,7 +74,7 @@ const inboxQuery = reactive({
 const sendForm = reactive({
   content: '',
   messageType: 'SYSTEM',
-  recipientUserIds: '',
+  recipientUserIds: [] as string[],
   title: '',
 });
 
@@ -159,21 +162,23 @@ function resetInboxQuery() {
   loadInbox();
 }
 
-function openSend() {
+async function openSend() {
   sendForm.title = '';
   sendForm.content = '';
   sendForm.messageType = 'SYSTEM';
-  sendForm.recipientUserIds = '';
+  sendForm.recipientUserIds = [];
+  const users = await getUserList({ page: 1, size: 100, status: 1 });
+  recipientOptions.value = users.items.map((user) => ({ label: user.username, value: user.id }));
   sendOpen.value = true;
 }
 
 async function submitSend() {
-  const recipientUserIds = sendForm.recipientUserIds
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const recipientUserIds = authorizedRecipientIds(
+    sendForm.recipientUserIds,
+    new Set(recipientOptions.value.map((option) => option.value)),
+  );
   if (!sendForm.title.trim() || !sendForm.content.trim() || recipientUserIds.length === 0) {
-    message.warning('请输入标题、内容和接收用户ID');
+    message.warning('请输入标题、内容并选择接收用户');
     return;
   }
   sending.value = true;
@@ -382,7 +387,14 @@ onMounted(() => {
           />
         </FormItem>
         <FormItem class="form-wide" label="接收用户" required>
-          <Input v-model:value="sendForm.recipientUserIds" placeholder="多个用户ID用英文逗号分隔" />
+          <Select
+            v-model:value="sendForm.recipientUserIds"
+            mode="multiple"
+            show-search
+            :filter-option="(input, option) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())"
+            :options="recipientOptions"
+            placeholder="从授权用户列表中选择"
+          />
         </FormItem>
         <FormItem class="form-wide" label="内容" required>
           <Textarea v-model:value="sendForm.content" :rows="5" placeholder="请输入消息内容" />

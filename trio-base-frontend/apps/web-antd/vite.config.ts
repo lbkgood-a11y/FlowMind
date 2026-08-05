@@ -8,7 +8,7 @@ export default defineConfig(async () => {
         proxy: {
           '/api': {
             changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/api/, '/api/v1'),
+            rewrite: (path) => path.match(/^\/api\/v\d+/) ? path : path.replace(/^\/api/, '/api/v1'),
             target: 'http://localhost:8080',
             ws: true,
             proxyTimeout: 120000,

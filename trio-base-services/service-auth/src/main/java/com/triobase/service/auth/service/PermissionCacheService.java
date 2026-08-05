@@ -51,12 +51,12 @@ public class PermissionCacheService {
         }
     }
 
-    public void put(String tenantId, String userId, List<String> roles, List<String> permissions,
-                    List<String> deniedPermissions) {
+    public void put(String tenantId, String userId, List<String> roles, List<String> roleIds,
+                    List<String> permissions, List<String> deniedPermissions) {
         try {
             long grantVersion = versionService.current(AuthorizationVersionService.GRANT);
             CachedPermissionSet cached = new CachedPermissionSet(
-                    roles, permissions, deniedPermissions, grantVersion);
+                    roles, roleIds, permissions, deniedPermissions, grantVersion);
             redis.opsForValue().set(cacheKey(tenantId, userId),
                     objectMapper.writeValueAsString(cached), ttl);
         } catch (RuntimeException | JsonProcessingException e) {
@@ -78,6 +78,7 @@ public class PermissionCacheService {
 
     public record CachedPermissionSet(
             List<String> roles,
+            List<String> roleIds,
             List<String> permissions,
             List<String> deniedPermissions,
             long grantVersion) {

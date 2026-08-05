@@ -1,5 +1,7 @@
 import type { ActionApi } from '#/api/action-client';
 
+import { z } from 'zod';
+
 type ActionComponentKey = 'ActionCandidateConfirmation' | 'ActionResultSummary';
 
 interface ActionComponentRegistration<TProps extends Record<string, unknown>> {
@@ -22,19 +24,28 @@ interface ActionResultSummaryProps extends Record<string, unknown> {
   status: ActionApi.ActionStatus | string;
 }
 
+const safeBase = z.object({}).catchall(z.unknown()).superRefine((props, context) => {
+  for (const key of Object.keys(props)) {
+    if (/^on[A-Z]/.test(key) || ['innerHTML', 'dangerouslySetInnerHTML', 'html', 'script'].includes(key)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'unsafe component property', path: [key] });
+    }
+  }
+});
+const candidateSchema = safeBase.and(z.object({
+  actionType: z.string().trim().min(1), candidateId: z.string().trim().min(1), title: z.string().trim().min(1),
+}));
+const resultSchema = safeBase.and(z.object({
+  actionId: z.string().trim().min(1), status: z.string().trim().min(1),
+}));
+
 const registry: Record<ActionComponentKey, ActionComponentRegistration<any>> = {
   ActionCandidateConfirmation: {
     key: 'ActionCandidateConfirmation',
-    validate: (props): props is ActionCandidateConfirmationProps =>
-      safeProps(props) &&
-      text(props.actionType) &&
-      text(props.candidateId) &&
-      text(props.title),
+    validate: (props): props is ActionCandidateConfirmationProps => candidateSchema.safeParse(props).success,
   },
   ActionResultSummary: {
     key: 'ActionResultSummary',
-    validate: (props): props is ActionResultSummaryProps =>
-      safeProps(props) && text(props.actionId) && text(props.status),
+    validate: (props): props is ActionResultSummaryProps => resultSchema.safeParse(props).success,
   },
 };
 
@@ -53,21 +64,6 @@ function resolveActionComponent<TProps extends Record<string, unknown>>(
     key: registration.key,
     props: props as TProps,
   };
-}
-
-function safeProps(props: Record<string, unknown>) {
-  return Object.keys(props).every(
-    (key) =>
-      !/^on[A-Z]/.test(key) &&
-      key !== 'innerHTML' &&
-      key !== 'dangerouslySetInnerHTML' &&
-      key !== 'html' &&
-      key !== 'script',
-  );
-}
-
-function text(value: unknown): value is string {
-  return typeof value === 'string' && value.trim() !== '';
 }
 
 export type {

@@ -10,6 +10,7 @@ import java.util.List;
 public final class SecurityContextHolder {
 
     private static final ThreadLocal<SecurityContext> CONTEXT = new InheritableThreadLocal<>();
+    private static final ThreadLocal<List<String>> ROLE_IDS = new InheritableThreadLocal<>();
 
     private SecurityContextHolder() {
     }
@@ -18,12 +19,17 @@ public final class SecurityContextHolder {
         CONTEXT.set(context);
     }
 
+    public static void setRoleIds(List<String> roleIds) {
+        ROLE_IDS.set(roleIds != null ? List.copyOf(roleIds) : Collections.emptyList());
+    }
+
     public static SecurityContext get() {
         return CONTEXT.get();
     }
 
     public static void clear() {
         CONTEXT.remove();
+        ROLE_IDS.remove();
     }
 
     public static String getUserId() {
@@ -54,6 +60,11 @@ public final class SecurityContextHolder {
     public static List<String> getRoles() {
         SecurityContext ctx = CONTEXT.get();
         return ctx != null ? ctx.roles() : Collections.emptyList();
+    }
+
+    public static List<String> getRoleIds() {
+        List<String> ids = ROLE_IDS.get();
+        return ids != null ? ids : Collections.emptyList();
     }
 
     public record SecurityContext(String userId,

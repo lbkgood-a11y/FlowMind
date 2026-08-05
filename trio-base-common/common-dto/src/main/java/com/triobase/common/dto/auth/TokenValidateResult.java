@@ -11,6 +11,7 @@ public class TokenValidateResult {
     private String username;
     private String tenantId;
     private List<String> roles;
+    private List<String> roleIds;
     private List<String> permissions;
     private List<String> deniedPermissions;
     private Long authVersion;
@@ -22,7 +23,7 @@ public class TokenValidateResult {
     private String error;
 
     public static TokenValidateResult success(String userId, String username, List<String> permissions) {
-        return success(userId, username, null, null, permissions, null, null, null);
+        return success(userId, username, null, null, null, permissions, null, null, null, null, null, null);
     }
 
     public static TokenValidateResult success(String userId,
@@ -33,7 +34,7 @@ public class TokenValidateResult {
                                               Long authVersion,
                                               Long roleVersion,
                                               Long dataPolicyVersion) {
-        return success(userId, username, tenantId, roles, permissions,
+        return success(userId, username, tenantId, roles, null, permissions,
                 authVersion, roleVersion, dataPolicyVersion, null, null, null);
     }
 
@@ -41,6 +42,7 @@ public class TokenValidateResult {
                                               String username,
                                               String tenantId,
                                               List<String> roles,
+                                              List<String> roleIds,
                                               List<String> permissions,
                                               Long authVersion,
                                               Long roleVersion,
@@ -54,6 +56,7 @@ public class TokenValidateResult {
         r.username = username;
         r.tenantId = tenantId;
         r.roles = roles;
+        r.roleIds = roleIds;
         r.permissions = permissions;
         r.deniedPermissions = null;
         r.authVersion = authVersion;

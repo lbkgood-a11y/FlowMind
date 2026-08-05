@@ -66,6 +66,11 @@ public interface UserMapper extends BaseMapper<SysUser> {
             "WHERE ur.user_id = #{userId} AND r.status = 1")
     List<String> selectRoleCodesByUserId(String userId);
 
+    @Select("SELECT r.id FROM sys_role r " +
+            "JOIN sys_user_role ur ON r.id = ur.role_id " +
+            "WHERE ur.user_id = #{userId} AND r.status = 1")
+    List<String> selectRoleIdsByUserId(String userId);
+
     @Select("SELECT DISTINCT u.* FROM sys_user u " +
             "JOIN sys_user_role ur ON ur.user_id = u.id " +
             "JOIN sys_role r ON r.id = ur.role_id " +

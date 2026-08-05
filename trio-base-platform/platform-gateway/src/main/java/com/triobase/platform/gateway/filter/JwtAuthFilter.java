@@ -33,19 +33,19 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     private final WebClient tenantClient;
     private final List<String> whitelistPaths;
     private final boolean tenantValidationEnabled;
-    private final String internalServiceToken;
+    private final String internalCredential;
 
     public JwtAuthFilter(WebClient.Builder webClientBuilder,
                          @Value("${auth.service.url:lb://service-auth}") String authServiceUrl,
                          @Value("${tenant.service.url:lb://service-tenant}") String tenantServiceUrl,
                          @Value("${auth.whitelist-paths:/api/v1/auth/**,/health,/actuator/**}") String whitelist,
                          @Value("${tenant.validation.enabled:true}") boolean tenantValidationEnabled,
-                         @Value("${triobase.internal.token:triobase-local-internal-token}") String internalServiceToken) {
+                         @Value("${triobase.internal.token:}") String internalCredential) {
         this.authClient = webClientBuilder.clone().baseUrl(authServiceUrl).build();
         this.tenantClient = webClientBuilder.clone().baseUrl(tenantServiceUrl).build();
         this.whitelistPaths = List.of(whitelist.split(","));
         this.tenantValidationEnabled = tenantValidationEnabled;
-        this.internalServiceToken = internalServiceToken;
+        this.internalCredential = internalCredential;
     }
 
     @Override
@@ -61,11 +61,11 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             return exchange.getResponse().setComplete();
         }
 
-        String token = authHeader.substring(BEARER_PREFIX.length());
+        String bearerValue = authHeader.substring(BEARER_PREFIX.length());
 
         return authClient.get()
                 .uri(uriBuilder -> uriBuilder.path("/api/v1/auth/validate")
-                        .queryParam("token", token)
+                        .queryParam("token", bearerValue)
                         .build())
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<R<TokenValidateResult>>() {
@@ -89,6 +89,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
                                             setIfPresent(headers, "X-Tenant-Id", result.getTenantId());
                                             headers.set("X-User-Roles", String.join(",", result.getRoles() != null
                                                     ? result.getRoles() : List.of()));
+                                            headers.set("X-User-Role-Ids", String.join(",", result.getRoleIds() != null
+                                                    ? result.getRoleIds() : List.of()));
                                             headers.set("X-User-Permissions", String.join(",", result.getPermissions() != null
                                                     ? result.getPermissions() : List.of()));
                                             headers.set("X-User-Denied-Permissions", String.join(",",
@@ -102,7 +104,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
                                             setIfPresent(headers, "X-Guard-Template-Version", result.getGuardTemplateVersion());
                                             // Internal service auth for downstream AuditSecurityFilter
                                             headers.set(InternalServiceTokenFilter.HEADER_SERVICE_NAME, "platform-gateway");
-                                            headers.set(InternalServiceTokenFilter.HEADER_SERVICE_TOKEN, internalServiceToken);
+                                            headers.set(InternalServiceTokenFilter.HEADER_SERVICE_TOKEN, internalCredential);
                                         }))
                                         .build();
                                 return chain.filter(mutated);
@@ -125,7 +127,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         return tenantClient.get()
                 .uri("/internal/v1/tenants/{tenantId}/validation", tenantId)
                 .header(InternalServiceTokenFilter.HEADER_SERVICE_NAME, "platform-gateway")
-                .header(InternalServiceTokenFilter.HEADER_SERVICE_TOKEN, internalServiceToken)
+                .header(InternalServiceTokenFilter.HEADER_SERVICE_TOKEN, internalCredential)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<R<TenantValidationResult>>() {
                 })

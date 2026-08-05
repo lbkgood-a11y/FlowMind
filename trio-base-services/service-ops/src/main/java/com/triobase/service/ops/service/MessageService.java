@@ -7,12 +7,15 @@ import com.triobase.common.core.exception.BizException;
 import com.triobase.common.core.id.UlidGenerator;
 import com.triobase.common.core.result.PageResult;
 import com.triobase.service.ops.dto.MessageAdminResponse;
+import com.triobase.service.ops.dto.MessageCountRow;
 import com.triobase.service.ops.dto.MessageInboxResponse;
 import com.triobase.service.ops.dto.SendMessageRequest;
 import com.triobase.service.ops.entity.OpsMessage;
 import com.triobase.service.ops.entity.OpsMessageRecipient;
 import com.triobase.service.ops.mapper.MessageMapper;
 import com.triobase.service.ops.mapper.MessageRecipientMapper;
+import com.triobase.service.ops.notification.service.LegacyNotificationDualWriteService;
+import com.triobase.service.ops.notification.service.NotificationCutoverService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,8 +23,17 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
+/**
+ * 维护兼容窗口内的旧版单向站内消息与收件人状态。
+ *
+ * <p>发送事务同步写入新版通知任务和收件投影，任何一侧失败均回滚；用户删除仅作用于
+ * 个人可见状态，不得删除其他收件人或共享审计证据。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class MessageService {
@@ -32,9 +44,12 @@ public class MessageService {
     private final MessageMapper messageMapper;
     private final MessageRecipientMapper recipientMapper;
     private final RequestContextService contextService;
+    private final LegacyNotificationDualWriteService dualWriteService;
+    private final NotificationCutoverService cutoverService;
 
     @Transactional
     public OpsMessage send(SendMessageRequest request) {
+        requireLegacyWrite();
         OpsMessage message = new OpsMessage();
         message.setId(UlidGenerator.nextUlid());
         message.setTenantId(contextService.tenantId());
@@ -59,6 +74,7 @@ public class MessageService {
                     recipient.setReadStatus(UNREAD);
                     recipientMapper.insert(recipient);
                 });
+        dualWriteService.messageCreated(message.getTenantId(), message.getId());
         return message;
     }
 
@@ -75,7 +91,12 @@ public class MessageService {
                 .eq(StringUtils.hasText(messageType), OpsMessage::getMessageType, messageType)
                 .orderByDesc(OpsMessage::getCreatedAt);
         IPage<OpsMessage> result = messageMapper.selectPage(new Page<>(page, size), wrapper);
-        return PageResult.of(result.getRecords().stream().map(this::toAdminResponse).toList(),
+        List<String> messageIds = result.getRecords().stream().map(OpsMessage::getId).toList();
+        Map<String, MessageCountRow> counts = messageIds.isEmpty() ? Map.of()
+                : recipientMapper.countByMessageIds(contextService.tenantId(), messageIds).stream()
+                        .collect(Collectors.toMap(MessageCountRow::messageId, Function.identity()));
+        return PageResult.of(result.getRecords().stream()
+                        .map(message -> toAdminResponse(message, counts.get(message.getId()))).toList(),
                 result.getTotal(), page, size);
     }
 
@@ -90,34 +111,43 @@ public class MessageService {
                 .eq(readStatus != null, OpsMessageRecipient::getReadStatus, readStatus)
                 .orderByDesc(OpsMessageRecipient::getCreatedAt);
         IPage<OpsMessageRecipient> result = recipientMapper.selectPage(new Page<>(page, size), wrapper);
+        List<String> messageIds = result.getRecords().stream()
+                .map(OpsMessageRecipient::getMessageId).distinct().toList();
+        Map<String, OpsMessage> messages = messageIds.isEmpty() ? Map.of()
+                : messageMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<OpsMessage>()
+                                .eq("tenant_id", contextService.tenantId())
+                                .in("id", messageIds)).stream()
+                        .collect(Collectors.toMap(OpsMessage::getId, Function.identity()));
         List<MessageInboxResponse> records = result.getRecords().stream()
-                .map(this::toInboxResponse)
-                .filter(Objects::nonNull)
-                .toList();
+                .map(recipient -> toInboxResponse(recipient, messages.get(recipient.getMessageId())))
+                .filter(Objects::nonNull).toList();
         return PageResult.of(records, result.getTotal(), page, size);
     }
 
     @Transactional
     public void markRead(String recipientId) {
+        requireLegacyWrite();
         OpsMessageRecipient recipient = requireOwnRecipient(recipientId);
         recipient.setReadStatus(READ);
         recipient.setReadAt(LocalDateTime.now());
         recipientMapper.updateById(recipient);
+        dualWriteService.recipientChanged(recipient.getTenantId(), recipient.getId());
     }
 
     @Transactional
     public void deleteInboxMessage(String recipientId) {
+        requireLegacyWrite();
         OpsMessageRecipient recipient = requireOwnRecipient(recipientId);
         recipient.setDeletedAt(LocalDateTime.now());
         recipientMapper.updateById(recipient);
+        dualWriteService.recipientChanged(recipient.getTenantId(), recipient.getId());
     }
 
     @Transactional
     public void deleteMessage(String id) {
-        if (messageMapper.selectById(id) == null) {
-            throw new BizException(45101, "MESSAGE_NOT_FOUND");
-        }
-        messageMapper.deleteById(id);
+        requireLegacyWrite();
+        // 已投递消息是共享审计证据，管理端删除入口保留兼容响应但永远禁止物理删除。
+        throw new BizException(45102, "MESSAGE_PHYSICAL_DELETE_FORBIDDEN");
     }
 
     public long unreadCount() {
@@ -128,12 +158,9 @@ public class MessageService {
                 .isNull(OpsMessageRecipient::getDeletedAt));
     }
 
-    private MessageAdminResponse toAdminResponse(OpsMessage message) {
-        long recipientCount = recipientMapper.selectCount(new LambdaQueryWrapper<OpsMessageRecipient>()
-                .eq(OpsMessageRecipient::getMessageId, message.getId()));
-        long readCount = recipientMapper.selectCount(new LambdaQueryWrapper<OpsMessageRecipient>()
-                .eq(OpsMessageRecipient::getMessageId, message.getId())
-                .eq(OpsMessageRecipient::getReadStatus, READ));
+    private MessageAdminResponse toAdminResponse(OpsMessage message, MessageCountRow counts) {
+        long recipientCount = counts == null ? 0 : counts.recipientCount();
+        long readCount = counts == null ? 0 : counts.readCount();
         MessageAdminResponse response = new MessageAdminResponse();
         response.setMessage(message);
         response.setRecipientCount(recipientCount);
@@ -142,8 +169,11 @@ public class MessageService {
         return response;
     }
 
-    private MessageInboxResponse toInboxResponse(OpsMessageRecipient recipient) {
-        OpsMessage message = messageMapper.selectById(recipient.getMessageId());
+    private void requireLegacyWrite() {
+        cutoverService.requireLegacyWrite(contextService.tenantId());
+    }
+
+    private MessageInboxResponse toInboxResponse(OpsMessageRecipient recipient, OpsMessage message) {
         if (message == null) {
             return null;
         }

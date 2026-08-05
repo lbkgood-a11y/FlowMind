@@ -3,6 +3,7 @@ export * from './action-status';
 export * from './agent';
 export * from './core';
 export * from './data';
+export * from './inbox';
 export * from './lowcode';
 export * from './openapi-operations';
 export * from './operations';
